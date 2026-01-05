@@ -20,23 +20,6 @@
             </div>
         </a>
 
-        <!-- Desktop Navigation -->
-        <nav class="top-nav">
-            <a href="dashboard.php" class="nav-item <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
-                <i class="fas fa-tachometer-alt"></i>
-                Papan Pemuka
-            </a>
-            <a href="pengurusan-pelajar.php" class="nav-item <?php echo basename($_SERVER['PHP_SELF']) == 'pengurusan-pelajar.php' ? 'active' : ''; ?>">
-                <i class="fas fa-users"></i>
-                Pelajar
-            </a>
-            <a href="#" class="nav-item">
-                <i class="fas fa-bell"></i>
-                Pemberitahuan
-                <span class="notification-badge">3</span>
-            </a>
-        </nav>
-
         <!-- User Profile -->
         <div class="user-profile" id="userProfile">
             <div class="user-avatar"><?php echo isset($_SESSION['admin_name']) ? strtoupper(substr($_SESSION['admin_name'], 0, 2)) : 'GU'; ?></div>
