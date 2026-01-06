@@ -1,3 +1,8 @@
+<!-- sambungkan  connection/config.php-->
+<?php 
+    include'./../connection/config.php'
+?>
+
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -233,7 +238,22 @@
                         </tr>
                     </thead>
                     <tbody id="studentsTable">
-                        <!-- Table akan dipenuhi oleh JavaScript -->
+                        <!-- panggil data dari mysql untuk masuk dalam table -->
+                         <?php 
+                            $papar=mysqli_query($connect,"SELECT * FROM pelajar");
+                            while($row=mysqli_fetch_array($papar)){
+                            }
+                          ?>
+
+                          <tr>
+                            <td><?php echo $row['pelajar_id'] ?></td>
+                            <td><?php echo $row['nama_penuh'] ?></td>
+                            <td><?php echo $row['nokp'] ?></td>
+                            <td><?php echo $row['jantina'] ?></td>
+                            <td><?php echo $row['pelajar_id'] ?></td>
+                            <td><?php echo $row['pelajar_id'] ?></td>
+                          </tr>
+                         
                     </tbody>
                 </table>
             </div>
