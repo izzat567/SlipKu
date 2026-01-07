@@ -35,7 +35,7 @@
                 <div class="nav-links" id="navLinks">
                     <a href="#" class="active">UTAMA</a>
                     <a href="#features">TENTANG KAMI</a>
-                    <a href="../admin_super/login.php" class="btn-secondary" style="padding: 10px 20px;">ADMIN</a>
+                    <a href="../admin/" class="btn-secondary" style="padding: 10px 20px;">ADMIN</a>
                 </div>
             </div>
         </div>
