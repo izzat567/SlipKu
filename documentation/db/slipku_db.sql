@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Jan 07, 2026 at 02:34 AM
+-- Generation Time: Jan 07, 2026 at 06:37 AM
 -- Server version: 12.0.2-MariaDB
 -- PHP Version: 8.4.14
 
@@ -32,21 +32,9 @@ CREATE TABLE `admin` (
   `email` varchar(100) DEFAULT NULL,
   `nama` varchar(100) NOT NULL,
   `katalaluan` varchar(255) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `tarikh_cipta` varchar(100) NOT NULL,
   `status` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `admin`
---
-
-INSERT INTO `admin` (`id`, `email`, `nama`, `katalaluan`, `created_at`, `status`) VALUES
-(1, 'admin@slipku.edu.my', 'Cikgu Admin', 'admin123', '2025-12-16 17:26:40', 1),
-(2, 'siti@slipku.edu.my', 'Cikgu Siti Aisyah', '$2y$10$YourHashedPasswordHere', '2026-01-06 06:47:45', 1),
-(3, 'ali@slipku.edu.my', 'Cikgu Ali Asri', '$2y$10$YourHashedPasswordHere', '2026-01-06 06:47:45', 1),
-(4, 'ahmad@slipku.edu.my', 'Cikgu Ahmad Fahmi', '$2y$10$YourHashedPasswordHere', '2026-01-06 06:47:45', 1),
-(5, 'rosnah@slipku.edu.my', 'Cikgu Rosnah Ismail', '$2y$10$YourHashedPasswordHere', '2026-01-06 06:47:45', 1),
-(6, 'lim@slipku.edu.my', 'Cikgu Lim Mei Ling', '$2y$10$YourHashedPasswordHere', '2026-01-06 06:47:45', 1);
 
 -- --------------------------------------------------------
 

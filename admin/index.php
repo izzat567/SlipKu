@@ -1,50 +1,7 @@
 <?php
 // session_start(); // Pastikan session dimulakan
-require_once 'config.php';
+include './config/connect.php';
 
-$error = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = sanitizeInput($_POST['username']);
-    $password = $_POST['password'];
-
-    $conn = getDBConnection();
-
-    $stmt = $conn->prepare("SELECT id, username, password, full_name, role FROM admin_users WHERE username = ?");
-    $stmt->bind_param("s", $username);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows === 1) {
-        $user = $result->fetch_assoc();
-
-        // Untuk plain text password
-        if ($password === $user['password']) { 
-            // Set session
-            $_SESSION['admin_logged_in'] = true;
-            $_SESSION['admin_id'] = $user['id'];
-            $_SESSION['admin_name'] = $user['full_name'];
-            $_SESSION['admin_role'] = $user['role'];
-            $_SESSION['admin_username'] = $user['username'];
-
-            // Update last login
-            $update_stmt = $conn->prepare("UPDATE admin_users SET last_login = NOW() WHERE id = ?");
-            $update_stmt->bind_param("i", $user['id']);
-            $update_stmt->execute();
-
-            // Redirect ke dashboard
-            header("Location: dashboard.php");
-            exit();
-        } else {
-            $error = 'Kata laluan salah.';
-        }
-    } else {
-        $error = 'Username tidak ditemui.';
-    }
-
-    $stmt->close();
-    $conn->close();
-}
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -265,10 +222,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
             
-            <form method="POST" action="">
+            <form method="POST" action="../backend/admin.php">
                 <div class="form-group">
-                    <label class="form-label">Username</label>
-                    <input type="text" name="username" class="form-input" placeholder="Masukkan username" required>
+                    <label class="form-label">Email</label>
+                    <input type="text" name="email" class="form-input" placeholder="Masukkan email" required>
                 </div>
                 
                 <div class="form-group">
@@ -276,7 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="password" name="password" class="form-input" placeholder="Masukkan kata laluan" required>
                 </div>
                 
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" name="login" class="btn btn-primary">
                     <i class="fas fa-sign-in-alt"></i>
                     Log Masuk
                 </button>
