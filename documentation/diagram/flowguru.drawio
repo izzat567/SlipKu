@@ -1,0 +1,198 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" version="28.2.0">
+  <diagram name="Page-1" id="UG36i6LuPHmiQX23JQnH">
+    <mxGraphModel dx="1277" dy="677" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-1" value="MULA" style="ellipse;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="615" y="240" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-2" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="699.41" y="299" as="sourcePoint" />
+            <mxPoint x="699" y="339" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-3" value="INPUT ID DAN PASSWORD" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" parent="1" vertex="1">
+          <mxGeometry x="615" y="339" width="175" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-4" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="699.8199999999999" y="399" as="sourcePoint" />
+            <mxPoint x="699.41" y="439" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-5" value="ID DAN PASSWORD&lt;div&gt;&amp;nbsp;BETUL&lt;/div&gt;" style="rhombus;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="597.5" y="439" width="205" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-6" value="TIDAK" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="825" y="449" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-7" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-5" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="915" y="599" as="sourcePoint" />
+            <mxPoint x="700" y="609" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-8" value="YA" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="705" y="549" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-9" value="OUTPUT &quot;SALAH ID&lt;div&gt;&amp;nbsp;ATAU PASSWORD&quot;&lt;/div&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" parent="1" vertex="1">
+          <mxGeometry x="918" y="399" width="175" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-10" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-5" target="8RlRGLI2Ry7rRu-KpUFN-9" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="915" y="599" as="sourcePoint" />
+            <mxPoint x="965" y="549" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1005" y="479" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-11" value="" style="endArrow=classic;html=1;rounded=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-9" target="8RlRGLI2Ry7rRu-KpUFN-3" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="775" y="419" as="sourcePoint" />
+            <mxPoint x="825" y="369" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1005" y="369" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-12" value="OUTPUT PAPARAN DASHBOARD GURU" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" parent="1" vertex="1">
+          <mxGeometry x="588.75" y="608" width="222.5" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-13" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="699.41" y="669" as="sourcePoint" />
+            <mxPoint x="699" y="729" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-14" value="KEMASKINI DATA PELAJAR ?" style="rhombus;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="557" y="729" width="286" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-15" value="" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-14" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="695" y="956" as="sourcePoint" />
+            <mxPoint x="425" y="859" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="425" y="769" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-16" value="YA" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="8RlRGLI2Ry7rRu-KpUFN-15" vertex="1" connectable="0">
+          <mxGeometry x="-0.525" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-17" value="TEKAN BUTANG KEMASKINI" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="368" y="859" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-18" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" target="8RlRGLI2Ry7rRu-KpUFN-20" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="425" y="919" as="sourcePoint" />
+            <mxPoint x="425" y="969" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-20" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="425" y="1059" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-20" value="OUTPUT BORANG KEMASKINI MAKLUMAT MURID" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" parent="1" vertex="1">
+          <mxGeometry x="340" y="959" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-21" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="425" y="1159" as="targetPoint" />
+            <mxPoint x="425.0000000000002" y="1119" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-23" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-14" target="8RlRGLI2Ry7rRu-KpUFN-25" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="665" y="1199" as="sourcePoint" />
+            <mxPoint x="1005" y="859" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1005" y="769" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-24" value="TIDAK" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="8RlRGLI2Ry7rRu-KpUFN-23" vertex="1" connectable="0">
+          <mxGeometry x="-0.3838" y="1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-25" value="&amp;nbsp;BUTANG PADAM" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="945.5" y="859" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-26" value="KLIK BUTANG &quot;KEMASKINI&quot;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="365" y="1159" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-27" value="TAMAT" style="ellipse;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="615" y="1540" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-28" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-26" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="465" y="1269" as="sourcePoint" />
+            <mxPoint x="700" y="1380" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="425" y="1309" />
+              <mxPoint x="700" y="1309" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" target="8RlRGLI2Ry7rRu-KpUFN-36" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1009.5" y="919" as="sourcePoint" />
+            <mxPoint x="1009.5" y="1027" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-30" value="PADAM MAKLUMAT MURID BERJAYA" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="949.5" y="1132" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-31" value="" style="endArrow=none;html=1;rounded=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" target="8RlRGLI2Ry7rRu-KpUFN-30" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="1309" as="sourcePoint" />
+            <mxPoint x="1009.5" y="1274" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1010" y="1309" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-36" target="8RlRGLI2Ry7rRu-KpUFN-30" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-33" value="YA" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="8RlRGLI2Ry7rRu-KpUFN-32" vertex="1" connectable="0">
+          <mxGeometry x="-0.8201" y="4" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-34" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="8RlRGLI2Ry7rRu-KpUFN-36" target="8RlRGLI2Ry7rRu-KpUFN-12" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1137" y="880" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1131" y="999" />
+              <mxPoint x="1131" y="638" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-35" value="TIDAK" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="8RlRGLI2Ry7rRu-KpUFN-34" vertex="1" connectable="0">
+          <mxGeometry x="-0.6607" y="-2" relative="1" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8RlRGLI2Ry7rRu-KpUFN-36" value="&amp;nbsp;INGIN PADAM DATA ?" style="rhombus;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="908" y="959" width="203" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="bVjrbQr3NjmH0UzhB0q5-1" value="KEMASKINI MAKLUMAT MURID" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="343" y="1060" width="165" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="bVjrbQr3NjmH0UzhB0q5-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="bVjrbQr3NjmH0UzhB0q5-3" target="8RlRGLI2Ry7rRu-KpUFN-27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="bVjrbQr3NjmH0UzhB0q5-3" value="LOG KELUAR" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="640" y="1380" width="120" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
