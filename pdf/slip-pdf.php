@@ -1,5 +1,5 @@
 <?php
-require 'vendor/autoload.php'; // ikut lokasi sebenar projek
+require '../vendor/autoload.php'; // ikut lokasi sebenar projek
 
 use Dompdf\Dompdf;
 
@@ -7,7 +7,7 @@ $dompdf = new Dompdf();
 
 // Ambil template HTML
 ob_start();
-include 'template/slip_template.php'; // ikut lokasi sebenar
+include '../template/slip_template.php'; // ikut lokasi sebenar
 $html = ob_get_clean();
 
 $dompdf->loadHtml($html);
