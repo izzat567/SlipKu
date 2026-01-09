@@ -1,6 +1,17 @@
 <!-- sambungkan  connection/config.php-->
 <?php 
-    include'./../connection/config.php'
+
+include '../../config/connect.php';
+$sql = "SELECT * FROM pelajar";
+
+$sql = "
+SELECT pelajar.nama, kelas.nama AS kelas
+FROM pelajar
+JOIN kelas ON pelajar.id_kelas = kelas.id
+";
+
+$result = mysqli_query($conn, $sql);
+
 ?>
 
 <!DOCTYPE html>
@@ -190,29 +201,29 @@
                 <div class="action-icon">
                     <i class="fas fa-plus-circle"></i>
                 </div>
-                <h3>Tambah Markah Baru</h3>
-                <p>Masukkan markah dan gred peperiksaan pelajar</p>
+                <h3>Tambah Pelajar</h3>
+                <p>Masukkan data pelajar yang baru</p>
             </a>
             <a href="#" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-list-alt"></i>
                 </div>
-                <h3>Lihat Semua Rekod</h3>
-                <p>Semak pangkalan data markah pelajar</p>
+                <h3>Lihat Senarai Pelajar</h3>
+                <p>Semak pangkalan data pelajar</p>
             </a>
             <a href="#" class="action-card">
                 <div class="action-icon">
-                    <i class="fas fa-edit"></i>
+                    <i class="fas fa-plus-circle"></i>
                 </div>
-                <h3>Kemaskini Rekod</h3>
-                <p>Ubah suai markah dan maklumat pelajar sedia ada</p>
+                <h3>Tambah Guru</h3>
+                <p>Memasukkan data guru yang baru</p>
             </a>
             <a href="#" class="action-card">
                 <div class="action-icon">
-                    <i class="fas fa-file-pdf"></i>
+                    <i class="fas fa-list-alt"></i>
                 </div>
-                <h3>Hasilkan Laporan</h3>
-                <p>Cipta laporan peperiksaan menyeluruh</p>
+                <h3>Lihat Senarai Guru</h3>
+                <p>Semak pangkalan data guru</p>
             </a>
         </div>
 
@@ -231,28 +242,23 @@
                         <tr>
                             <th>ID PELAJAR</th>
                             <th>NAMA</th>
-                            <th>MATA PELAJARAN</th>
-                            <th>MARKAH</th>
+                            <th>KELAS</th>
+                            <th>JANTINA</th>
                             <th>STATUS</th>
                             <th>TARIKH</th>
                         </tr>
                     </thead>
                     <tbody id="studentsTable">
-                        <!-- panggil data dari mysql untuk masuk dalam table -->
-                         <?php 
-                            $papar=mysqli_query($connect,"SELECT * FROM pelajar");
-                            while($row=mysqli_fetch_array($papar)){
-                            }
-                          ?>
-
-                          <tr>
-                            <td><?php echo $row['pelajar_id'] ?></td>
-                            <td><?php echo $row['nama_penuh'] ?></td>
-                            <td><?php echo $row['nokp'] ?></td>
-                            <td><?php echo $row['jantina'] ?></td>
-                            <td><?php echo $row['pelajar_id'] ?></td>
-                            <td><?php echo $row['pelajar_id'] ?></td>
-                          </tr>
+                    <?php while ($row = mysqli_fetch_assoc($result)) { ?>
+                        <tr>
+                            <td><?= $row['id']; ?></td>
+                            <td><?= $row['id_kelas']; ?></td>
+                            <td><?= $row['nama']; ?></td>
+                            <td><?= $row['kelas']; ?></td>
+                            <td><?= $row['jantina']; ?></td>
+                            <td><?= $row['status']; ?></td>
+                        </tr>
+                        <?php } ?>
                          
                     </tbody>
                 </table>
