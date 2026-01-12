@@ -47,7 +47,7 @@ $result = mysqli_query($conn, $sql);
     <main class="main-content" id="mainContent">
         <!-- Dashboard Header -->
         <div class="dashboard-header">
-            <h2>Selamat kembali, Cikgu! 👋</h2>
+            <h2>Selamat kembali, Cikgu!</h2>
             <p>Berikut adalah ringkasan pengurusan peperiksaan untuk hari ini</p>
         </div>
 
@@ -58,7 +58,7 @@ $result = mysqli_query($conn, $sql);
                 <div class="stat-header">
                     <div class="stat-info">
                         <h3>JUMLAH PELAJAR</h3>
-                        <div class="stat-value" id="totalStudents">245</div>
+                        <div class="stat-value" id="totalStudents"></div>
                     </div>
                     <div class="stat-icon">
                         <i class="fas fa-users"></i>
@@ -66,165 +66,73 @@ $result = mysqli_query($conn, $sql);
                 </div>
                 <div class="stat-trend trend-up">
                     <i class="fas fa-arrow-up"></i>
-                    <span>+8 dari bulan lepas</span>
+                    <span>    </span>
                 </div>
             </div>
 
-            <!-- Completed Marks -->
+            <!-- total teachers -->
             <div class="stat-card" style="animation-delay: 0.2s;">
                 <div class="stat-header">
                     <div class="stat-info">
-                        <h3>MARKAH LENGKAP</h3>
-                        <div class="stat-value" id="completedMarks">198</div>
+                        <h3>JUMLAH GURU</h3>
+                        <div class="stat-value" id="completedMarks"></div>
                     </div>
                     <div class="stat-icon">
-                        <i class="fas fa-check-circle"></i>
+                        <i class="fas fa-users"></i>
                     </div>
                 </div>
                 <div class="stat-trend trend-up">
                     <i class="fas fa-arrow-up"></i>
-                    <span>81% telah lengkap</span>
+                    <span></span>
                 </div>
             </div>
 
-            <!-- Pending Marks -->
+            <!-- Total class-->
             <div class="stat-card" style="animation-delay: 0.3s;">
                 <div class="stat-header">
                     <div class="stat-info">
-                        <h3>MARKAH TERTUNGGU</h3>
-                        <div class="stat-value" id="pendingMarks">47</div>
+                        <h3>JUMLAH KELAS</h3>
+                        <div class="stat-value" id="pendingMarks"></div>
                     </div>
                     <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
+                        <i class="fas fa-school"></i>
                     </div>
                 </div>
                 <div class="stat-trend trend-down">
                     <i class="fas fa-exclamation-circle"></i>
-                    <span>19% perlu perhatian</span>
-                </div>
-            </div>
-
-            <!-- Average Marks -->
-            <div class="stat-card" style="animation-delay: 0.4s;">
-                <div class="stat-header">
-                    <div class="stat-info">
-                        <h3>PURATA MARKAH</h3>
-                        <div class="stat-value" id="averageMarks">76.8</div>
-                    </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                </div>
-                <div class="stat-trend trend-up">
-                    <i class="fas fa-arrow-up"></i>
-                    <span>+1.5 dari penggal lepas</span>
+                    <span> </span>
                 </div>
             </div>
         </div>
 
-        <!-- Charts Section -->
-        <div class="charts-section">
-            <!-- Performance Chart -->
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3>Prestasi Keseluruhan</h3>
-                    <div class="chart-actions">
-                        <select class="chart-select" id="chartRange">
-                            <option>7 Hari Lalu</option>
-                            <option>30 Hari Lalu</option>
-                            <option>Penggal Ini</option>
-                        </select>
-                    </div>
-                </div>
-                <div style="height: 300px;">
-                    <canvas id="performanceChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Subject Distribution -->
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3>Taburan Mata Pelajaran</h3>
-                </div>
-                <div style="height: 300px;">
-                    <canvas id="subjectChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <!-- Recent Activity -->
-        <div class="activity-section">
-            <div class="section-header">
-                <h3>Aktiviti Terkini</h3>
-                <a href="#" class="view-all">
-                    Lihat Semua
-                    <i class="fas fa-arrow-right"></i>
-                </a>
-            </div>
-            <div class="activity-list">
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: rgba(79, 70, 229, 0.1); color: var(--primary);">
-                        <i class="fas fa-plus"></i>
-                    </div>
-                    <div class="activity-content">
-                        <h4>Dimasukkan markah Matematik</h4>
-                        <p>ID Pelajar: P001 • Markah: 85/100</p>
-                        <div class="activity-time">2 jam lalu</div>
-                    </div>
-                </div>
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">
-                        <i class="fas fa-edit"></i>
-                    </div>
-                    <div class="activity-content">
-                        <h4>Dikemaskini markah Bahasa Melayu</h4>
-                        <p>ID Pelajar: P045 • Markah: 92/100</p>
-                        <div class="activity-time">4 jam lalu</div>
-                    </div>
-                </div>
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <div class="activity-content">
-                        <h4>Dihasilkan laporan prestasi</h4>
-                        <p>Kelas 6A ringkasan penggal</p>
-                        <div class="activity-time">Semalam</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    
+        
 
         <!-- Quick Actions -->
         <div class="quick-actions">
             <a href="#" class="action-card">
                 <div class="action-icon">
-                    <i class="fas fa-plus-circle"></i>
+                    <i class="fas fa-edit"></i>
                 </div>
-                <h3>Tambah Pelajar</h3>
-                <p>Masukkan data pelajar yang baru</p>
+                <h3>Pengurusan Pelajar</h3>
+                <p>mengurus maklumat pelajar</p>
             </a>
+
             <a href="#" class="action-card">
                 <div class="action-icon">
-                    <i class="fas fa-list-alt"></i>
+                    <i class="fas fa-edit"></i>
                 </div>
-                <h3>Lihat Senarai Pelajar</h3>
-                <p>Semak pangkalan data pelajar</p>
+                <h3>Pengurusan Guru</h3>
+                <p>mengurus maklumat Guru</p>
             </a>
+
             <a href="#" class="action-card">
                 <div class="action-icon">
-                    <i class="fas fa-plus-circle"></i>
+                    <i class="fas fa-edit"></i>
                 </div>
-                <h3>Tambah Guru</h3>
-                <p>Memasukkan data guru yang baru</p>
-            </a>
-            <a href="#" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-list-alt"></i>
-                </div>
-                <h3>Lihat Senarai Guru</h3>
-                <p>Semak pangkalan data guru</p>
-            </a>
+                <h3>Pengurusan Kelas</h3>
+                <p>mengurus maklumat Kelas</p>
+            </a> 
         </div>
 
         <!-- Recent Students Table -->

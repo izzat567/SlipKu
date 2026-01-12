@@ -14,7 +14,7 @@ $dompdf->loadHtml($html);
 $dompdf->setPaper('A4', 'portrait');
 $dompdf->render();
 
-// Download PDF terus ke komputer
-$dompdf->stream("slip_keputusan_2026.pdf", [
-    "Attachment" => true // true = terus download
-]);
+// // Download PDF terus ke komputer
+// $dompdf->stream("slip_keputusan_2026.pdf", [
+//     "Attachment" => true // true = terus download
+// ]);

@@ -1,3 +1,20 @@
+<!-- sambungkan  connection/config.php-->
+<?php 
+
+include '../../config/connect.php';
+$sql = "SELECT * FROM pelajar";
+
+$sql = "
+SELECT pelajar.nama, kelas.nama AS kelas
+FROM pelajar
+JOIN kelas ON pelajar.id_kelas = kelas.id
+";
+
+$result = mysqli_query($conn, $sql);
+
+?>
+
+
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -95,7 +112,7 @@
                         <option value="P">Perempuan</option>
                     </select>
                 </div>
-            </div>
+            </div>  
         </div>
 
         <!-- Students Table -->
@@ -103,7 +120,7 @@
             <div class="table-header">
                 <h3>Senarai Pelajar</h3>
                 <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="eksportData()">
+                    <button class="btn btn-secondary" onclick="window.open('Senarai-pelajar.php')" value="Export Excel">
                         <i class="fas fa-download"></i>
                         Eksport
                     </button>
@@ -116,12 +133,22 @@
                             <th>ID PELAJAR</th>
                             <th>NAMA PELAJAR</th>
                             <th>JANTINA</th>
-                            <th>NO. KP</th>
+                            <th>NO.KP</th>
                             <th>STATUS</th>
                             <th>TINDAKAN</th>
                         </tr>
                     </thead>
                     <tbody id="studentsTableBody">
+                    <?php while ($row = mysqli_fetch_assoc($result)) { ?>
+                        <tr>
+                            <td><?= $row['id']; ?></td>
+                            <td><?= $row['id_kelas']; ?></td>
+                            <td><?= $row['nama']; ?></td>
+                            <td><?= $row['kelas']; ?></td>
+                            <td><?= $row['jantina']; ?></td>
+                            <td><?= $row['status']; ?></td>
+                        </tr>
+                        <?php } ?>
                            
                     </tbody>
                 </table>

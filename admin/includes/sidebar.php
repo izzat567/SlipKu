@@ -32,17 +32,19 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
             Pengurusan Pelajar
             <span class="badge"><?php echo $total_students; ?></span>
         </a>
-        <a href="./../modules/mata-pelajaran.php" class="sidebar-item <?php echo $current_page == 'mata-pelajaran.php' ? 'active' : ''; ?>">
-            <i class="fas fa-book"></i>
+        <a href="./../modules/tambah-pelajar.php" class="sidebar-item <?php echo $current_page == 'tambah-pelajar.php' ? 'active' : ''; ?>">
+            <i class="fas fa-list"></i>
             Tambah Pelajar
             <span class="badge"><?php echo $total_subjects; ?></span>
         </a>
-        <a href="./../modules/analisis-prestasi.php" class="sidebar-item <?php echo $current_page == 'analisis-prestasi.php' ? 'active' : ''; ?>">
-            <i class="fas fa-chart-line"></i>
+        <a href="./../modules/kemasini-pelajar.php" class="sidebar-item <?php echo $current_page == 'kemaskini-pelajar.php' ? 'active' : ''; ?>">
+            <i class="fas fa-edit"></i>
             Kemaskini Pelajar
         </a>
        
     </div>
+
+    <!-- untuk section guru -->
 
     <div class="sidebar-section">
     <div class="sidebar-title">GURU</div>
