@@ -1240,6 +1240,10 @@
     </style>
 </head>
 <body>
+    <?php
+    // Set current page untuk sidebar
+    $current_page = 'kelas-saya.php';
+    ?>
     <!-- Modal for Class Details -->
     <div class="modal" id="classModal">
         <div class="modal-content">
@@ -1379,7 +1383,7 @@
             </button>
 
             <!-- Logo -->
-            <a href="dashboard-admin.html" class="logo">
+            <a href="dashboard-guru.php" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1391,7 +1395,7 @@
 
             <!-- Desktop Navigation -->
             <nav class="top-nav">
-                <a href="dashboard-admin.html" class="nav-item">
+                <a href="dashboard-guru.php" class="nav-item">
                     <i class="fas fa-home"></i>
                     Utama
                 </a>
@@ -1418,26 +1422,29 @@
             </div>
         </div>
     </header>
-
+        <?php
+  
+    include('includes\sidebar.php');
+    ?>
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-section">
             <div class="sidebar-title">Menu Utama</div>
-            <a href="dashboard-admin.html" class="sidebar-item">
+            <a href="dashboard-guru.php" class="sidebar-item">
                 <i class="fas fa-tachometer-alt"></i>
                 Dashboard
             </a>
-            <a href="kelas-saya.html" class="sidebar-item active">
+            <a href="kelas-saya.php" class="sidebar-item active">
                 <i class="fas fa-users"></i>
                 Kelas Saya
                 <span class="badge">3</span>
             </a>
-            <a href="pelajar-saya.html" class="sidebar-item">
+            <a href="pelajar-saya.php" class="sidebar-item">
                 <i class="fas fa-user-graduate"></i>
                 Pelajar Saya
                 <span class="badge">85</span>
             </a>
-            <a href="subjek-saya.html" class="sidebar-item">
+            <a href="subjek-saya.php" class="sidebar-item">
                 <i class="fas fa-book"></i>
                 Subjek Saya
                 <span class="badge">4</span>
@@ -1446,19 +1453,19 @@
 
         <div class="sidebar-section">
             <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.html" class="sidebar-item">
+            <a href="tambah-markah.php" class="sidebar-item">
                 <i class="fas fa-plus-circle"></i>
                 Tambah Markah
             </a>
-            <a href="kemaskini-markah.html" class="sidebar-item">
+            <a href="kemaskini-markah.php" class="sidebar-item">
                 <i class="fas fa-edit"></i>
                 Kemaskini Markah
             </a>
-            <a href="semak-markah.html" class="sidebar-item">
+            <a href="semak-markah.php" class="sidebar-item">
                 <i class="fas fa-search"></i>
                 Semak Markah
             </a>
-            <a href="laporan-prestasi.html" class="sidebar-item">
+            <a href="laporan-prestasi.php" class="sidebar-item">
                 <i class="fas fa-chart-bar"></i>
                 Laporan Prestasi
             </a>
@@ -1466,20 +1473,20 @@
 
         <div class="sidebar-section">
             <div class="sidebar-title">Pengurusan</div>
-            <a href="jadual-ujian.html" class="sidebar-item">
+            <a href="jadual-ujian.php" class="sidebar-item">
                 <i class="fas fa-calendar-alt"></i>
                 Jadual Ujian
             </a>
-            <a href="tugasan.html" class="sidebar-item">
+            <a href="tugasan.php" class="sidebar-item">
                 <i class="fas fa-tasks"></i>
                 Tugasan
                 <span class="badge">12</span>
             </a>
-            <a href="kehadiran.html" class="sidebar-item">
+            <a href="kehadiran.php" class="sidebar-item">
                 <i class="fas fa-clipboard-check"></i>
                 Kehadiran
             </a>
-            <a href="komunikasi.html" class="sidebar-item">
+            <a href="komunikasi.php" class="sidebar-item">
                 <i class="fas fa-comments"></i>
                 Komunikasi Ibu Bapa
             </a>
@@ -1487,15 +1494,15 @@
 
         <div class="sidebar-section">
             <div class="sidebar-title">Sistem</div>
-            <a href="profil.html" class="sidebar-item">
+            <a href="profil.php" class="sidebar-item">
                 <i class="fas fa-user-cog"></i>
                 Profil Saya
             </a>
-            <a href="tetapan.html" class="sidebar-item">
+            <a href="tetapan.php" class="sidebar-item">
                 <i class="fas fa-cog"></i>
                 Tetapan
             </a>
-            <a href="bantuan-admin.html" class="sidebar-item">
+            <a href="bantuan-admin.php" class="sidebar-item">
                 <i class="fas fa-question-circle"></i>
                 Bantuan
             </a>
