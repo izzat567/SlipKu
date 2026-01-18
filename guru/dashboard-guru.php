@@ -447,7 +447,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <div class="user-profile">
                 <div class="user-avatar">GU</div>
                 <div class="user-info">
-                    <h4>Cikgu Ahmad</h4>
+                    <h4>Cikgu Karim</h4>
                     <p>Admin Guru Tahun 6</p>
                 </div>
             </div>

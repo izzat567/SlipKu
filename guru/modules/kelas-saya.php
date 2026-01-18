@@ -1515,7 +1515,7 @@
         <!-- Page Header -->
         <div class="page-header">
             <div class="page-title">
-                <h2>Kelas Saya 🏫</h2>
+                <h2>Kelas kita 🏫</h2>
                 <p>Urus dan pantau semua kelas yang anda kendalikan</p>
             </div>
             <div class="page-actions">
