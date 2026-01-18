@@ -1,7 +1,6 @@
 <?php
 // Start session and check login
-require_once 'includes/session_check.php';
-checkLogin();
+
 
 // Include database functions
 require_once 'connect.php';
