@@ -1422,10 +1422,7 @@
             </div>
         </div>
     </header>
-        <?php
-  
-    include('includes\sidebar.php');
-    ?>
+       
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-section">
