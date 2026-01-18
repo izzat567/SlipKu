@@ -1,15 +1,6 @@
- <?php
-    require_once '../includes/session.php';
-    require_once '../includes/functions.php';
-    SessionManager::requireGuruLogin();
-
-    $functions = new GuruFunctions();
-    $pelajar_list = $functions->getAllPelajar();
-    
+<?php  
     $current_page = 'kelas-saya.php';
-
-    include '../includes/header.php'; 
-    ?>
+?>
 <!DOCTYPE html>
 <html lang="ms">
 <head>
