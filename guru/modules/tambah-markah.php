@@ -1,3 +1,111 @@
+<?php
+// Start session and check login
+require_once 'includes/session_check.php';
+checkLogin();
+
+// Include database functions
+require_once 'connect.php';
+require_once 'includes/db_functions.php';
+
+// Initialize database functions
+$db = new DBFunctions($conn);
+$guru_info = getGuruInfo();
+
+// Get data for dropdowns
+$subjects = $db->getSubjects();
+$classes = $db->getClasses();
+$exams = $db->getExams();
+
+// Initialize variables
+$students = [];
+$selected_subject = '';
+$selected_class = '';
+$selected_exam = '';
+$markah_penuh = 100;
+$markah_lulus = 40;
+
+// Handle form submission for individual marks
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if ($_POST['action'] === 'add_single') {
+        // Add single mark
+        $data = [
+            'id_pelajar' => $_POST['id_pelajar'],
+            'id_peperiksaan' => $_POST['id_peperiksaan'],
+            'markah' => $_POST['markah'],
+            'gred' => $_POST['gred'],
+            'catatan' => $_POST['catatan'] ?? ''
+        ];
+        
+        $result = $db->addMarks($data);
+        
+        if ($result['success']) {
+            $success_message = $result['message'];
+        } else {
+            $error_message = $result['message'];
+        }
+    }
+    elseif ($_POST['action'] === 'add_bulk') {
+        // Add multiple marks
+        $marksData = json_decode($_POST['marks_data'], true);
+        if ($marksData) {
+            $result = $db->addMultipleMarks($marksData);
+            
+            if ($result['success']) {
+                $success_message = "Semua markah berjaya disimpan!";
+            } else {
+                $error_message = $result['message'];
+                if (!empty($result['errors'])) {
+                    $error_message .= "<br>" . implode("<br>", array_slice($result['errors'], 0, 5));
+                    if (count($result['errors']) > 5) {
+                        $error_message .= "<br>... dan " . (count($result['errors']) - 5) . " lagi";
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Handle AJAX requests
+if (isset($_GET['ajax'])) {
+    header('Content-Type: application/json');
+    
+    if ($_GET['ajax'] === 'get_students') {
+        $class = $_GET['class'] ?? '';
+        $students = $db->getStudentsByClass($class);
+        
+        echo json_encode([
+            'success' => true,
+            'students' => $students
+        ]);
+        exit();
+    }
+    
+    if ($_GET['ajax'] === 'calculate_grade') {
+        $markah = $_GET['markah'] ?? 0;
+        $markah_penuh = $_GET['markah_penuh'] ?? 100;
+        $grade = $db->calculateGrade($markah, $markah_penuh);
+        
+        echo json_encode([
+            'success' => true,
+            'grade' => $grade
+        ]);
+        exit();
+    }
+}
+
+// Get selected values from form
+if (isset($_GET['subject'])) $selected_subject = $_GET['subject'];
+if (isset($_GET['class'])) $selected_class = $_GET['class'];
+if (isset($_GET['exam'])) $selected_exam = $_GET['exam'];
+if (isset($_GET['markah_penuh'])) $markah_penuh = $_GET['markah_penuh'];
+if (isset($_GET['markah_lulus'])) $markah_lulus = $_GET['markah_lulus'];
+
+// If class is selected, get students
+if ($selected_class) {
+    $students = $db->getStudentsByClass($selected_class);
+}
+?>
+
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -1136,8 +1244,7 @@
     </style>
 </head>
 <body>
-    <!-- Modal for Bulk Upload -->
-    <div class="modal" id="bulkUploadModal">
+  <div class="modal" id="bulkUploadModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Muat Naik Markah Secara Pukal</h3>
@@ -1146,46 +1253,63 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="radio-group">
-                    <div class="radio-option">
-                        <input type="radio" id="uploadExcel" name="uploadType" checked>
-                        <label for="uploadExcel">Muat naik fail Excel</label>
+                <form id="bulkUploadForm" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="add_bulk">
+                    <input type="hidden" name="marks_data" id="marksDataInput">
+                    
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" id="uploadExcel" name="uploadType" value="excel" checked>
+                            <label for="uploadExcel">Muat naik fail Excel</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="uploadCSV" name="uploadType" value="csv">
+                            <label for="uploadCSV">Muat naik fail CSV</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="manualEntry" name="uploadType" value="manual">
+                            <label for="manualEntry">Masukan Manual</label>
+                        </div>
                     </div>
-                    <div class="radio-option">
-                        <input type="radio" id="uploadCSV" name="uploadType">
-                        <label for="uploadCSV">Muat naik fail CSV</label>
+                    
+                    <div id="fileUploadSection">
+                        <div class="file-upload" onclick="document.getElementById('fileInput').click()">
+                            <i class="fas fa-file-upload"></i>
+                            <p><strong>Klik untuk muat naik fail</strong></p>
+                            <p>Format yang disokong: .xlsx, .xls, .csv</p>
+                            <span>Saiz maksimum: 10MB</span>
+                        </div>
+                        <input type="file" id="fileInput" name="marks_file" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileUpload()">
                     </div>
-                </div>
-                
-                <div class="file-upload" onclick="document.getElementById('fileInput').click()">
-                    <i class="fas fa-file-upload"></i>
-                    <p><strong>Klik untuk muat naik fail</strong></p>
-                    <p>Format yang disokong: .xlsx, .xls, .csv</p>
-                    <span>Saiz maksimum: 10MB</span>
-                </div>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileUpload()">
-                
-                <div id="uploadProgress" style="display: none;">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="uploadProgressFill" style="width: 0%"></div>
+                    
+                    <div id="manualEntrySection" style="display: none;">
+                        <textarea id="manualData" rows="10" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;" placeholder="Masukkan data dalam format CSV:
+No_Kad_Pengenalan,Nama,Markah
+010101-14-0001,Ahmad bin Abdullah,85
+010101-14-0002,Siti Nurhaliza binti Kamal,92"></textarea>
                     </div>
-                    <div class="progress-value" id="uploadProgressText">0%</div>
-                </div>
-                
-                <div style="background: var(--primary-light); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
-                    <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--primary);">
-                        <i class="fas fa-info-circle"></i> Format Fail yang Disyorkan
-                    </h4>
-                    <p style="font-size: 13px; color: var(--medium-gray); line-height: 1.5;">
-                        Fail Excel/CSV anda perlu mengandungi kolum berikut:<br>
-                        <strong>No_Kad_Pengenalan, Nama, Markah_Ujian1, Markah_Ujian2, Markah_Ujian3</strong>
-                    </p>
-                </div>
-                
-                <div style="text-align: center;">
-                    <button class="btn btn-primary" onclick="simulateBulkUpload()">
-                        <i class="fas fa-upload"></i>
-                        Mula Muat Naik
+                    
+                    <div id="uploadProgress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="uploadProgressFill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-value" id="uploadProgressText">0%</div>
+                    </div>
+                    
+                    <div style="background: var(--primary-light); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--primary);">
+                            <i class="fas fa-info-circle"></i> Format Fail yang Disyorkan
+                        </h4>
+                        <p style="font-size: 13px; color: var(--medium-gray); line-height: 1.5;">
+                            Fail Excel/CSV anda perlu mengandungi kolum berikut:<br>
+                            <strong>no_kp, nama, markah</strong> atau <strong>id_pelajar, markah</strong>
+                        </p>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <button type="button" class="btn btn-primary" onclick="processBulkUpload()" id="processBtn">
+                            <i class="fas fa-upload"></i>
+                            Mula Muat Naik
                     </button>
                 </div>
             </div>
@@ -1193,7 +1317,7 @@
     </div>
 
     <!-- Modal for Confirmation -->
-    <div class="modal" id="confirmationModal">
+      <div class="modal" id="confirmationModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="confirmationTitle">Simpan Markah</h3>
@@ -1257,7 +1381,7 @@
             </button>
 
             <!-- Logo -->
-            <a href="dashboard-admin.html" class="logo">
+             <a href="dashboard-guru.php" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1267,122 +1391,32 @@
                 </div>
             </a>
 
-            <!-- Desktop Navigation -->
-            <nav class="top-nav">
-                <a href="dashboard-admin.html" class="nav-item">
-                    <i class="fas fa-home"></i>
-                    Utama
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-bell"></i>
-                    Pemberitahuan
-                    <span class="notification-badge">3</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-envelope"></i>
-                    Mesej
-                    <span class="notification-badge">2</span>
-                </a>
-            </nav>
 
             <!-- User Profile -->
+            <?php if ($guru_info): ?>
             <div class="user-profile" id="userProfile">
-                <div class="user-avatar">GU</div>
+                <div class="user-avatar"><?php echo substr($guru_info['nama'], 0, 2); ?></div>
                 <div class="user-info">
-                    <h4>Cikgu Ahmad</h4>
+                    <h4><?php echo htmlspecialchars($guru_info['nama']); ?></h4>
                     <p>Admin Guru Tahun 6</p>
                 </div>
                 <i class="fas fa-chevron-down"></i>
             </div>
+            <?php endif; ?>
         </div>
     </header>
 
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-section">
-            <div class="sidebar-title">Menu Utama</div>
-            <a href="dashboard-admin.html" class="sidebar-item">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="kelas-saya.html" class="sidebar-item">
-                <i class="fas fa-users"></i>
-                Kelas Saya
-                <span class="badge">3</span>
-            </a>
-            <a href="pelajar-saya.html" class="sidebar-item">
-                <i class="fas fa-user-graduate"></i>
-                Pelajar Saya
-                <span class="badge">85</span>
-            </a>
-            <a href="subjek-saya.html" class="sidebar-item">
-                <i class="fas fa-book"></i>
-                Subjek Saya
-                <span class="badge">4</span>
-            </a>
-        </div>
+       <?php
+    require_once '../includes/session.php';
+    require_once '../includes/functions.php';
+    SessionManager::requireGuruLogin();
 
-        <div class="sidebar-section">
-            <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.html" class="sidebar-item active">
-                <i class="fas fa-plus-circle"></i>
-                Tambah Markah
-            </a>
-            <a href="kemaskini-markah.html" class="sidebar-item">
-                <i class="fas fa-edit"></i>
-                Kemaskini Markah
-            </a>
-            <a href="semak-markah.html" class="sidebar-item">
-                <i class="fas fa-search"></i>
-                Semak Markah
-            </a>
-            <a href="laporan-prestasi.html" class="sidebar-item">
-                <i class="fas fa-chart-bar"></i>
-                Laporan Prestasi
-            </a>
-        </div>
+    $functions = new GuruFunctions();
+    $pelajar_list = $functions->getAllPelajar();
+    ?>
 
-        <div class="sidebar-section">
-            <div class="sidebar-title">Pengurusan</div>
-            <a href="jadual-ujian.html" class="sidebar-item">
-                <i class="fas fa-calendar-alt"></i>
-                Jadual Ujian
-            </a>
-            <a href="tugasan.html" class="sidebar-item">
-                <i class="fas fa-tasks"></i>
-                Tugasan
-                <span class="badge">8</span>
-            </a>
-            <a href="kehadiran.html" class="sidebar-item">
-                <i class="fas fa-clipboard-check"></i>
-                Kehadiran
-            </a>
-            <a href="komunikasi.html" class="sidebar-item">
-                <i class="fas fa-comments"></i>
-                Komunikasi Ibu Bapa
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Sistem</div>
-            <a href="profil.html" class="sidebar-item">
-                <i class="fas fa-user-cog"></i>
-                Profil Saya
-            </a>
-            <a href="tetapan.html" class="sidebar-item">
-                <i class="fas fa-cog"></i>
-                Tetapan
-            </a>
-            <a href="bantuan-admin.html" class="sidebar-item">
-                <i class="fas fa-question-circle"></i>
-                Bantuan
-            </a>
-            <a href="#" class="sidebar-item" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                Log Keluar
-            </a>
-        </div>
-    </aside>
+    <?php include '../includes/header.php'; ?>
 
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
@@ -1404,78 +1438,110 @@
             </div>
         </div>
 
-        <!-- Selection Section -->
+         <!-- Show messages -->
+        <?php if (isset($success_message)): ?>
+            <div class="alert-message alert-success">
+                <i class="fas fa-check-circle"></i>
+                <?php echo $success_message; ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (isset($error_message)): ?>
+            <div class="alert-message alert-error">
+                <i class="fas fa-exclamation-circle"></i>
+                <?php echo $error_message; ?>
+            </div>
+        <?php endif; ?>
+
+         <!-- Selection Section -->
         <div class="selection-section">
             <div class="selection-title">
                 <i class="fas fa-filter"></i>
                 Pilih Penilaian
             </div>
             
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label required">Subjek</label>
-                    <select class="form-select" id="subjectSelect" onchange="loadStudents()">
-                        <option value="">Pilih Subjek</option>
-                        <option value="MAT601">Matematik (MAT601)</option>
-                        <option value="SNS601">Sains (SNS601)</option>
-                        <option value="BML601">Bahasa Melayu (BML601)</option>
-                        <option value="ENG601">Bahasa Inggeris (ENG601)</option>
-                        <option value="PJK601">PJ & Kesihatan (PJK601)</option>
-                    </select>
+            <form method="GET" action="" id="filterForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Subjek</label>
+                        <select class="form-select" name="subject" id="subjectSelect" onchange="loadStudents()" required>
+                            <option value="">Pilih Subjek</option>
+                            <?php foreach ($subjects as $subject): ?>
+                                <option value="<?php echo $subject['id']; ?>" 
+                                    <?php echo ($selected_subject == $subject['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($subject['nama']) . ' (' . htmlspecialchars($subject['kod']) . ')'; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label required">Kelas</label>
+                        <select class="form-select" name="class" id="classSelect" onchange="loadStudents()" required>
+                            <option value="">Pilih Kelas</option>
+                            <?php foreach ($classes as $class): ?>
+                                <option value="<?php echo $class['nama']; ?>"
+                                    <?php echo ($selected_class == $class['nama']) ? 'selected' : ''; ?>>
+                                    Tahun <?php echo $class['tahun']; ?> <?php echo htmlspecialchars($class['nama']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Jenis Peperiksaan</label>
+                        <select class="form-select" name="exam" id="examSelect" required>
+                            <option value="">Pilih Peperiksaan</option>
+                            <?php foreach ($exams as $exam): ?>
+                                <option value="<?php echo $exam['id']; ?>"
+                                    <?php echo ($selected_exam == $exam['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($exam['nama_peperiksaan']); ?>
+                                    (<?php echo date('d/m/Y', strtotime($exam['tarikh_mula'])); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label required">Tarikh Penilaian</label>
+                        <input type="date" class="form-date" name="assessment_date" id="assessmentDate" 
+                               value="<?php echo date('Y-m-d'); ?>" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Markah Penuh</label>
+                        <input type="number" class="form-input" name="markah_penuh" id="fullMarks" 
+                               value="<?php echo $markah_penuh; ?>" min="1" max="200" onchange="updateMarkingScheme()" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label required">Markah Lulus</label>
+                        <input type="number" class="form-input" name="markah_lulus" id="passingMarks" 
+                               value="<?php echo $markah_lulus; ?>" min="0" max="100" onchange="updateMarkingScheme()" required>
+                    </div>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label required">Kelas</label>
-                    <select class="form-select" id="classSelect" onchange="loadStudents()">
-                        <option value="">Pilih Kelas</option>
-                        <option value="6A">Kelas 6A</option>
-                        <option value="6B">Kelas 6B</option>
-                        <option value="5A">Kelas 5A</option>
-                        <option value="5B">Kelas 5B</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label required">Jenis Penilaian</label>
-                    <select class="form-select" id="assessmentType" onchange="updateMarkingScheme()">
-                        <option value="">Pilih Jenis</option>
-                        <option value="exam">Peperiksaan Akhir</option>
-                        <option value="midterm">Peperiksaan Pertengahan Tahun</option>
-                        <option value="quiz1">Kuiz 1</option>
-                        <option value="quiz2">Kuiz 2</option>
-                        <option value="assignment">Tugasan</option>
-                        <option value="project">Projek</option>
-                    </select>
+                    <label class="form-label">Catatan (Opsional)</label>
+                    <textarea class="form-textarea" name="notes" id="assessmentNotes" 
+                              placeholder="Catatan mengenai penilaian ini..." rows="2"></textarea>
                 </div>
                 
-                <div class="form-group">
-                    <label class="form-label required">Tarikh Penilaian</label>
-                    <input type="date" class="form-date" id="assessmentDate" value="2023-10-15">
+                <div style="text-align: right; margin-top: 20px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-filter"></i> Muatkan Pelajar
+                    </button>
                 </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label required">Markah Penuh</label>
-                    <input type="number" class="form-input" id="fullMarks" value="100" min="1" max="200" onchange="updateMarkingScheme()">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label required">Markah Lulus</label>
-                    <input type="number" class="form-input" id="passingMarks" value="40" min="0" max="100" onchange="updateMarkingScheme()">
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Catatan (Opsional)</label>
-                <textarea class="form-textarea" id="assessmentNotes" placeholder="Catatan mengenai penilaian ini..." rows="2"></textarea>
-            </div>
+            </form>
         </div>
 
         <!-- Marks Entry Section -->
-        <div class="marks-container" id="marksContainer" style="display: none;">
+        <?php if (!empty($students)): ?>
+        <div class="marks-container" id="marksContainer">
             <div class="marks-header">
                 <div class="marks-title">
                     <i class="fas fa-edit"></i>
@@ -1498,31 +1564,96 @@
             </div>
             
             <div style="overflow-x: auto;">
-                <table class="marks-table" id="marksTable">
-                    <thead>
-                        <tr>
-                            <th>BIL</th>
-                            <th>PELAJAR</th>
-                            <th>NO. KAD PENGENALAN</th>
-                            <th>MARKAH (0-<span id="fullMarksDisplay">100</span>)</th>
-                            <th>GRED</th>
-                            <th>STATUS</th>
-                            <th>CATATAN</th>
-                        </tr>
-                    </thead>
-                    <tbody id="marksTableBody">
-                        <!-- Student rows will be loaded here -->
-                    </tbody>
-                </table>
+                <form id="marksForm" method="POST" action="">
+                    <input type="hidden" name="action" value="add_single">
+                    <input type="hidden" name="id_peperiksaan" id="hiddenExamId" value="<?php echo $selected_exam; ?>">
+                    
+                    <table class="marks-table" id="marksTable">
+                        <thead>
+                            <tr>
+                                <th>BIL</th>
+                                <th>PELAJAR</th>
+                                <th>NO. KAD PENGENALAN</th>
+                                <th>MARKAH (0-<span id="fullMarksDisplay"><?php echo $markah_penuh; ?></span>)</th>
+                                <th>GRED</th>
+                                <th>STATUS</th>
+                                <th>CATATAN</th>
+                                <th>TINDAKAN</th>
+                            </tr>
+                        </thead>
+                        <tbody id="marksTableBody">
+                            <?php foreach ($students as $index => $student): ?>
+                                <?php
+                                $initials = '';
+                                $names = explode(' ', $student['nama']);
+                                if (count($names) >= 2) {
+                                    $initials = $names[0][0] . $names[count($names)-1][0];
+                                } else {
+                                    $initials = substr($student['nama'], 0, 2);
+                                }
+                                ?>
+                                <tr data-student-id="<?php echo $student['id']; ?>">
+                                    <td><?php echo $index + 1; ?></td>
+                                    <td>
+                                        <div class="student-row">
+                                            <div class="student-avatar"><?php echo strtoupper($initials); ?></div>
+                                            <div class="student-info">
+                                                <h4><?php echo htmlspecialchars($student['nama']); ?></h4>
+                                                <p>ID: <?php echo htmlspecialchars($student['id_kelas']); ?></p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($student['no_kp']); ?></td>
+                                    <td>
+                                        <div class="mark-input-container">
+                                            <input type="number" 
+                                                   class="mark-input" 
+                                                   name="markah[<?php echo $student['id']; ?>]"
+                                                   id="mark-<?php echo $student['id']; ?>"
+                                                   min="0" 
+                                                   max="<?php echo $markah_penuh; ?>"
+                                                   placeholder="0-<?php echo $markah_penuh; ?>"
+                                                   oninput="updateMark('<?php echo $student['id']; ?>', this.value)"
+                                                   onblur="validateMark('<?php echo $student['id']; ?>')">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="grade-badge" id="grade-<?php echo $student['id']; ?>">
+                                            -
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="status-badge status-warning" id="status-<?php echo $student['id']; ?>">
+                                            BELUM DIISI
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <input type="text" 
+                                               class="form-input" 
+                                               style="font-size: 13px; padding: 8px 12px;"
+                                               name="catatan[<?php echo $student['id']; ?>]"
+                                               id="notes-<?php echo $student['id']; ?>"
+                                                 placeholder="Catatan...">
+                                    </td>
+                                    <td>
+                                        <button type="button" class="action-btn primary" 
+                                                onclick="simpanMarkahIndividu('<?php echo $student['id']; ?>')">
+                                            <i class="fas fa-save"></i> Simpan
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </form>
             </div>
-            
             <div style="text-align: right; margin-top: 20px; font-size: 13px; color: var(--medium-gray);">
-                <span id="marksStatus">Tiada markah dimasukkan</span>
+                <span id="marksStatus"><?php echo count($students); ?> pelajar ditemui. Tiada markah dimasukkan.</span>
             </div>
         </div>
 
         <!-- Summary Section -->
-        <div class="summary-section" id="summarySection" style="display: none;">
+        <div class="summary-section" id="summarySection">
             <div class="summary-title">
                 <i class="fas fa-chart-bar"></i>
                 Ringkasan Markah
@@ -1557,7 +1688,7 @@
                     <div class="stat-icon completed">
                         <i class="fas fa-check-circle"></i>
                     </div>
-                    <div class="stat-value" id="studentsCompleted">0/0</div>
+                    <div class="stat-value" id="studentsCompleted">0/<?php echo count($students); ?></div>
                     <div class="stat-label">Pelajar Selesai</div>
                 </div>
             </div>
@@ -1565,10 +1696,11 @@
             <div class="grade-distribution">
                 <div class="grade-distribution-title">Taburan Gred</div>
                 <div class="grade-bars" id="gradeBars">
-                    <!-- Grade distribution bars will be loaded here -->
+                    <!-- Grade distribution bars will be loaded dynamically -->
                 </div>
             </div>
         </div>
+        <?php endif; ?>
     </main>
 
     <script>
