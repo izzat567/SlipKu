@@ -1,5 +1,7 @@
 <?php  
     $current_page = 'kelas-saya.php';
+
+    include '../includes/header.php';
 ?>
 <!DOCTYPE html>
 <html lang="ms">
