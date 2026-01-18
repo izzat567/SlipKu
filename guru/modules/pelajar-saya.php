@@ -1323,9 +1323,9 @@
             </div>
         </div>
     </header>
-    <?php
-    includes/sidebar.php
-    ?>
+   <?php
+include_once 'includes/sidebar.php';
+?>
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-section">
