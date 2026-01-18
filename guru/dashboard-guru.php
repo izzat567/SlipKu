@@ -578,7 +578,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <a href="tambah-markah.php" class="action-card">
+            <a href="modules/tambah-markah.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-plus-circle"></i>
                 </div>
@@ -586,7 +586,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <p>Masukkan markah peperiksaan baru</p>
             </a>
 
-            <a href="semak-markah.php" class="action-card">
+            <a href="modules/semak-markah.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-search"></i>
                 </div>
@@ -594,7 +594,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <p>Semak dan analisis markah pelajar</p>
             </a>
 
-            <a href="jadual-ujian.php" class="action-card">
+            <a href="modules/jadual-ujian.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-calendar-alt"></i>
                 </div>
@@ -602,7 +602,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <p>Urus jadual peperiksaan</p>
             </a>
 
-            <a href="laporan-prestasi.php" class="action-card">
+            <a href="modules/laporan-prestasi.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-chart-bar"></i>
                 </div>
