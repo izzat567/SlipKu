@@ -462,17 +462,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <i class="fas fa-tachometer-alt"></i>
                 Dashboard
             </a>
-            <a href="kelas-saya.php" class="sidebar-item">
+            <a href="modules/kelas-saya.php" class="sidebar-item">
                 <i class="fas fa-users"></i>
                 Kelas Saya
                 <span class="badge">3</span>
             </a>
-            <a href="pelajar-saya.php" class="sidebar-item">
+            <a href="modules/pelajar-saya.php" class="sidebar-item">
                 <i class="fas fa-user-graduate"></i>
                 Pelajar Saya
                 <span class="badge">85</span>
             </a>
-            <a href="subjek-saya.php" class="sidebar-item">
+            <a href="modules/subjek-saya.php" class="sidebar-item">
                 <i class="fas fa-book"></i>
                 Subjek Saya
                 <span class="badge">4</span>
@@ -481,15 +481,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         <div class="sidebar-section">
             <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.php" class="sidebar-item">
+            <a href="modules/tambah-markah.php" class="sidebar-item">
                 <i class="fas fa-plus-circle"></i>
                 Tambah Markah
             </a>
-            <a href="semak-markah.php" class="sidebar-item">
+            <a href="modules/semak-markah.php" class="sidebar-item">
                 <i class="fas fa-search"></i>
                 Semak Markah
             </a>
-            <a href="laporan-prestasi.php" class="sidebar-item">
+            <a href="modules/laporan-prestasi.php" class="sidebar-item">
                 <i class="fas fa-chart-bar"></i>
                 Laporan Prestasi
             </a>
