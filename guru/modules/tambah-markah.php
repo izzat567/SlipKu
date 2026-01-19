@@ -6,8 +6,7 @@
 require_once('../../config/connect.php');
 require_once '../includes/db_functions.php';
 
-// Initialize database functions
-$db = new DBFunctions($conn);
+
 $guru_info = getGuruInfo();
 
 // Get data for dropdowns
