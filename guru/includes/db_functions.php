@@ -1,6 +1,6 @@
 <?php
 // includes/db_functions.php
-require_once __DIR__ . '/../connect.php';
+require_once __DIR__ . '../../config/connect.php';
 
 class DBFunctions {
     private $conn;
