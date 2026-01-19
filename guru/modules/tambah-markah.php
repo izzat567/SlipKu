@@ -4,7 +4,7 @@
 
 // Include database functions
 require_once('../../config/connect.php');
-require_once '/../includes/db_functions.php';
+require_once '../includes/db_functions.php';
 
 // Initialize database functions
 $db = new DBFunctions($conn);
