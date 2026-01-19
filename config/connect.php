@@ -1,20 +1,19 @@
 <?php
-$env = parse_ini_string(file_get_contents(__DIR__.'/.env'));
-
-//@ ENV
-$hostname = $env['HOSTNAME'];
-$username = $env['USERNAME'];
-$password = $env['PASSWORD'];
-$database = $env['DBNAME'];
-
-// Create connection
+// Ganti dengan direct values (temporary)
+$hostname = 'localhost';
+$username = 'root';
+$password = 'password';  
+$database = 'slipku_db';
 try {
-    // Using MySQLi
     $conn = new mysqli($hostname, $username, $password, $database);
     
     if ($conn->connect_error) {
         throw new Exception("Connection failed: " . $conn->connect_error);
     }
+    
+    // Set charset
+    $conn->set_charset("utf8mb4");
+    
     
     
 } catch (Exception $e) {
