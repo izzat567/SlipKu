@@ -2,7 +2,7 @@
 // Ganti dengan direct values (temporary)
 $hostname = 'localhost';
 $username = 'root';
-$password = 'password';  
+$password = '';  
 $database = 'slipku_db';
 try {
     $conn = new mysqli($hostname, $username, $password, $database);
