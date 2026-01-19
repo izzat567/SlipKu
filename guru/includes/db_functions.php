@@ -178,5 +178,61 @@ class DBFunctions {
         if ($percentage >= 40) return 'E';
         return 'T';
     }
+    function getGuruInfo($guruId = null) {
+    global $conn;
+    
+    // Jika tidak ada ID, guna session atau default
+    if ($guruId === null) {
+        // Check session atau guna default
+        if (isset($_SESSION['guru_id'])) {
+            $guruId = $_SESSION['guru_id'];
+        } else {
+            // Return default info untuk testing
+            return [
+                'nama' => 'Cikgu Ahmad',
+                'email' => 'ahmad@sekolah.edu.my',
+                'no_telefon' => '012-3456789',
+                'role' => 'guru'
+            ];
+        }
+    }
+    
+    $sql = "SELECT * FROM guru WHERE id_guru = ? AND status = 1";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $guruId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        return $result->fetch_assoc();
+    }
+    
+    // Return default jika tidak ditemui
+    return [
+        'nama' => 'Cikgu Ahmad',
+        'email' => 'ahmad@sekolah.edu.my',
+        'no_telefon' => '012-3456789',
+        'role' => 'guru'
+    ];
+}
+
+/**
+ * Get guru by email (untuk login)
+ */
+function getGuruByEmail($email) {
+    global $conn;
+    
+    $sql = "SELECT * FROM guru WHERE email = ? AND status = 1";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        return $result->fetch_assoc();
+    }
+    
+    return null;
+}
 }
 ?>
