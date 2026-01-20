@@ -1,6 +1,6 @@
 <?php
 // Start session and check login
-session_start();
+ob_start();
 
 // Include database functions
 require_once('../../config/connect.php');
