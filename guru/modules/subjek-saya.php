@@ -1,4 +1,156 @@
-<!DOCTYPE html>
+<?php
+// subjek-saya.php - Tambah ini di ATAS sekali
+session_start();
+ob_start();
+
+// Include database connection
+require_once __DIR__ . '/../../config/connect.php';
+
+// Handle form submission for adding/editing subjects
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['action'])) {
+        $action = $_POST['action'];
+        
+        if ($action === 'add_subject' || $action === 'edit_subject') {
+            // Get form data
+            $nama = $_POST['subject_name'] ?? '';
+            $kod = $_POST['subject_code'] ?? '';
+            $tahun = $_POST['subject_year'] ?? '';
+            $jenis = $_POST['subject_type'] ?? '';
+            $penerangan = $_POST['subject_description'] ?? '';
+            $buku_teks = $_POST['subject_textbook'] ?? '';
+            $catatan = $_POST['subject_notes'] ?? '';
+            $status = 1; // Active by default
+            
+            // Get selected classes
+            $kelas_terpilih = [];
+            if (isset($_POST['subject_classes']) && is_array($_POST['subject_classes'])) {
+                $kelas_terpilih = $_POST['subject_classes'];
+            }
+            
+            // Validate required fields
+            if (empty($nama) || empty($kod) || empty($tahun)) {
+                $error_message = "Sila isi semua ruangan yang diperlukan!";
+            } else {
+                if ($action === 'add_subject') {
+                    // Insert new subject into database
+                    $sql = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, ?)";
+                    $stmt = $database->prepare($sql);
+                    $stmt->bind_param("sssi", $kod, $nama, $tahun, $status);
+                    
+                    if ($stmt->execute()) {
+                        $subject_id = $database->insert_id;
+                        $success_message = "Subjek berjaya ditambah!";
+                        
+                        // You can also store additional info in another table
+                        // Example: Save to subject_details table
+                        $sql_details = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks, catatan) 
+                                       VALUES (?, ?, ?, ?, ?)";
+                        $stmt_details = $database->prepare($sql_details);
+                        $stmt_details->bind_param("issss", $subject_id, $jenis, $penerangan, $buku_teks, $catatan);
+                        $stmt_details->execute();
+                        $stmt_details->close();
+                        
+                    } else {
+                        $error_message = "Gagal menambah subjek: " . $database->error;
+                    }
+                    $stmt->close();
+                    
+                } elseif ($action === 'edit_subject') {
+                    $subject_id = $_POST['subject_id'] ?? 0;
+                    
+                    // Update existing subject
+                    $sql = "UPDATE matapelajaran SET kod = ?, nama = ?, tahun = ? WHERE id = ?";
+                    $stmt = $database->prepare($sql);
+                    $stmt->bind_param("sssi", $kod, $nama, $tahun, $subject_id);
+                    
+                    if ($stmt->execute()) {
+                        $success_message = "Subjek berjaya dikemaskini!";
+                        
+                        // Update details
+                        $sql_details = "UPDATE subject_details SET jenis = ?, penerangan = ?, buku_teks = ?, catatan = ?
+                                       WHERE id_matapelajaran = ?";
+                        $stmt_details = $database->prepare($sql_details);
+                        $stmt_details->bind_param("ssssi", $jenis, $penerangan, $buku_teks, $catatan, $subject_id);
+                        $stmt_details->execute();
+                        $stmt_details->close();
+                        
+                    } else {
+                        $error_message = "Gagal mengemaskini subjek: " . $database->error;
+                    }
+                    $stmt->close();
+                }
+                
+                // Refresh page to show updated data
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit();
+            }
+        }
+        
+        // Handle syllabus updates
+        elseif ($action === 'update_syllabus') {
+            $subject_id = $_POST['subject_id'] ?? 0;
+            $syllabus_data = $_POST['syllabus_items'] ?? [];
+            
+            // Here you would save syllabus data to database
+            // Example table: subject_syllabus
+            // $success_message = "Sukatan pelajaran berjaya dikemaskini!";
+        }
+        
+        // Handle subject deletion
+        elseif ($action === 'delete_subject') {
+            $subject_id = $_POST['subject_id'] ?? 0;
+            
+            // Soft delete (set status to 0)
+            $sql = "UPDATE matapelajaran SET status = 0 WHERE id = ?";
+            $stmt = $database->prepare($sql);
+            $stmt->bind_param("i", $subject_id);
+            
+            if ($stmt->execute()) {
+                $success_message = "Subjek berjaya dipadam!";
+            } else {
+                $error_message = "Gagal memadam subjek: " . $database->error;
+            }
+            $stmt->close();
+            
+            header("Location: " . $_SERVER['PHP_SELF']);
+            exit();
+        }
+    }
+}
+
+// Fetch subjects from database
+$subjects = [];
+$sql = "SELECT * FROM matapelajaran WHERE status = 1 ORDER BY nama";
+$result = $database->query($sql);
+
+if ($result) {
+    while ($row = $result->fetch_assoc()) {
+        // Fetch additional details if needed
+        $sql_details = "SELECT * FROM subject_details WHERE id_matapelajaran = ?";
+        $stmt_details = $database->prepare($sql_details);
+        $stmt_details->bind_param("i", $row['id']);
+        $stmt_details->execute();
+        $details_result = $stmt_details->get_result();
+        $details = $details_result->fetch_assoc();
+        $stmt_details->close();
+        
+        // Combine data
+        $subject_data = array_merge($row, $details ?: []);
+        
+        // Get classes for this subject (you might need a separate table for this)
+        // For now, using sample data
+        $subject_data['classes'] = ['6A', '6B'];
+        $subject_data['totalStudents'] = 40;
+        $subject_data['averagePerformance'] = 75.5;
+        $subject_data['attendanceRate'] = 90.2;
+        $subject_data['syllabusProgress'] = 60;
+        $subject_data['teacher'] = 'Cikgu Ahmad';
+        
+        $subjects[] = $subject_data;
+    }
+}
+?><!DOCTYPE html>
 <html lang="ms">
 <head>
     <meta charset="UTF-8">
@@ -1197,61 +1349,103 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="subject-detail-header" style="text-align: center; margin-bottom: 25px;">
-                    <div class="subject-icon math" id="subjectDetailIcon" style="width: 80px; height: 80px; margin: 0 auto 15px;">
-                        <i class="fas fa-calculator"></i>
-                    </div>
-                    <h3 id="subjectNameDetail" style="font-size: 24px; color: var(--dark-gray); margin-bottom: 5px;">Matematik</h3>
-                    <p id="subjectCodeDetail" style="color: var(--medium-gray); font-size: 16px;">Kod: MAT601</p>
-                </div>
+            <form id="subjectForm" method="POST" action="">
+                <input type="hidden" name="action" value="add_subject" id="formAction">
+                <input type="hidden" name="subject_id" id="formSubjectId">
                 
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 25px;">
-                    <div style="background: var(--light-gray); padding: 15px; border-radius: 12px;">
-                        <div style="font-size: 13px; color: var(--medium-gray); margin-bottom: 5px;">Guru</div>
-                        <div style="font-weight: 600; color: var(--dark-gray);" id="subjectTeacherDetail">Cikgu Ahmad</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Nama Subjek</label>
+                        <input type="text" class="form-input" id="subjectName" name="subject_name" 
+                               placeholder="Contoh: Matematik, Sains" required>
                     </div>
-                    <div style="background: var(--light-gray); padding: 15px; border-radius: 12px;">
-                        <div style="font-size: 13px; color: var(--medium-gray); margin-bottom: 5px;">Kelas</div>
-                        <div style="font-weight: 600; color: var(--dark-gray);" id="subjectClassesDetail">3 kelas</div>
-                    </div>
-                    <div style="background: var(--light-gray); padding: 15px; border-radius: 12px;">
-                        <div style="font-size: 13px; color: var(--medium-gray); margin-bottom: 5px;">Pelajar</div>
-                        <div style="font-weight: 600; color: var(--dark-gray);" id="subjectStudentsDetail">85 pelajar</div>
-                    </div>
-                    <div style="background: var(--light-gray); padding: 15px; border-radius: 12px;">
-                        <div style="font-size: 13px; color: var(--medium-gray); margin-bottom: 5px;">Prestasi</div>
-                        <div style="font-weight: 600; color: var(--dark-gray);" id="subjectPerformanceDetail">78.9%</div>
+                    
+                    <div class="form-group">
+                        <label class="form-label required">Kod Subjek</label>
+                        <input type="text" class="form-input" id="subjectCode" name="subject_code" 
+                               placeholder="Contoh: MAT601, SNS601" required>
                     </div>
                 </div>
                 
-                <div style="margin-bottom: 20px;">
-                    <h4 style="font-size: 16px; margin-bottom: 15px; color: var(--dark-gray);">Kelas yang Mengikuti</h4>
-                    <div class="class-tags" id="subjectClassesList">
-                        <!-- Class tags will be loaded here -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Jenis Subjek</label>
+                        <select class="form-select" id="subjectType" name="subject_type" required>
+                            <option value="">Pilih Jenis</option>
+                            <option value="core">Teras</option>
+                            <option value="elective">Elektif</option>
+                            <option value="additional">Tambahan</option>
+                            <option value="extracurricular">Kokurikulum</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label required">Tahun</label>
+                        <select class="form-select" id="subjectYear" name="subject_year" required>
+                            <option value="">Pilih Tahun</option>
+                            <option value="all">Semua Tahun</option>
+                            <option value="6">Tahun 6</option>
+                            <option value="5">Tahun 5</option>
+                            <option value="4">Tahun 4</option>
+                            <option value="3">Tahun 3</option>
+                            <option value="2">Tahun 2</option>
+                            <option value="1">Tahun 1</option>
+                        </select>
                     </div>
                 </div>
                 
-                <div style="margin-bottom: 20px;">
-                    <div class="progress-header">
-                        <div class="progress-title">Kemajuan Sukatan Pelajaran</div>
-                        <div class="progress-value" id="syllabusProgressDetail">65%</div>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="syllabusProgressBar" style="width: 65%"></div>
+                <div class="form-group">
+                    <label class="form-label">Kelas yang Mengikuti</label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-top: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="subject_classes[]" id="class-6A" value="6A">
+                            <label for="class-6A" style="font-size: 13px; cursor: pointer;">Kelas 6A</label>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" name="subject_classes[]" id="class-6B" value="6B">
+                            <label for="class-6B" style="font-size: 13px; cursor: pointer;">Kelas 6B</label>
+                        </div>
+                        <!-- Add more classes as needed -->
                     </div>
                 </div>
                 
-                <div style="background: var(--light-gray); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
-                    <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--dark-gray);">Penerangan Subjek</h4>
-                    <p id="subjectDescriptionDetail" style="color: var(--medium-gray); font-size: 13px; line-height: 1.6;">Tiada penerangan</p>
+                <div class="form-group">
+                    <label class="form-label">Penerangan Subjek</label>
+                    <textarea class="form-textarea" id="subjectDescription" name="subject_description" 
+                              placeholder="Penerangan ringkas mengenai subjek..." rows="3"></textarea>
                 </div>
                 
-                <div style="background: var(--light-gray); padding: 15px; border-radius: 12px;">
-                    <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--dark-gray);">Buku Teks & Rujukan</h4>
-                    <p id="subjectBooksDetail" style="color: var(--medium-gray); font-size: 13px; line-height: 1.6;">Tiada maklumat buku</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Buku Teks Utama</label>
+                        <input type="text" class="form-input" id="subjectTextbook" name="subject_textbook" 
+                               placeholder="Nama buku teks">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Jam Kredit</label>
+                        <input type="number" class="form-input" id="subjectCredits" name="subject_credits" 
+                               placeholder="Contoh: 4" min="1" max="10">
+                    </div>
                 </div>
-            </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Catatan</label>
+                    <textarea class="form-textarea" id="subjectNotes" name="subject_notes" 
+                              placeholder="Catatan tambahan..." rows="2"></textarea>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        Simpan Subjek
+                    </button>
+                </div>
+            </form>
         </div>
+    </div>
     </div>
 
     <!-- Modal for Add/Edit Subject -->
@@ -1683,6 +1877,89 @@
     </main>
 
     <script>
+        // Save subject via AJAX
+function saveSubject(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    
+    // Show loading
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+    submitBtn.disabled = true;
+    
+    // Send AJAX request
+    fetch('', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.redirected) {
+            window.location.href = response.url;
+        } else {
+            return response.text();
+        }
+    })
+    .then(data => {
+        showNotification('Subjek berjaya disimpan ke database!', 'success');
+        closeEditModal();
+        
+        // Reload page after delay
+        setTimeout(() => {
+            location.reload();
+        }, 1500);
+    })
+    .catch(error => {
+        showNotification('Ralat: ' + error.message, 'error');
+    })
+    .finally(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+}
+
+// Edit subject function update
+function editSubject(subjectId) {
+    isEditingSubject = true;
+    currentSubjectId = subjectId;
+    
+    const subject = subjectsData.find(s => s.id === subjectId);
+    if (subject) {
+        document.getElementById('editModalTitle').textContent = 'Edit Subjek';
+        document.getElementById('formAction').value = 'edit_subject';
+        document.getElementById('formSubjectId').value = subject.db_id || subject.id; // Use database ID
+        
+        document.getElementById('subjectName').value = subject.name;
+        document.getElementById('subjectCode').value = subject.code;
+        document.getElementById('subjectType').value = subject.type;
+        document.getElementById('subjectYear').value = subject.year;
+        document.getElementById('subjectDescription').value = subject.description || '';
+        document.getElementById('subjectTextbook').value = subject.books ? subject.books.split(',')[0] : '';
+        document.getElementById('subjectNotes').value = subject.notes || '';
+        
+        editSubjectModal.classList.add('active');
+    }
+}
+
+// Delete subject
+function deleteSubject(subjectId) {
+    if (confirm('Adakah anda pasti ingin memadam subjek ini?')) {
+        const formData = new FormData();
+        formData.append('action', 'delete_subject');
+        formData.append('subject_id', subjectId);
+        
+        fetch('', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            }
+        });
+    }
+}
         // DOM Elements
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
