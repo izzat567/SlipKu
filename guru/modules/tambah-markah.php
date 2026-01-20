@@ -6,8 +6,18 @@ ob_start();
 require_once('../../config/connect.php');
 require_once '../includes/db_functions.php';
 
+global $database; // $database dari connect.php
+
+// Check jika $database wujud, jika tak buat connection baru
+if (!isset($database) || !$database) {
+    $database = new mysqli('localhost', 'root', '', 'slipku_db');
+    if ($database->connect_error) {
+        die("Connection failed: " . $database->connect_error);
+    }
+}
+
 // Initialize DBFunctions class jika menggunakan class approach
-$db = new DBFunctions($conn);
+$db = new DBFunctions($database);
 
 // Get guru info
 $guru_info = $db->getGuruInfo();  // Pastikan method ini wujud dalam class
