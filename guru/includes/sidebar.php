@@ -73,14 +73,7 @@ $pending_assignments = 12;
             Tugasan
             <span class="badge"><?php echo $pending_assignments; ?></span>
         </a>
-        <a href="../modules/kehadiran.php" class="sidebar-item <?php echo ($current_page == 'kehadiran.php') ? 'active' : ''; ?>">
-            <i class="fas fa-clipboard-check"></i>
-            Kehadiran
-        </a>
-        <a href="../modules/komunikasi.php" class="sidebar-item <?php echo ($current_page == 'komunikasi.php') ? 'active' : ''; ?>">
-            <i class="fas fa-comments"></i>
-            Komunikasi Ibu Bapa
-        </a>
+
     </div>
 
     <!-- Sistem -->
@@ -90,14 +83,7 @@ $pending_assignments = 12;
             <i class="fas fa-user-cog"></i>
             Profil Saya
         </a>
-        <a href="../modules/tetapan.php" class="sidebar-item <?php echo ($current_page == 'tetapan.php') ? 'active' : ''; ?>">
-            <i class="fas fa-cog"></i>
-            Tetapan
-        </a>
-        <a href="../modules/bantuan.php" class="sidebar-item <?php echo ($current_page == 'bantuan.php') ? 'active' : ''; ?>">
-            <i class="fas fa-question-circle"></i>
-            Bantuan
-        </a>
+        
         <a href="../logout.php" class="sidebar-item" style="color: #ef4444;">
             <i class="fas fa-sign-out-alt"></i>
             Log Keluar
