@@ -157,55 +157,231 @@ if (empty($subjects)) {
     <title>Subjek Saya - SlipKu</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* CSS styles - sama seperti sebelum ini */
-        :root {
-            --primary: #4361ee;
-            --secondary: #3a0ca3;
-            --success: #4cc9f0;
-            --danger: #f72585;
-            --warning: #f8961e;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --gray: #6c757d;
-            --light-gray: #e9ecef;
+       :root {
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --primary-light: #eef2ff;
+            --secondary: #7c3aed;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark-gray: #1f2937;
+            --medium-gray: #6b7280;
+            --light-gray: #f9fafb;
+            --white: #ffffff;
+            --border-radius: 12px;
+            --transition: all 0.3s ease;
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-family: 'Poppins', sans-serif;
         }
 
         body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            color: var(--dark-gray);
+            line-height: 1.6;
             min-height: 100vh;
-            color: var(--dark);
+            overflow-x: hidden;
         }
 
-        .container {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: 260px;
-            background: white;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-            padding: 20px 0;
+        /* Header */
+        .header {
+            background: var(--white);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             position: fixed;
-            height: 100vh;
-            overflow-y: auto;
-            z-index: 100;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 0 30px;
         }
 
-        /* ... (CSS sama seperti sebelum ini, saya pendekkan untuk space) ... */
+        .header-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-size: 22px;
+        }
+
+        .logo-text h1 {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 2px;
+        }
+
+        .logo-text p {
+            font-size: 12px;
+            color: var(--medium-gray);
+            font-weight: 500;
+        }
+
+        /* Menu Toggle */
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: var(--primary);
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 8px;
+            transition: var(--transition);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--white);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            position: fixed;
+            left: 0;
+            top: 85px;
+            bottom: 0;
+            width: 260px;
+            padding: 30px 0;
+            overflow-y: auto;
+            z-index: 900;
+            transition: var(--transition);
+        }
+
+        .sidebar-section {
+            margin-bottom: 30px;
+            padding: 0 25px;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--medium-gray);
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 20px;
+            color: var(--medium-gray);
+            text-decoration: none;
+            border-radius: 12px;
+            margin: 5px 0;
+            transition: var(--transition);
+        }
+
+        .sidebar-item:hover {
+            background: var(--light-gray);
+            color: var(--primary);
+            transform: translateX(5px);
+        }
+
+        .sidebar-item.active {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
+        }
+
+        .sidebar-item i {
+            width: 20px;
+            font-size: 16px;
+            color: var(--medium-gray);
+        }
+
+        .badge {
+            background: var(--danger);
+            color: white;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: auto;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            margin-top: 85px;
+            padding: 30px;
+            transition: var(--transition);
+        }
+
+        /* Page Header */
+        .page-header {
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .page-title h2 {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--dark-gray);
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .page-title p {
+            color: var(--medium-gray);
+            font-size: 16px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            border: none;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: var(--white);
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
+        }
 
         .btn-primary:hover {
-            background: var(--secondary);
             transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(67, 97, 238, 0.3);
+            box-shadow: 0 12px 30px rgba(79, 70, 229, 0.4);
         }
 
         .btn-secondary {
