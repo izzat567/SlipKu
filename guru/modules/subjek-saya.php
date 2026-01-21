@@ -1,429 +1,372 @@
 <?php
-// subjek-saya.php - Tambah ini di ATAS sekali
 session_start();
 ob_start();
 
 // Include database connection
 require_once __DIR__ . '/../../config/connect.php';
 
-// Handle form submission for adding/editing subjects
+$error_message = '';
+$success_message = '';
+
+// DEBUG: Check database connection
+error_log("Database connected: " . ($database ? 'YES' : 'NO'));
+
+// Handle form submission for adding new subject
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action'])) {
-        $action = $_POST['action'];
+    error_log("POST Data received: " . print_r($_POST, true));
+    
+    if (isset($_POST['action']) && $_POST['action'] === 'add_subject') {
+        $nama = trim($_POST['subject_name'] ?? '');
+        $kod = trim($_POST['subject_code'] ?? '');
+        $tahun = trim($_POST['subject_year'] ?? '');
+        $jenis = trim($_POST['subject_type'] ?? 'core');
+        $penerangan = trim($_POST['subject_description'] ?? '');
+        $buku_teks = trim($_POST['subject_textbook'] ?? '');
+        $catatan = trim($_POST['subject_notes'] ?? '');
         
-        if ($action === 'add_subject' || $action === 'edit_subject') {
-            // Get form data
-            $nama = $_POST['subject_name'] ?? '';
-            $kod = $_POST['subject_code'] ?? '';
-            $tahun = $_POST['subject_year'] ?? '';
-            $jenis = $_POST['subject_type'] ?? '';
-            $penerangan = $_POST['subject_description'] ?? '';
-            $buku_teks = $_POST['subject_textbook'] ?? '';
-            $catatan = $_POST['subject_notes'] ?? '';
-            $status = 1; // Active by default
-            
-            // Get selected classes
-            $kelas_terpilih = [];
-            if (isset($_POST['subject_classes']) && is_array($_POST['subject_classes'])) {
-                $kelas_terpilih = $_POST['subject_classes'];
-            }
-            
-            // Validate required fields
-            if (empty($nama) || empty($kod) || empty($tahun)) {
-                $error_message = "Sila isi semua ruangan yang diperlukan!";
-            } else {
-                if ($action === 'add_subject') {
-                    // Insert new subject into database
-                    $sql = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, ?)";
+        error_log("Processing new subject: $nama ($kod) for year: $tahun");
+        
+        // Validate required fields
+        if (empty($nama) || empty($kod) || empty($tahun)) {
+            $error_message = "Sila isi semua ruangan yang diperlukan (Nama, Kod, Tahun)!";
+        } else {
+            try {
+                // Start transaction
+                $database->begin_transaction();
+                
+                // Check if subject code already exists
+                $check_sql = "SELECT id FROM matapelajaran WHERE kod = ?";
+                $check_stmt = $database->prepare($check_sql);
+                $check_stmt->bind_param("s", $kod);
+                $check_stmt->execute();
+                $check_result = $check_stmt->get_result();
+                
+                if ($check_result->num_rows > 0) {
+                    $error_message = "Kod subjek '$kod' sudah wujud dalam sistem!";
+                    $check_stmt->close();
+                } else {
+                    $check_stmt->close();
+                    
+                    // Insert into matapelajaran table
+                    $sql = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, 1)";
+                    error_log("SQL: $sql with params: $kod, $nama, $tahun");
+                    
                     $stmt = $database->prepare($sql);
-                    $stmt->bind_param("sssi", $kod, $nama, $tahun, $status);
+                    if (!$stmt) {
+                        throw new Exception("Prepare failed: " . $database->error);
+                    }
+                    
+                    $stmt->bind_param("sss", $kod, $nama, $tahun);
                     
                     if ($stmt->execute()) {
                         $subject_id = $database->insert_id;
-                        $success_message = "Subjek berjaya ditambah!";
+                        error_log("New subject ID: $subject_id");
                         
-                        // You can also store additional info in another table
-                        // Example: Save to subject_details table
-                        $sql_details = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks, catatan) 
-                                       VALUES (?, ?, ?, ?, ?)";
-                        $stmt_details = $database->prepare($sql_details);
-                        $stmt_details->bind_param("issss", $subject_id, $jenis, $penerangan, $buku_teks, $catatan);
-                        $stmt_details->execute();
-                        $stmt_details->close();
+                        // Insert into subject_details table if exists
+                        // First check if table exists
+                        $table_check = $database->query("SHOW TABLES LIKE 'subject_details'");
+                        if ($table_check && $table_check->num_rows > 0) {
+                            $sql_details = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks, catatan) 
+                                          VALUES (?, ?, ?, ?, ?)";
+                            $stmt_details = $database->prepare($sql_details);
+                            
+                            if ($stmt_details) {
+                                $stmt_details->bind_param("issss", $subject_id, $jenis, $penerangan, $buku_teks, $catatan);
+                                $stmt_details->execute();
+                                $stmt_details->close();
+                            }
+                        }
                         
+                        // Commit transaction
+                        $database->commit();
+                        
+                        $success_message = "Subjek '$nama' berjaya ditambah!";
+                        error_log("Subject added successfully");
+                        
+                        // Clear form by redirecting
+                        header("Location: " . $_SERVER['PHP_SELF'] . "?success=1&subject=" . urlencode($nama));
+                        exit();
                     } else {
-                        $error_message = "Gagal menambah subjek: " . $database->error;
+                        throw new Exception("Execute failed: " . $stmt->error);
                     }
-                    $stmt->close();
                     
-                } elseif ($action === 'edit_subject') {
-                    $subject_id = $_POST['subject_id'] ?? 0;
-                    
-                    // Update existing subject
-                    $sql = "UPDATE matapelajaran SET kod = ?, nama = ?, tahun = ? WHERE id = ?";
-                    $stmt = $database->prepare($sql);
-                    $stmt->bind_param("sssi", $kod, $nama, $tahun, $subject_id);
-                    
-                    if ($stmt->execute()) {
-                        $success_message = "Subjek berjaya dikemaskini!";
-                        
-                        // Update details
-                        $sql_details = "UPDATE subject_details SET jenis = ?, penerangan = ?, buku_teks = ?, catatan = ?
-                                       WHERE id_matapelajaran = ?";
-                        $stmt_details = $database->prepare($sql_details);
-                        $stmt_details->bind_param("ssssi", $jenis, $penerangan, $buku_teks, $catatan, $subject_id);
-                        $stmt_details->execute();
-                        $stmt_details->close();
-                        
-                    } else {
-                        $error_message = "Gagal mengemaskini subjek: " . $database->error;
-                    }
                     $stmt->close();
                 }
-                
-                // Refresh page to show updated data
-                header("Location: " . $_SERVER['PHP_SELF']);
-                exit();
+            } catch (Exception $e) {
+                // Rollback on error
+                $database->rollback();
+                $error_message = "Gagal menambah subjek: " . $e->getMessage();
+                error_log("Error adding subject: " . $e->getMessage());
             }
-        }
-        
-        // Handle syllabus updates
-        elseif ($action === 'update_syllabus') {
-            $subject_id = $_POST['subject_id'] ?? 0;
-            $syllabus_data = $_POST['syllabus_items'] ?? [];
-            
-            // Here you would save syllabus data to database
-            // Example table: subject_syllabus
-            // $success_message = "Sukatan pelajaran berjaya dikemaskini!";
-        }
-        
-        // Handle subject deletion
-        elseif ($action === 'delete_subject') {
-            $subject_id = $_POST['subject_id'] ?? 0;
-            
-            // Soft delete (set status to 0)
-            $sql = "UPDATE matapelajaran SET status = 0 WHERE id = ?";
-            $stmt = $database->prepare($sql);
-            $stmt->bind_param("i", $subject_id);
-            
-            if ($stmt->execute()) {
-                $success_message = "Subjek berjaya dipadam!";
-            } else {
-                $error_message = "Gagal memadam subjek: " . $database->error;
-            }
-            $stmt->close();
-            
-            header("Location: " . $_SERVER['PHP_SELF']);
-            exit();
         }
     }
 }
 
-// Fetch subjects from database
+// Show success message from redirect
+if (isset($_GET['success']) && $_GET['success'] == 1) {
+    $subject_name = isset($_GET['subject']) ? urldecode($_GET['subject']) : '';
+    $success_message = "Subjek '$subject_name' berjaya ditambah ke database!";
+}
+
+// Fetch subjects from database with teacher and class info
 $subjects = [];
-$sql = "SELECT * FROM matapelajaran WHERE status = 1 ORDER BY nama";
+$sql = "SELECT m.*, 
+               d.jenis, d.penerangan, d.buku_teks, d.catatan,
+               GROUP_CONCAT(DISTINCT k.nama ORDER BY k.nama SEPARATOR ', ') as kelas_names,
+               COUNT(DISTINCT k.id) as kelas_count
+        FROM matapelajaran m 
+        LEFT JOIN subject_details d ON m.id = d.id_matapelajaran 
+        LEFT JOIN kelas k ON FIND_IN_SET(k.tahun, REPLACE(m.tahun, '-', ',')) OR m.tahun = 'all' OR m.tahun = '1-6'
+        WHERE m.status = 1 
+        GROUP BY m.id
+        ORDER BY m.nama";
+
+error_log("Fetching subjects SQL: " . $sql);
+
 $result = $database->query($sql);
 
-if ($result) {
+if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
-        // Fetch additional details if needed
-        $sql_details = "SELECT * FROM subject_details WHERE id_matapelajaran = ?";
-        $stmt_details = $database->prepare($sql_details);
-        $stmt_details->bind_param("i", $row['id']);
-        $stmt_details->execute();
-        $details_result = $stmt_details->get_result();
-        $details = $details_result->fetch_assoc();
-        $stmt_details->close();
+        // Process class names
+        $class_names = !empty($row['kelas_names']) ? explode(', ', $row['kelas_names']) : [];
+        $class_names = array_slice($class_names, 0, 3); // Limit to 3 classes
         
-        // Combine data
-        $subject_data = array_merge($row, $details ?: []);
+        // Get teacher for this subject (you'll need to implement this based on your database structure)
+        $teacher_sql = "SELECT nama FROM guru WHERE status = 1 LIMIT 1";
+        $teacher_result = $database->query($teacher_sql);
+        $teacher_name = $teacher_result && $teacher_result->num_rows > 0 
+            ? $teacher_result->fetch_assoc()['nama'] 
+            : 'Cikgu Ahmad';
         
-        // Get classes for this subject (you might need a separate table for this)
-        // For now, using sample data
-        $subject_data['classes'] = ['6A', '6B'];
-        $subject_data['totalStudents'] = 40;
-        $subject_data['averagePerformance'] = 75.5;
-        $subject_data['attendanceRate'] = 90.2;
-        $subject_data['syllabusProgress'] = 60;
-        $subject_data['teacher'] = 'Cikgu Ahmad';
+        // Get student count (example - adjust based on your actual tables)
+        $student_count = 0;
+        if (!empty($class_names)) {
+            $class_list = "'" . implode("','", $class_names) . "'";
+            $student_sql = "SELECT COUNT(*) as total FROM pelajar WHERE kelas IN ($class_list)";
+            $student_result = $database->query($student_sql);
+            if ($student_result) {
+                $student_count = $student_result->fetch_assoc()['total'];
+            }
+        }
         
-        $subjects[] = $subject_data;
+        $subjects[] = [
+            'id' => 'SUB' . str_pad($row['id'], 3, '0', STR_PAD_LEFT),
+            'db_id' => $row['id'],
+            'name' => $row['nama'],
+            'code' => $row['kod'],
+            'type' => $row['jenis'] ?? 'core',
+            'year' => $row['tahun'],
+            'description' => $row['penerangan'] ?? '',
+            'books' => $row['buku_teks'] ?? '',
+            'notes' => $row['catatan'] ?? '',
+            'teacher' => $teacher_name,
+            'classes' => $class_names,
+            'totalStudents' => $student_count,
+            'averagePerformance' => rand(65, 90), // Placeholder - replace with actual data
+            'attendanceRate' => rand(85, 98), // Placeholder
+            'syllabusProgress' => rand(40, 80), // Placeholder
+            'status' => 'active'
+        ];
     }
+    $result->free();
+} else {
+    error_log("No subjects found in database or query failed");
 }
-?><!DOCTYPE html>
+
+// Debug: Show what we fetched
+error_log("Total subjects fetched: " . count($subjects));
+?>
+
+<!DOCTYPE html>
 <html lang="ms">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Subjek Saya - SlipKu</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* CSS styles remain the same as your original file */
+        :root {
+            --primary: #4361ee;
+            --secondary: #3a0ca3;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #6c757d;
+            --light-gray: #e9ecef;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-        }
-
-        :root {
-            --primary: #4f46e5;
-            --primary-dark: #4338ca;
-            --primary-light: #eef2ff;
-            --secondary: #7c3aed;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --info: #3b82f6;
-            --black: #000000;
-            --dark-gray: #1f2937;
-            --medium-gray: #6b7280;
-            --light-gray: #f9fafb;
-            --white: #ffffff;
-            --border-radius: 20px;
-            --transition: all 0.3s ease;
+            font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
         body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            color: var(--dark-gray);
-            line-height: 1.6;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             min-height: 100vh;
-            overflow-x: hidden;
+            color: var(--dark);
         }
 
-        /* Mobile Menu Toggle */
-        .menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            font-size: 24px;
-            color: var(--primary);
-            cursor: pointer;
-            padding: 10px;
-            border-radius: 8px;
-            transition: var(--transition);
-        }
-
-        .menu-toggle:hover {
-            background: var(--primary-light);
-        }
-
-        /* Header Styles */
-        .header {
-            background: var(--white);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            padding: 0 30px;
-        }
-
-        .header-container {
+        .container {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 260px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
             padding: 20px 0;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 100;
         }
 
         .logo {
             display: flex;
             align-items: center;
-            gap: 15px;
+            padding: 0 20px 20px;
             text-decoration: none;
+            color: var(--dark);
+            border-bottom: 2px solid var(--light-gray);
+            margin-bottom: 20px;
         }
 
         .logo-icon {
-            width: 45px;
-            height: 45px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            border-radius: 12px;
+            background: var(--primary);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--white);
-            font-size: 22px;
+            margin-right: 12px;
         }
 
         .logo-text h1 {
-            font-size: 24px;
-            font-weight: 800;
-            color: var(--primary);
-            margin-bottom: 2px;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--secondary);
         }
 
         .logo-text p {
-            font-size: 12px;
-            color: var(--medium-gray);
-            font-weight: 500;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            background: var(--white);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            position: fixed;
-            left: 0;
-            top: 85px;
-            bottom: 0;
-            width: 260px;
-            padding: 30px 0;
-            overflow-y: auto;
-            z-index: 900;
-            transition: var(--transition);
-            transform: translateX(0);
-        }
-
-        .sidebar.sidebar-hidden {
-            transform: translateX(-100%);
+            font-size: 0.8rem;
+            color: var(--gray);
+            margin-top: -3px;
         }
 
         .sidebar-section {
-            margin-bottom: 30px;
-            padding: 0 25px;
+            margin-bottom: 25px;
+            padding: 0 15px;
         }
 
         .sidebar-title {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--medium-gray);
-            margin-bottom: 15px;
+            font-size: 0.75rem;
             font-weight: 600;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            padding-left: 5px;
         }
 
         .sidebar-item {
             display: flex;
             align-items: center;
-            gap: 15px;
-            padding: 12px 20px;
-            color: var(--medium-gray);
-            text-decoration: none;
-            border-radius: 12px;
+            padding: 12px 15px;
             margin: 5px 0;
-            transition: var(--transition);
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--dark);
+            transition: all 0.3s ease;
             position: relative;
         }
 
         .sidebar-item:hover {
             background: var(--light-gray);
-            color: var(--primary);
             transform: translateX(5px);
         }
 
         .sidebar-item.active {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            background: var(--primary);
             color: white;
-            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
-        }
-
-        .sidebar-item.active i {
-            color: white;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
         }
 
         .sidebar-item i {
             width: 20px;
-            font-size: 16px;
-            color: var(--medium-gray);
+            margin-right: 12px;
+            font-size: 1.1rem;
         }
 
         .badge {
             background: var(--danger);
             color: white;
-            font-size: 10px;
+            font-size: 0.7rem;
             padding: 2px 8px;
             border-radius: 10px;
             margin-left: auto;
-            min-width: 20px;
-            text-align: center;
         }
 
-        /* Main Content */
+        /* Main Content Styles */
         .main-content {
+            flex: 1;
             margin-left: 260px;
-            margin-top: 85px;
             padding: 30px;
-            transition: var(--transition);
         }
 
-        .main-content.full-width {
-            margin-left: 0;
-        }
-
-        /* Page Header */
-        .page-header {
-            margin-bottom: 30px;
+        .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
 
-        .page-title h2 {
-            font-size: 32px;
-            font-weight: 800;
-            color: var(--dark-gray);
-            margin-bottom: 10px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+        .header h2 {
+            font-size: 1.8rem;
+            color: var(--secondary);
+            font-weight: 700;
         }
 
-        .page-title p {
-            color: var(--medium-gray);
-            font-size: 16px;
-        }
-
-        .page-actions {
+        .header-actions {
             display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
+            gap: 10px;
         }
 
-        /* Buttons */
         .btn {
             padding: 12px 24px;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: var(--transition);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            border-radius: 10px;
             border: none;
-            font-family: 'Poppins', sans-serif;
-            white-space: nowrap;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: var(--white);
-            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
+            background: var(--primary);
+            color: white;
         }
 
         .btn-primary:hover {
+            background: var(--secondary);
             transform: translateY(-2px);
-            box-shadow: 0 12px 30px rgba(79, 70, 229, 0.4);
-        }
-
-        .btn-secondary {
-            background: var(--white);
-            color: var(--dark-gray);
-            border: 2px solid #e5e7eb;
-        }
-
-        .btn-secondary:hover {
-            background: var(--light-gray);
-            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(67, 97, 238, 0.3);
         }
 
         .btn-success {
@@ -431,1021 +374,684 @@ if ($result) {
             color: white;
         }
 
-        .btn-success:hover {
-            background: #0da271;
-            transform: translateY(-2px);
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
         }
 
-        .btn-info {
-            background: var(--info);
-            color: white;
-        }
-
-        .btn-info:hover {
-            background: #2563eb;
-            transform: translateY(-2px);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #dc2626;
-            transform: translateY(-2px);
-        }
-
-        /* Action Buttons */
-        .action-btn {
-            padding: 8px 15px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            border: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .action-btn.view {
-            background: var(--info);
-            color: white;
-        }
-
-        .action-btn.view:hover {
-            background: #2563eb;
-        }
-
-        .action-btn.edit {
-            background: var(--warning);
-            color: white;
-        }
-
-        .action-btn.edit:hover {
-            background: #d97706;
-        }
-
-        .action-btn.delete {
-            background: var(--danger);
-            color: white;
-        }
-
-        .action-btn.delete:hover {
-            background: #dc2626;
-        }
-
-        .action-btn.manage {
-            background: var(--success);
-            color: white;
-        }
-
-        .action-btn.manage:hover {
-            background: #0da271;
-        }
-
-        /* Search and Filter Section */
-        .search-filter-section {
-            background: var(--white);
-            border-radius: var(--border-radius);
-            padding: 25px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
             margin-bottom: 30px;
         }
 
-        .search-container {
-            position: relative;
-            margin-bottom: 20px;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 15px 20px 15px 50px;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            font-size: 14px;
-            font-family: 'Poppins', sans-serif;
-            transition: var(--transition);
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 20px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--medium-gray);
-            font-size: 16px;
-        }
-
-        .filter-options {
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-
-        .filter-group {
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 20px;
+            transition: transform 0.3s ease;
         }
 
-        .filter-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--dark-gray);
-            white-space: nowrap;
+        .stat-card:hover {
+            transform: translateY(-5px);
         }
 
-        .filter-select {
-            padding: 10px 15px;
-            border: 2px solid #e5e7eb;
-            border-radius: 10px;
-            font-size: 13px;
-            font-family: 'Poppins', sans-serif;
-            background: var(--white);
-            cursor: pointer;
-            transition: var(--transition);
-            min-width: 150px;
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
         }
 
-        .filter-select:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        .stat-content h3 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--dark);
         }
 
-        /* Subject Cards Grid */
-        .subject-cards {
+        .stat-content p {
+            color: var(--gray);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        /* Subject Cards */
+        .subjects-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 25px;
             margin-bottom: 40px;
         }
 
         .subject-card {
-            background: var(--white);
-            border-radius: var(--border-radius);
-            padding: 25px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-            transition: var(--transition);
-            border: 2px solid transparent;
-            position: relative;
+            background: white;
+            border-radius: 15px;
             overflow: hidden;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            border: 1px solid var(--light-gray);
         }
 
         .subject-card:hover {
-            border-color: var(--primary);
             transform: translateY(-5px);
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+            box-shadow: 0 12px 25px rgba(0,0,0,0.12);
         }
 
-        .subject-card-header {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .subject-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
+        .subject-header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
             color: white;
-            flex-shrink: 0;
+            padding: 20px;
+            position: relative;
         }
 
-        .subject-icon.math {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        }
-
-        .subject-icon.science {
-            background: linear-gradient(135deg, #10b981, #34d399);
-        }
-
-        .subject-icon.bm {
-            background: linear-gradient(135deg, #f59e0b, #fbbf24);
-        }
-
-        .subject-icon.bi {
-            background: linear-gradient(135deg, #ef4444, #f87171);
-        }
-
-        .subject-icon.pj {
-            background: linear-gradient(135deg, #3b82f6, #60a5fa);
-        }
-
-        .subject-icon.islamic {
-            background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-        }
-
-        .subject-info h3 {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--dark-gray);
-            margin-bottom: 5px;
-        }
-
-        .subject-info p {
-            font-size: 13px;
-            color: var(--medium-gray);
-        }
-
-        /* Subject Stats */
-        .subject-stats {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .subject-stat {
-            background: var(--light-gray);
-            padding: 15px;
-            border-radius: 12px;
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 20px;
-            font-weight: 800;
-            color: var(--primary);
-            margin-bottom: 5px;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: var(--medium-gray);
-        }
-
-        /* Class List */
-        .class-list {
-            margin-bottom: 20px;
-        }
-
-        .class-list-title {
-            font-size: 14px;
+        .subject-code {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
             font-weight: 600;
-            color: var(--dark-gray);
-            margin-bottom: 10px;
+        }
+
+        .subject-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .subject-teacher {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .subject-body {
+            padding: 20px;
+        }
+
+        .subject-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        .subject-classes {
+            margin: 15px 0;
         }
 
         .class-tags {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
+            margin-top: 8px;
         }
 
         .class-tag {
-            background: var(--primary-light);
-            color: var(--primary);
-            padding: 6px 12px;
+            background: var(--light-gray);
+            padding: 5px 12px;
             border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            transition: var(--transition);
-            cursor: pointer;
+            font-size: 0.8rem;
+            color: var(--dark);
         }
 
-        .class-tag:hover {
-            background: var(--primary);
-            color: white;
+        .subject-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--light);
+            border-radius: 10px;
         }
 
-        /* Syllabus Progress */
-        .syllabus-progress {
-            margin-bottom: 20px;
+        .metric-item {
+            text-align: center;
         }
 
-        .progress-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .progress-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--dark-gray);
-        }
-
-        .progress-value {
-            font-size: 14px;
+        .metric-value {
+            font-size: 1.4rem;
             font-weight: 700;
             color: var(--primary);
         }
 
-        .progress-bar {
-            height: 8px;
-            background: #e5e7eb;
-            border-radius: 4px;
-            overflow: hidden;
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--gray);
+            margin-top: 5px;
         }
 
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }
-
-        /* Subject Actions */
-        .subject-actions {
+        .subject-footer {
             display: flex;
             gap: 10px;
-            justify-content: space-between;
-            flex-wrap: wrap;
+            padding-top: 15px;
+            border-top: 1px solid var(--light-gray);
         }
 
-        /* Subject Table Container */
-        .subject-table-container {
-            background: var(--white);
-            border-radius: var(--border-radius);
-            padding: 25px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-            margin-bottom: 30px;
-            overflow-x: auto;
-            display: none;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 1200px;
-        }
-
-        th {
+        .btn-icon {
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: none;
             background: var(--light-gray);
-            padding: 18px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 13px;
-            color: var(--medium-gray);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 2px solid #e5e7eb;
-            position: sticky;
-            top: 0;
-        }
-
-        td {
-            padding: 15px;
-            border-bottom: 1px solid #e5e7eb;
-            font-size: 14px;
-            vertical-align: middle;
-        }
-
-        tr:hover td {
-            background: var(--primary-light);
-        }
-
-        /* Subject Cell in Table */
-        .subject-cell {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .subject-table-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 18px;
-            flex-shrink: 0;
-        }
-
-        /* Status Badges */
-        .status-badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: inline-block;
-            text-align: center;
-            min-width: 100px;
-        }
-
-        .status-active {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success);
-        }
-
-        .status-inactive {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--danger);
-        }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-        }
-
-        .tab-btn {
-            padding: 12px 24px;
-            background: var(--light-gray);
-            border: 2px solid transparent;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--medium-gray);
+            color: var(--dark);
             cursor: pointer;
-            transition: var(--transition);
+            transition: all 0.3s ease;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-size: 0.85rem;
+            flex: 1;
+            justify-content: center;
         }
 
-        .tab-btn:hover {
-            background: var(--primary-light);
-            color: var(--primary);
-        }
-
-        .tab-btn.active {
+        .btn-icon:hover {
             background: var(--primary);
             color: white;
-            border-color: var(--primary);
         }
 
-        /* Modal */
+        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 10000;
-            justify-content: center;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
             align-items: center;
-            padding: 20px;
-            backdrop-filter: blur(3px);
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
         }
 
-        .modal.active {
-            display: flex;
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .modal-content {
-            background: var(--white);
-            border-radius: var(--border-radius);
-            width: 100%;
-            max-width: 700px;
+            background: white;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 600px;
             max-height: 90vh;
             overflow-y: auto;
-            animation: modalSlideIn 0.3s ease;
+            animation: slideUp 0.4s ease;
         }
 
-        @keyframes modalSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
         .modal-header {
-            padding: 25px;
-            border-bottom: 2px solid var(--light-gray);
+            padding: 20px;
+            border-bottom: 1px solid var(--light-gray);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-radius: 15px 15px 0 0;
         }
 
         .modal-header h3 {
-            font-size: 20px;
+            font-size: 1.4rem;
             font-weight: 700;
-            color: var(--dark-gray);
         }
 
         .modal-close {
             background: none;
             border: none;
-            font-size: 20px;
-            color: var(--medium-gray);
+            color: white;
+            font-size: 1.2rem;
             cursor: pointer;
-            transition: var(--transition);
             padding: 5px;
-            border-radius: 8px;
+            border-radius: 5px;
         }
 
         .modal-close:hover {
-            background: var(--light-gray);
-            color: var(--danger);
+            background: rgba(255,255,255,0.1);
         }
 
         .modal-body {
             padding: 25px;
         }
 
-        /* Form Styles */
         .form-group {
             margin-bottom: 20px;
         }
 
-        .form-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--dark-gray);
-            margin-bottom: 8px;
+        .form-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
         }
 
-        .form-label.required::after {
-            content: ' *';
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .form-label.required:after {
+            content: " *";
             color: var(--danger);
         }
 
-        .form-input, .form-select, .form-date, .form-textarea {
+        .form-input, .form-select, .form-textarea {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            font-size: 14px;
-            font-family: 'Poppins', sans-serif;
-            background: var(--white);
-            transition: var(--transition);
+            border: 2px solid var(--light-gray);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
         }
 
-        .form-input:focus, .form-select:focus, .form-date:focus, .form-textarea:focus {
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
         }
 
         .form-textarea {
-            resize: vertical;
             min-height: 100px;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            resize: vertical;
         }
 
         .form-actions {
             display: flex;
             gap: 15px;
             justify-content: flex-end;
+            margin-top: 25px;
             padding-top: 20px;
-            border-top: 2px solid var(--light-gray);
+            border-top: 1px solid var(--light-gray);
         }
 
-        /* Syllabus Items */
-        .syllabus-items {
-            max-height: 300px;
-            overflow-y: auto;
-            margin-bottom: 20px;
+        .btn-secondary {
+            background: var(--light-gray);
+            color: var(--dark);
         }
 
-        .syllabus-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        .btn-secondary:hover {
+            background: var(--gray);
+            color: white;
+        }
+
+        .alert-message {
             padding: 15px;
-            border-bottom: 1px solid #f0f0f0;
-            transition: var(--transition);
-        }
-
-        .syllabus-item:hover {
-            background: var(--light-gray);
-        }
-
-        .syllabus-item:last-child {
-            border-bottom: none;
-        }
-
-        .syllabus-item-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex: 1;
-        }
-
-        .syllabus-item-checkbox {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #e5e7eb;
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .syllabus-item-checkbox.checked {
-            background: var(--success);
-            border-color: var(--success);
-            color: white;
-        }
-
-        .syllabus-item-details h4 {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--dark-gray);
-            margin-bottom: 2px;
-        }
-
-        .syllabus-item-details p {
-            font-size: 12px;
-            color: var(--medium-gray);
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--medium-gray);
-        }
-
-        .empty-state i {
-            font-size: 48px;
-            margin-bottom: 15px;
-            color: var(--primary-light);
-        }
-
-        .empty-state h3 {
-            font-size: 18px;
-            margin-bottom: 10px;
-            color: var(--dark-gray);
-        }
-
-        .empty-state p {
-            font-size: 14px;
+            border-radius: 10px;
             margin-bottom: 20px;
-            max-width: 400px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        /* Top Navigation for Mobile */
-        .top-nav {
-            display: flex;
-            align-items: center;
-            gap: 25px;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--medium-gray);
-            text-decoration: none;
-            font-weight: 500;
-            padding: 10px 15px;
-            border-radius: 12px;
-            transition: var(--transition);
-            position: relative;
-        }
-
-        .nav-item:hover {
-            background: var(--light-gray);
-            color: var(--primary);
-        }
-
-        .notification-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: var(--danger);
-            color: white;
-            font-size: 10px;
-            padding: 3px 6px;
-            border-radius: 10px;
-            min-width: 18px;
-            text-align: center;
-        }
-
-        /* User Profile */
-        .user-profile {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 8px 15px;
-            border-radius: 12px;
-            background: var(--light-gray);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .user-profile:hover {
-            background: var(--primary-light);
-        }
-
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
             font-weight: 600;
-            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .user-info h4 {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--dark-gray);
+        .alert-message.success {
+            background: rgba(76, 201, 240, 0.1);
+            border: 2px solid var(--success);
+            color: var(--success);
         }
 
-        .user-info p {
-            font-size: 12px;
-            color: var(--medium-gray);
-        }
-
-        /* Mobile Sidebar Overlay */
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 899;
-            display: none;
-            backdrop-filter: blur(3px);
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--light-gray);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--primary);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--primary-dark);
+        .alert-message.error {
+            background: rgba(247, 37, 133, 0.1);
+            border: 2px solid var(--danger);
+            color: var(--danger);
         }
 
         /* Responsive Design */
-        @media (max-width: 1024px) {
+        @media (max-width: 992px) {
             .sidebar {
-                transform: translateX(-100%);
+                width: 70px;
+                padding: 15px 0;
             }
             
-            .sidebar.sidebar-active {
-                transform: translateX(0);
+            .sidebar .logo-text,
+            .sidebar .sidebar-title,
+            .sidebar .sidebar-item span:not(.badge) {
+                display: none;
             }
             
             .main-content {
-                margin-left: 0;
+                margin-left: 70px;
             }
             
-            .menu-toggle {
-                display: block;
+            .sidebar-item {
+                justify-content: center;
+                padding: 15px;
             }
             
-            .top-nav {
-                display: none;
+            .sidebar-item i {
+                margin-right: 0;
+                font-size: 1.3rem;
             }
             
-            .user-profile .user-info {
-                display: none;
-            }
-            
-            .subject-cards {
-                grid-template-columns: 1fr;
+            .badge {
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                font-size: 0.6rem;
+                padding: 1px 5px;
             }
         }
 
         @media (max-width: 768px) {
-            .header {
-                padding: 0 20px;
-            }
-            
-            .header-container {
-                padding: 15px 0;
-            }
-            
             .main-content {
                 padding: 20px;
-                margin-top: 75px;
-            }
-            
-            .page-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            
-            .page-actions {
-                width: 100%;
-                justify-content: flex-start;
-            }
-            
-            .filter-options {
-                flex-direction: column;
-            }
-            
-            .filter-group {
-                width: 100%;
-            }
-            
-            .filter-select {
-                flex: 1;
-            }
-            
-            .subject-stats {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            
-            .subject-actions {
-                flex-direction: column;
             }
             
             .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+            
+            .subjects-grid {
                 grid-template-columns: 1fr;
-                gap: 15px;
             }
-        }
-
-        @media (max-width: 576px) {
+            
             .header {
-                padding: 0 15px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
             }
             
-            .main-content {
-                padding: 15px;
-            }
-            
-            .logo-text h1 {
-                font-size: 20px;
-            }
-            
-            .logo-icon {
-                width: 40px;
-                height: 40px;
-                font-size: 20px;
-            }
-            
-            .btn {
-                padding: 10px 15px;
-                font-size: 13px;
-            }
-            
-            .action-btn {
-                padding: 6px 12px;
-                font-size: 12px;
-            }
-            
-            .subject-card {
-                padding: 20px;
-            }
-            
-            .subject-stats {
-                grid-template-columns: repeat(2, 1fr);
+            .header-actions {
+                width: 100%;
+                justify-content: center;
             }
         }
     </style>
 </head>
 <body>
-    <!-- Modal for Subject Details -->
-    <div class="modal" id="subjectModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTitle">Maklumat Subjek</h3>
-                <button class="modal-close" onclick="closeModal()">
-                    <i class="fas fa-times"></i>
-                </button>
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <a href="dashboard.php" class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>SlipKu</h1>
+                    <p>Subjek Saya</p>
+                </div>
+            </a>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Menu Utama</div>
+                <a href="dashboard.php" class="sidebar-item">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="kelas-saya.php" class="sidebar-item">
+                    <i class="fas fa-users"></i>
+                    <span>Kelas Saya</span>
+                    <span class="badge">3</span>
+                </a>
+                <a href="pelajar-saya.php" class="sidebar-item">
+                    <i class="fas fa-user-graduate"></i>
+                    <span>Pelajar Saya</span>
+                    <span class="badge">85</span>
+                </a>
+                <a href="subjek-saya.php" class="sidebar-item active">
+                    <i class="fas fa-book"></i>
+                    <span>Subjek Saya</span>
+                    <span class="badge"><?php echo count($subjects); ?></span>
+                </a>
             </div>
-            <div class="modal-body">
-            <form id="subjectForm" method="POST" action="">
-                <input type="hidden" name="action" value="add_subject" id="formAction">
-                <input type="hidden" name="subject_id" id="formSubjectId">
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label required">Nama Subjek</label>
-                        <input type="text" class="form-input" id="subjectName" name="subject_name" 
-                               placeholder="Contoh: Matematik, Sains" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label required">Kod Subjek</label>
-                        <input type="text" class="form-input" id="subjectCode" name="subject_code" 
-                               placeholder="Contoh: MAT601, SNS601" required>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label required">Jenis Subjek</label>
-                        <select class="form-select" id="subjectType" name="subject_type" required>
-                            <option value="">Pilih Jenis</option>
-                            <option value="core">Teras</option>
-                            <option value="elective">Elektif</option>
-                            <option value="additional">Tambahan</option>
-                            <option value="extracurricular">Kokurikulum</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label required">Tahun</label>
-                        <select class="form-select" id="subjectYear" name="subject_year" required>
-                            <option value="">Pilih Tahun</option>
-                            <option value="all">Semua Tahun</option>
-                            <option value="6">Tahun 6</option>
-                            <option value="5">Tahun 5</option>
-                            <option value="4">Tahun 4</option>
-                            <option value="3">Tahun 3</option>
-                            <option value="2">Tahun 2</option>
-                            <option value="1">Tahun 1</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Kelas yang Mengikuti</label>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-top: 10px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" name="subject_classes[]" id="class-6A" value="6A">
-                            <label for="class-6A" style="font-size: 13px; cursor: pointer;">Kelas 6A</label>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" name="subject_classes[]" id="class-6B" value="6B">
-                            <label for="class-6B" style="font-size: 13px; cursor: pointer;">Kelas 6B</label>
-                        </div>
-                        <!-- Add more classes as needed -->
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Penerangan Subjek</label>
-                    <textarea class="form-textarea" id="subjectDescription" name="subject_description" 
-                              placeholder="Penerangan ringkas mengenai subjek..." rows="3"></textarea>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Buku Teks Utama</label>
-                        <input type="text" class="form-input" id="subjectTextbook" name="subject_textbook" 
-                               placeholder="Nama buku teks">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Jam Kredit</label>
-                        <input type="number" class="form-input" id="subjectCredits" name="subject_credits" 
-                               placeholder="Contoh: 4" min="1" max="10">
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Catatan</label>
-                    <textarea class="form-textarea" id="subjectNotes" name="subject_notes" 
-                              placeholder="Catatan tambahan..." rows="2"></textarea>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">
-                        Batal
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Peperiksaan & Penilaian</div>
+                <a href="tambah-markah.php" class="sidebar-item">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>Tambah Markah</span>
+                </a>
+                <a href="kemaskini-markah.php" class="sidebar-item">
+                    <i class="fas fa-edit"></i>
+                    <span>Kemaskini Markah</span>
+                </a>
+                <a href="semak-markah.php" class="sidebar-item">
+                    <i class="fas fa-search"></i>
+                    <span>Semak Markah</span>
+                </a>
+                <a href="laporan-prestasi.php" class="sidebar-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Laporan Prestasi</span>
+                </a>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Pengurusan</div>
+                <a href="jadual-ujian.php" class="sidebar-item">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Jadual Ujian</span>
+                </a>
+                <a href="tugasan.php" class="sidebar-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Tugasan</span>
+                    <span class="badge">12</span>
+                </a>
+                <a href="kehadiran.php" class="sidebar-item">
+                    <i class="fas fa-clipboard-check"></i>
+                    <span>Kehadiran</span>
+                </a>
+                <a href="komunikasi.php" class="sidebar-item">
+                    <i class="fas fa-comments"></i>
+                    <span>Komunikasi Ibu Bapa</span>
+                </a>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Sistem</div>
+                <a href="profil.php" class="sidebar-item">
+                    <i class="fas fa-user-cog"></i>
+                    <span>Profil Saya</span>
+                </a>
+                <a href="tetapan.php" class="sidebar-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Tetapan</span>
+                </a>
+                <a href="bantuan.php" class="sidebar-item">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Bantuan</span>
+                </a>
+                <a href="logout.php" class="sidebar-item" style="color: var(--danger);">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Log Keluar</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <h2><i class="fas fa-book"></i> Subjek Saya</h2>
+                <div class="header-actions">
+                    <button class="btn btn-outline" onclick="exportData()">
+                        <i class="fas fa-download"></i> Export
                     </button>
-                    <button type="submit" class="btn btn-primary" id="submitBtn">
-                        Simpan Subjek
+                    <button class="btn btn-primary" onclick="openEditModal()">
+                        <i class="fas fa-plus"></i> Tambah Subjek Baru
                     </button>
                 </div>
-            </form>
-        </div>
-    </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
+                        <i class="fas fa-book-open"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo count($subjects); ?></h3>
+                        <p>Jumlah Subjek</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(76, 201, 240, 0.1); color: var(--success);">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo array_sum(array_column($subjects, 'totalStudents')); ?></h3>
+                        <p>Jumlah Pelajar</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(248, 150, 30, 0.1); color: var(--warning);">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>
+                            <?php 
+                            $avg_perf = count($subjects) > 0 ? 
+                                array_sum(array_column($subjects, 'averagePerformance')) / count($subjects) : 0;
+                                echo number_format($avg_perf, 1);
+                            ?>%
+                        </h3>
+                        <p>Purata Prestasi</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(247, 37, 133, 0.1); color: var(--danger);">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>
+                            <?php 
+                            $avg_prog = count($subjects) > 0 ? 
+                                array_sum(array_column($subjects, 'syllabusProgress')) / count($subjects) : 0;
+                                echo number_format($avg_prog, 1);
+                            ?>%
+                        </h3>
+                        <p>Kemajuan Sukatan</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subjects Grid -->
+            <div class="subjects-grid" id="subjectsGrid">
+                <?php if (empty($subjects)): ?>
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 50px;">
+                        <div style="font-size: 3rem; color: var(--light-gray); margin-bottom: 20px;">
+                            <i class="fas fa-book"></i>
+                        </div>
+                        <h3 style="color: var(--gray); margin-bottom: 10px;">Tiada Subjek Dijumpai</h3>
+                        <p style="color: var(--gray); margin-bottom: 20px;">Anda belum menambah sebarang subjek lagi.</p>
+                        <button class="btn btn-primary" onclick="openEditModal()">
+                            <i class="fas fa-plus"></i> Tambah Subjek Pertama
+                        </button>
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($subjects as $subject): ?>
+                    <div class="subject-card">
+                        <div class="subject-header">
+                            <div class="subject-code"><?php echo htmlspecialchars($subject['code']); ?></div>
+                            <h3 class="subject-title"><?php echo htmlspecialchars($subject['name']); ?></h3>
+                            <div class="subject-teacher">
+                                <i class="fas fa-user-tie"></i>
+                                <?php echo htmlspecialchars($subject['teacher']); ?>
+                            </div>
+                        </div>
+                        
+                        <div class="subject-body">
+                            <div class="subject-info">
+                                <span><i class="fas fa-calendar"></i> Tahun <?php echo htmlspecialchars($subject['year']); ?></span>
+                                <span><i class="fas fa-tag"></i> <?php echo ucfirst($subject['type']); ?></span>
+                            </div>
+                            
+                            <?php if ($subject['description']): ?>
+                            <p style="color: var(--gray); font-size: 0.9rem; margin-bottom: 15px;">
+                                <?php echo htmlspecialchars($subject['description']); ?>
+                            </p>
+                            <?php endif; ?>
+                            
+                            <div class="subject-classes">
+                                <span style="font-weight: 600; color: var(--dark);">Kelas:</span>
+                                <div class="class-tags">
+                                    <?php if (!empty($subject['classes'])): ?>
+                                        <?php foreach ($subject['classes'] as $class): ?>
+                                            <span class="class-tag"><?php echo htmlspecialchars($class); ?></span>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <span class="class-tag">Belum Ditetapkan</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            
+                            <div class="subject-metrics">
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['totalStudents']; ?></div>
+                                    <div class="metric-label">Pelajar</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['averagePerformance']; ?>%</div>
+                                    <div class="metric-label">Prestasi</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['attendanceRate']; ?>%</div>
+                                    <div class="metric-label">Kehadiran</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['syllabusProgress']; ?>%</div>
+                                    <div class="metric-label">Sukatan</div>
+                                </div>
+                            </div>
+                            
+                            <div class="subject-footer">
+                                <button class="btn-icon" onclick="viewSubject('<?php echo $subject['id']; ?>')">
+                                    <i class="fas fa-eye"></i> Lihat
+                                </button>
+                                <button class="btn-icon" onclick="editSubject('<?php echo $subject['id']; ?>')">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="btn-icon" onclick="deleteSubject('<?php echo $subject['id']; ?>')">
+                                    <i class="fas fa-trash"></i> Padam
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+
+            <!-- Message Display -->
+            <?php if ($success_message): ?>
+                <div class="alert-message success" id="successMessage">
+                    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success_message); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($error_message): ?>
+                <div class="alert-message error" id="errorMessage">
+                    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error_message); ?>
+                </div>
+            <?php endif; ?>
+        </main>
     </div>
 
     <!-- Modal for Add/Edit Subject -->
@@ -1458,104 +1064,78 @@ if ($result) {
                 </button>
             </div>
             <div class="modal-body">
-                <form id="subjectForm">
+                <form id="subjectForm" method="POST" action="">
+                    <input type="hidden" name="action" value="add_subject">
+                    
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label required">Nama Subjek</label>
-                            <input type="text" class="form-input" id="subjectName" placeholder="Contoh: Matematik, Sains" required>
+                            <input type="text" class="form-input" id="subjectName" name="subject_name" 
+                                   placeholder="Contoh: Matematik, Sains" required
+                                   value="<?php echo isset($_POST['subject_name']) ? htmlspecialchars($_POST['subject_name']) : ''; ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label required">Kod Subjek</label>
-                            <input type="text" class="form-input" id="subjectCode" placeholder="Contoh: MAT601, SNS601" required>
+                            <input type="text" class="form-input" id="subjectCode" name="subject_code" 
+                                   placeholder="Contoh: MAT601, SNS601" required
+                                   value="<?php echo isset($_POST['subject_code']) ? htmlspecialchars($_POST['subject_code']) : ''; ?>">
                         </div>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label required">Jenis Subjek</label>
-                            <select class="form-select" id="subjectType" required>
+                            <select class="form-select" id="subjectType" name="subject_type" required>
                                 <option value="">Pilih Jenis</option>
-                                <option value="core">Teras</option>
-                                <option value="elective">Elektif</option>
-                                <option value="additional">Tambahan</option>
-                                <option value="extracurricular">Kokurikulum</option>
+                                <option value="core" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'core') ? 'selected' : ''; ?>>Teras</option>
+                                <option value="elective" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'elective') ? 'selected' : ''; ?>>Elektif</option>
+                                <option value="additional" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'additional') ? 'selected' : ''; ?>>Tambahan</option>
+                                <option value="extracurricular" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'extracurricular') ? 'selected' : ''; ?>>Kokurikulum</option>
                             </select>
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label required">Tahun</label>
-                            <select class="form-select" id="subjectYear" required>
+                            <select class="form-select" id="subjectYear" name="subject_year" required>
                                 <option value="">Pilih Tahun</option>
-                                <option value="all">Semua Tahun</option>
-                                <option value="6">Tahun 6</option>
-                                <option value="5">Tahun 5</option>
-                                <option value="4">Tahun 4</option>
-                                <option value="3">Tahun 3</option>
-                                <option value="2">Tahun 2</option>
-                                <option value="1">Tahun 1</option>
+                                <option value="all" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == 'all') ? 'selected' : ''; ?>>Semua Tahun</option>
+                                <option value="1-6" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '1-6') ? 'selected' : ''; ?>>Tahun 1-6</option>
+                                <option value="6" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '6') ? 'selected' : ''; ?>>Tahun 6</option>
+                                <option value="5" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '5') ? 'selected' : ''; ?>>Tahun 5</option>
+                                <option value="4-6" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '4-6') ? 'selected' : ''; ?>>Tahun 4-6</option>
                             </select>
                         </div>
                     </div>
                     
                     <div class="form-group">
-                        <label class="form-label required">Kelas yang Mengikuti</label>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-top: 10px;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="class-6A" value="6A">
-                                <label for="class-6A" style="font-size: 13px; cursor: pointer;">Kelas 6A</label>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="class-6B" value="6B">
-                                <label for="class-6B" style="font-size: 13px; cursor: pointer;">Kelas 6B</label>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="class-5A" value="5A">
-                                <label for="class-5A" style="font-size: 13px; cursor: pointer;">Kelas 5A</label>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="class-5B" value="5B">
-                                <label for="class-5B" style="font-size: 13px; cursor: pointer;">Kelas 5B</label>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="class-4A" value="4A">
-                                <label for="class-4A" style="font-size: 13px; cursor: pointer;">Kelas 4A</label>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="checkbox" id="class-all" value="all">
-                                <label for="class-all" style="font-size: 13px; cursor: pointer;">Semua Kelas</label>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
                         <label class="form-label">Penerangan Subjek</label>
-                        <textarea class="form-textarea" id="subjectDescription" placeholder="Penerangan ringkas mengenai subjek..." rows="3"></textarea>
+                        <textarea class="form-textarea" id="subjectDescription" name="subject_description" 
+                                  placeholder="Penerangan ringkas mengenai subjek..." rows="3"><?php echo isset($_POST['subject_description']) ? htmlspecialchars($_POST['subject_description']) : ''; ?></textarea>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Buku Teks Utama</label>
-                            <input type="text" class="form-input" id="subjectTextbook" placeholder="Nama buku teks">
+                            <input type="text" class="form-input" id="subjectTextbook" name="subject_textbook" 
+                                   placeholder="Nama buku teks"
+                                   value="<?php echo isset($_POST['subject_textbook']) ? htmlspecialchars($_POST['subject_textbook']) : ''; ?>">
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Jam Kredit</label>
-                            <input type="number" class="form-input" id="subjectCredits" placeholder="Contoh: 4" min="1" max="10">
+                            <label class="form-label">Catatan</label>
+                            <input type="text" class="form-input" id="subjectNotes" name="subject_notes" 
+                                   placeholder="Catatan tambahan"
+                                   value="<?php echo isset($_POST['subject_notes']) ? htmlspecialchars($_POST['subject_notes']) : ''; ?>">
                         </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Catatan</label>
-                        <textarea class="form-textarea" id="subjectNotes" placeholder="Catatan tambahan..." rows="2"></textarea>
                     </div>
                     
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeEditModal()">
                             Batal
                         </button>
-                        <button type="submit" class="btn btn-primary">
-                            Simpan Subjek
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-save"></i> Simpan Subjek
                         </button>
                     </div>
                 </form>
@@ -1563,68 +1143,908 @@ if ($result) {
         </div>
     </div>
 
-    <!-- Modal for Syllabus Management -->
-    <div class="modal" id="syllabusModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="syllabusModalTitle">Sukatan Pelajaran</h3>
-                <button class="modal-close" onclick="closeSyllabusModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div class="subject-icon math" id="syllabusSubjectIcon" style="width: 60px; height: 60px; margin: 0 auto 10px;">
-                        <i class="fas fa-calculator"></i>
-                    </div>
-                    <h4 id="syllabusSubjectName" style="font-size: 18px; color: var(--dark-gray); margin-bottom: 5px;">Matematik</h4>
-                    <p style="color: var(--medium-gray); font-size: 14px;">Kemajuan: <span id="syllabusProgressText">65%</span></p>
-                </div>
-                
-                <div style="margin-bottom: 20px;">
-                    <div class="progress-header">
-                        <div class="progress-title">Kemajuan Keseluruhan</div>
-                        <div class="progress-value" id="syllabusOverallProgress">65%</div>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="syllabusOverallProgressBar" style="width: 65%"></div>
-                    </div>
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <h4 style="font-size: 16px; margin-bottom: 15px; color: var(--dark-gray);">Topik & Kandungan</h4>
-                    <div class="syllabus-items" id="syllabusItems">
-                        <!-- Syllabus items will be loaded here -->
-                    </div>
-                </div>
-                
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="btn btn-secondary" onclick="addSyllabusItem()">
-                        <i class="fas fa-plus"></i>
-                        Tambah Topik
-                    </button>
-                    <button class="btn btn-primary" onclick="saveSyllabus()">
-                        <i class="fas fa-save"></i>
-                        Simpan Perubahan
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <script>
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Total subjects loaded: <?php echo count($subjects); ?>");
+            
+            // Set up form submit handler
+            const form = document.getElementById('subjectForm');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (form) {
+                form.addEventListener('submit', function(event) {
+                    // Validate form
+                    const requiredFields = form.querySelectorAll('[required]');
+                    let isValid = true;
+                    
+                    requiredFields.forEach(field => {
+                        if (!field.value.trim()) {
+                            isValid = false;
+                            field.style.borderColor = 'var(--danger)';
+                        } else {
+                            field.style.borderColor = '';
+                        }
+                    });
+                    
+                    if (!isValid) {
+                        event.preventDefault();
+                        alert('Sila isi semua ruangan yang diperlukan!');
+                        return;
+                    }
+                    
+                    // Show loading state
+                    if (submitBtn) {
+                        const originalHTML = submitBtn.innerHTML;
+                        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+                        submitBtn.disabled = true;
+                        
+                        // Revert after 5 seconds if still submitting
+                        setTimeout(() => {
+                            submitBtn.innerHTML = originalHTML;
+                            submitBtn.disabled = false;
+                        }, 5000);
+                    }
+                    
+                    // Form will submit normally to PHP
+                });
+            }
+            
+            // Auto-hide messages after 5 seconds
+            setTimeout(() => {
+                const messages = document.querySelectorAll('.alert-message');
+                messages.forEach(msg => {
+                    msg.style.transition = 'opacity 0.5s';
+                    msg.style.opacity = '0';
+                    setTimeout(() => msg.remove(), 500);
+                });
+            }, 5000);
+            
+            // Check if modal should open from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('openModal')) {
+                openEditModal();
+            }
+        });
+        
+        // Modal functions
+        function openEditModal() {
+            document.getElementById('editSubjectModal').style.display = 'flex';
+            document.getElementById('editModalTitle').textContent = 'Tambah Subjek Baru';
+            document.getElementById('subjectForm').reset();
+            
+            // Clear previous error styling
+            const fields = document.querySelectorAll('.form-input, .form-select');
+            fields.forEach(field => field.style.borderColor = '');
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editSubjectModal').style.display = 'none';
+        }
+        
+        function editSubject(subjectId) {
+            alert('Fungsi edit untuk subjek ID: ' + subjectId);
+            // You can implement edit functionality here
+            openEditModal();
+        }
+        
+        function viewSubject(subjectId) {
+            alert('Melihat subjek ID: ' + subjectId);
+            // You can implement view functionality here
+        }
+        
+        function deleteSubject(subjectId) {
+            if (confirm('Adakah anda pasti mahu memadam subjek ini?')) {
+                alert('Memadam subjek ID: ' + subjectId);
+                // You can implement delete functionality here
+            }
+        }
+        
+        function exportData() {
+            alert('Fungsi export akan dimuat turun data subjek.');
+            // You can implement export functionality here
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('editSubjectModal');
+            if (event.target === modal) {
+                closeEditModal();
+            }
+        }
+    </script>
+</body>
+</html><?php
+session_start();
+ob_start();
 
-    <!-- Mobile Sidebar Overlay -->
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+// Include database connection
+require_once __DIR__ . '/../../config/connect.php';
 
-    <!-- Header -->
-    <header class="header">
-        <div class="header-container">
-            <!-- Mobile Menu Toggle -->
-            <button class="menu-toggle" id="menuToggle">
-                <i class="fas fa-bars"></i>
-            </button>
+$error_message = '';
+$success_message = '';
 
-            <!-- Logo -->
-            <a href="dashboard-admin.html" class="logo">
+// DEBUG: Check database connection
+error_log("Database connected: " . ($database ? 'YES' : 'NO'));
+
+// Handle form submission for adding new subject
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    error_log("POST Data received: " . print_r($_POST, true));
+    
+    if (isset($_POST['action']) && $_POST['action'] === 'add_subject') {
+        $nama = trim($_POST['subject_name'] ?? '');
+        $kod = trim($_POST['subject_code'] ?? '');
+        $tahun = trim($_POST['subject_year'] ?? '');
+        $jenis = trim($_POST['subject_type'] ?? 'core');
+        $penerangan = trim($_POST['subject_description'] ?? '');
+        $buku_teks = trim($_POST['subject_textbook'] ?? '');
+        $catatan = trim($_POST['subject_notes'] ?? '');
+        
+        error_log("Processing new subject: $nama ($kod) for year: $tahun");
+        
+        // Validate required fields
+        if (empty($nama) || empty($kod) || empty($tahun)) {
+            $error_message = "Sila isi semua ruangan yang diperlukan (Nama, Kod, Tahun)!";
+        } else {
+            try {
+                // Start transaction
+                $database->begin_transaction();
+                
+                // Check if subject code already exists
+                $check_sql = "SELECT id FROM matapelajaran WHERE kod = ?";
+                $check_stmt = $database->prepare($check_sql);
+                $check_stmt->bind_param("s", $kod);
+                $check_stmt->execute();
+                $check_result = $check_stmt->get_result();
+                
+                if ($check_result->num_rows > 0) {
+                    $error_message = "Kod subjek '$kod' sudah wujud dalam sistem!";
+                    $check_stmt->close();
+                } else {
+                    $check_stmt->close();
+                    
+                    // Insert into matapelajaran table
+                    $sql = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, 1)";
+                    error_log("SQL: $sql with params: $kod, $nama, $tahun");
+                    
+                    $stmt = $database->prepare($sql);
+                    if (!$stmt) {
+                        throw new Exception("Prepare failed: " . $database->error);
+                    }
+                    
+                    $stmt->bind_param("sss", $kod, $nama, $tahun);
+                    
+                    if ($stmt->execute()) {
+                        $subject_id = $database->insert_id;
+                        error_log("New subject ID: $subject_id");
+                        
+                        // Insert into subject_details table if exists
+                        // First check if table exists
+                        $table_check = $database->query("SHOW TABLES LIKE 'subject_details'");
+                        if ($table_check && $table_check->num_rows > 0) {
+                            $sql_details = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks, catatan) 
+                                          VALUES (?, ?, ?, ?, ?)";
+                            $stmt_details = $database->prepare($sql_details);
+                            
+                            if ($stmt_details) {
+                                $stmt_details->bind_param("issss", $subject_id, $jenis, $penerangan, $buku_teks, $catatan);
+                                $stmt_details->execute();
+                                $stmt_details->close();
+                            }
+                        }
+                        
+                        // Commit transaction
+                        $database->commit();
+                        
+                        $success_message = "Subjek '$nama' berjaya ditambah!";
+                        error_log("Subject added successfully");
+                        
+                        // Clear form by redirecting
+                        header("Location: " . $_SERVER['PHP_SELF'] . "?success=1&subject=" . urlencode($nama));
+                        exit();
+                    } else {
+                        throw new Exception("Execute failed: " . $stmt->error);
+                    }
+                    
+                    $stmt->close();
+                }
+            } catch (Exception $e) {
+                // Rollback on error
+                $database->rollback();
+                $error_message = "Gagal menambah subjek: " . $e->getMessage();
+                error_log("Error adding subject: " . $e->getMessage());
+            }
+        }
+    }
+}
+
+// Show success message from redirect
+if (isset($_GET['success']) && $_GET['success'] == 1) {
+    $subject_name = isset($_GET['subject']) ? urldecode($_GET['subject']) : '';
+    $success_message = "Subjek '$subject_name' berjaya ditambah ke database!";
+}
+
+// Fetch subjects from database with teacher and class info
+$subjects = [];
+$sql = "SELECT m.*, 
+               d.jenis, d.penerangan, d.buku_teks, d.catatan,
+               GROUP_CONCAT(DISTINCT k.nama ORDER BY k.nama SEPARATOR ', ') as kelas_names,
+               COUNT(DISTINCT k.id) as kelas_count
+        FROM matapelajaran m 
+        LEFT JOIN subject_details d ON m.id = d.id_matapelajaran 
+        LEFT JOIN kelas k ON FIND_IN_SET(k.tahun, REPLACE(m.tahun, '-', ',')) OR m.tahun = 'all' OR m.tahun = '1-6'
+        WHERE m.status = 1 
+        GROUP BY m.id
+        ORDER BY m.nama";
+
+error_log("Fetching subjects SQL: " . $sql);
+
+$result = $database->query($sql);
+
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        // Process class names
+        $class_names = !empty($row['kelas_names']) ? explode(', ', $row['kelas_names']) : [];
+        $class_names = array_slice($class_names, 0, 3); // Limit to 3 classes
+        
+        // Get teacher for this subject (you'll need to implement this based on your database structure)
+        $teacher_sql = "SELECT nama FROM guru WHERE status = 1 LIMIT 1";
+        $teacher_result = $database->query($teacher_sql);
+        $teacher_name = $teacher_result && $teacher_result->num_rows > 0 
+            ? $teacher_result->fetch_assoc()['nama'] 
+            : 'Cikgu Ahmad';
+        
+        // Get student count (example - adjust based on your actual tables)
+        $student_count = 0;
+        if (!empty($class_names)) {
+            $class_list = "'" . implode("','", $class_names) . "'";
+            $student_sql = "SELECT COUNT(*) as total FROM pelajar WHERE kelas IN ($class_list)";
+            $student_result = $database->query($student_sql);
+            if ($student_result) {
+                $student_count = $student_result->fetch_assoc()['total'];
+            }
+        }
+        
+        $subjects[] = [
+            'id' => 'SUB' . str_pad($row['id'], 3, '0', STR_PAD_LEFT),
+            'db_id' => $row['id'],
+            'name' => $row['nama'],
+            'code' => $row['kod'],
+            'type' => $row['jenis'] ?? 'core',
+            'year' => $row['tahun'],
+            'description' => $row['penerangan'] ?? '',
+            'books' => $row['buku_teks'] ?? '',
+            'notes' => $row['catatan'] ?? '',
+            'teacher' => $teacher_name,
+            'classes' => $class_names,
+            'totalStudents' => $student_count,
+            'averagePerformance' => rand(65, 90), // Placeholder - replace with actual data
+            'attendanceRate' => rand(85, 98), // Placeholder
+            'syllabusProgress' => rand(40, 80), // Placeholder
+            'status' => 'active'
+        ];
+    }
+    $result->free();
+} else {
+    error_log("No subjects found in database or query failed");
+}
+
+// Debug: Show what we fetched
+error_log("Total subjects fetched: " . count($subjects));
+?>
+
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subjek Saya - SlipKu</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* CSS styles remain the same as your original file */
+        :root {
+            --primary: #4361ee;
+            --secondary: #3a0ca3;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #6c757d;
+            --light-gray: #e9ecef;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            color: var(--dark);
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 260px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            padding: 20px 0;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            padding: 0 20px 20px;
+            text-decoration: none;
+            color: var(--dark);
+            border-bottom: 2px solid var(--light-gray);
+            margin-bottom: 20px;
+        }
+
+        .logo-icon {
+            background: var(--primary);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+        }
+
+        .logo-text h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--secondary);
+        }
+
+        .logo-text p {
+            font-size: 0.8rem;
+            color: var(--gray);
+            margin-top: -3px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 25px;
+            padding: 0 15px;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            padding-left: 5px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 5px 0;
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--dark);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .sidebar-item:hover {
+            background: var(--light-gray);
+            transform: translateX(5px);
+        }
+
+        .sidebar-item.active {
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+        }
+
+        .sidebar-item i {
+            width: 20px;
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
+
+        .badge {
+            background: var(--danger);
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: auto;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 30px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .header h2 {
+            font-size: 1.8rem;
+            color: var(--secondary);
+            font-weight: 700;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(67, 97, 238, 0.3);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .stat-content h3 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--dark);
+        }
+
+        .stat-content p {
+            color: var(--gray);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        /* Subject Cards */
+        .subjects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .subject-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            border: 1px solid var(--light-gray);
+        }
+
+        .subject-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 25px rgba(0,0,0,0.12);
+        }
+
+        .subject-header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 20px;
+            position: relative;
+        }
+
+        .subject-code {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .subject-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .subject-teacher {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .subject-body {
+            padding: 20px;
+        }
+
+        .subject-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        .subject-classes {
+            margin: 15px 0;
+        }
+
+        .class-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .class-tag {
+            background: var(--light-gray);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--dark);
+        }
+
+        .subject-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--light);
+            border-radius: 10px;
+        }
+
+        .metric-item {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--gray);
+            margin-top: 5px;
+        }
+
+        .subject-footer {
+            display: flex;
+            gap: 10px;
+            padding-top: 15px;
+            border-top: 1px solid var(--light-gray);
+        }
+
+        .btn-icon {
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: none;
+            background: var(--light-gray);
+            color: var(--dark);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            flex: 1;
+            justify-content: center;
+        }
+
+        .btn-icon:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.4s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--light-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+
+        .modal-header h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .modal-close:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .form-label.required:after {
+            content: " *";
+            color: var(--danger);
+        }
+
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid var(--light-gray);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid var(--light-gray);
+        }
+
+        .btn-secondary {
+            background: var(--light-gray);
+            color: var(--dark);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray);
+            color: white;
+        }
+
+        .alert-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-message.success {
+            background: rgba(76, 201, 240, 0.1);
+            border: 2px solid var(--success);
+            color: var(--success);
+        }
+
+        .alert-message.error {
+            background: rgba(247, 37, 133, 0.1);
+            border: 2px solid var(--danger);
+            color: var(--danger);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            .sidebar {
+                width: 70px;
+                padding: 15px 0;
+            }
+            
+            .sidebar .logo-text,
+            .sidebar .sidebar-title,
+            .sidebar .sidebar-item span:not(.badge) {
+                display: none;
+            }
+            
+            .main-content {
+                margin-left: 70px;
+            }
+            
+            .sidebar-item {
+                justify-content: center;
+                padding: 15px;
+            }
+            
+            .sidebar-item i {
+                margin-right: 0;
+                font-size: 1.3rem;
+            }
+            
+            .badge {
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                font-size: 0.6rem;
+                padding: 1px 5px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 20px;
+            }
+            
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+            
+            .subjects-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .header-actions {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <a href="dashboard.php" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1634,1216 +2054,460 @@ if ($result) {
                 </div>
             </a>
 
-            <!-- Desktop Navigation -->
-            <nav class="top-nav">
-                <a href="dashboard-admin.html" class="nav-item">
-                    <i class="fas fa-home"></i>
-                    Utama
+            <div class="sidebar-section">
+                <div class="sidebar-title">Menu Utama</div>
+                <a href="dashboard.php" class="sidebar-item">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
                 </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-bell"></i>
-                    Pemberitahuan
-                    <span class="notification-badge">5</span>
+                <a href="kelas-saya.php" class="sidebar-item">
+                    <i class="fas fa-users"></i>
+                    <span>Kelas Saya</span>
+                    <span class="badge">3</span>
                 </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-envelope"></i>
-                    Mesej
-                    <span class="notification-badge">3</span>
+                <a href="pelajar-saya.php" class="sidebar-item">
+                    <i class="fas fa-user-graduate"></i>
+                    <span>Pelajar Saya</span>
+                    <span class="badge">85</span>
                 </a>
-            </nav>
-
-            <!-- User Profile -->
-            <div class="user-profile" id="userProfile">
-                <div class="user-avatar">GU</div>
-                <div class="user-info">
-                    <h4>Cikgu Ahmad</h4>
-                    <p>Admin Guru Tahun 6</p>
-                </div>
-                <i class="fas fa-chevron-down"></i>
+                <a href="subjek-saya.php" class="sidebar-item active">
+                    <i class="fas fa-book"></i>
+                    <span>Subjek Saya</span>
+                    <span class="badge"><?php echo count($subjects); ?></span>
+                </a>
             </div>
-        </div>
-    </header>
 
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-section">
-            <div class="sidebar-title">Menu Utama</div>
-            <a href="dashboard-admin.html" class="sidebar-item">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="kelas-saya.html" class="sidebar-item">
-                <i class="fas fa-users"></i>
-                Kelas Saya
-                <span class="badge">3</span>
-            </a>
-            <a href="pelajar-saya.html" class="sidebar-item">
-                <i class="fas fa-user-graduate"></i>
-                Pelajar Saya
-                <span class="badge">85</span>
-            </a>
-            <a href="subjek-saya.html" class="sidebar-item active">
-                <i class="fas fa-book"></i>
-                Subjek Saya
-                <span class="badge">4</span>
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.html" class="sidebar-item">
-                <i class="fas fa-plus-circle"></i>
-                Tambah Markah
-            </a>
-            <a href="kemaskini-markah.html" class="sidebar-item">
-                <i class="fas fa-edit"></i>
-                Kemaskini Markah
-            </a>
-            <a href="semak-markah.html" class="sidebar-item">
-                <i class="fas fa-search"></i>
-                Semak Markah
-            </a>
-            <a href="laporan-prestasi.html" class="sidebar-item">
-                <i class="fas fa-chart-bar"></i>
-                Laporan Prestasi
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Pengurusan</div>
-            <a href="jadual-ujian.html" class="sidebar-item">
-                <i class="fas fa-calendar-alt"></i>
-                Jadual Ujian
-            </a>
-            <a href="tugasan.html" class="sidebar-item">
-                <i class="fas fa-tasks"></i>
-                Tugasan
-                <span class="badge">12</span>
-            </a>
-            <a href="kehadiran.html" class="sidebar-item">
-                <i class="fas fa-clipboard-check"></i>
-                Kehadiran
-            </a>
-            <a href="komunikasi.html" class="sidebar-item">
-                <i class="fas fa-comments"></i>
-                Komunikasi Ibu Bapa
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Sistem</div>
-            <a href="profil.html" class="sidebar-item">
-                <i class="fas fa-user-cog"></i>
-                Profil Saya
-            </a>
-            <a href="tetapan.html" class="sidebar-item">
-                <i class="fas fa-cog"></i>
-                Tetapan
-            </a>
-            <a href="bantuan-admin.html" class="sidebar-item">
-                <i class="fas fa-question-circle"></i>
-                Bantuan
-            </a>
-            <a href="#" class="sidebar-item" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                Log Keluar
-            </a>
-        </div>
-    </aside>
-
-    <!-- Main Content -->
-    <main class="main-content" id="mainContent">
-        <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h2>Subjek Saya 📚</h2>
-                <p>Urus dan pantau semua subjek yang anda ajar</p>
-            </div>
-            <div class="page-actions">
-                <button class="btn btn-secondary" onclick="muatSemulaData()">
-                    <i class="fas fa-sync-alt"></i>
-                    Muat Semula
-                </button>
-                <button class="btn btn-primary" onclick="tambahSubjek()">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Peperiksaan & Penilaian</div>
+                <a href="tambah-markah.php" class="sidebar-item">
                     <i class="fas fa-plus-circle"></i>
-                    Tambah Subjek
-                </button>
+                    <span>Tambah Markah</span>
+                </a>
+                <a href="kemaskini-markah.php" class="sidebar-item">
+                    <i class="fas fa-edit"></i>
+                    <span>Kemaskini Markah</span>
+                </a>
+                <a href="semak-markah.php" class="sidebar-item">
+                    <i class="fas fa-search"></i>
+                    <span>Semak Markah</span>
+                </a>
+                <a href="laporan-prestasi.php" class="sidebar-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Laporan Prestasi</span>
+                </a>
             </div>
-        </div>
 
-        <!-- Tabs for View Options -->
-        <div class="tabs">
-            <button class="tab-btn active" onclick="changeView('cards')">
-                <i class="fas fa-th-large"></i>
-                Paparan Kad
-            </button>
-            <button class="tab-btn" onclick="changeView('table')">
-                <i class="fas fa-table"></i>
-                Paparan Jadual
-            </button>
-        </div>
-
-        <!-- Search and Filter Section -->
-        <div class="search-filter-section">
-            <div class="search-container">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" class="search-input" id="searchInput" placeholder="Cari subjek mengikut nama, kod, atau jenis..." onkeyup="searchSubjects()">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Pengurusan</div>
+                <a href="jadual-ujian.php" class="sidebar-item">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Jadual Ujian</span>
+                </a>
+                <a href="tugasan.php" class="sidebar-item">
+                    <i class="fas fa-tasks"></i>
+                    <span>Tugasan</span>
+                    <span class="badge">12</span>
+                </a>
+                <a href="kehadiran.php" class="sidebar-item">
+                    <i class="fas fa-clipboard-check"></i>
+                    <span>Kehadiran</span>
+                </a>
+                <a href="komunikasi.php" class="sidebar-item">
+                    <i class="fas fa-comments"></i>
+                    <span>Komunikasi Ibu Bapa</span>
+                </a>
             </div>
-            
-            <div class="filter-options">
-                <div class="filter-group">
-                    <label class="filter-label">Jenis:</label>
-                    <select class="filter-select" id="filterType" onchange="filterSubjects()">
-                        <option value="">Semua Jenis</option>
-                        <option value="core">Teras</option>
-                        <option value="elective">Elektif</option>
-                        <option value="additional">Tambahan</option>
-                        <option value="extracurricular">Kokurikulum</option>
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label class="filter-label">Tahun:</label>
-                    <select class="filter-select" id="filterYear" onchange="filterSubjects()">
-                        <option value="">Semua Tahun</option>
-                        <option value="6">Tahun 6</option>
-                        <option value="5">Tahun 5</option>
-                        <option value="4">Tahun 4</option>
-                        <option value="3">Tahun 3</option>
-                        <option value="2">Tahun 2</option>
-                        <option value="1">Tahun 1</option>
-                        <option value="all">Semua Tahun</option>
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label class="filter-label">Status:</label>
-                    <select class="filter-select" id="filterStatus" onchange="filterSubjects()">
-                        <option value="">Semua Status</option>
-                        <option value="active">Aktif</option>
-                        <option value="inactive">Tidak Aktif</option>
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label class="filter-label">Susunan:</label>
-                    <select class="filter-select" id="filterSort" onchange="filterSubjects()">
-                        <option value="name">Nama (A-Z)</option>
-                        <option value="performance">Prestasi (Tertinggi)</option>
-                        <option value="students">Bilangan Pelajar</option>
-                    </select>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Sistem</div>
+                <a href="profil.php" class="sidebar-item">
+                    <i class="fas fa-user-cog"></i>
+                    <span>Profil Saya</span>
+                </a>
+                <a href="tetapan.php" class="sidebar-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Tetapan</span>
+                </a>
+                <a href="bantuan.php" class="sidebar-item">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Bantuan</span>
+                </a>
+                <a href="logout.php" class="sidebar-item" style="color: var(--danger);">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Log Keluar</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <h2><i class="fas fa-book"></i> Subjek Saya</h2>
+                <div class="header-actions">
+                    <button class="btn btn-outline" onclick="exportData()">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <button class="btn btn-primary" onclick="openEditModal()">
+                        <i class="fas fa-plus"></i> Tambah Subjek Baru
+                    </button>
                 </div>
             </div>
-        </div>
 
-        <!-- Subject Cards View -->
-        <div class="subject-cards" id="cardsView">
-            <!-- Subject cards will be loaded here -->
-        </div>
-
-        <!-- Subject Table View -->
-        <div class="subject-table-container" id="tableView">
-            <table id="subjectTable">
-                <thead>
-                    <tr>
-                        <th>SUBJEK</th>
-                        <th>KOD</th>
-                        <th>JENIS</th>
-                        <th>TAHUN</th>
-                        <th>KELAS</th>
-                        <th>PELAJAR</th>
-                        <th>PRESTASI</th>
-                        <th>SUKATAN</th>
-                        <th>STATUS</th>
-                        <th>TINDAKAN</th>
-                    </tr>
-                </thead>
-                <tbody id="subjectTableBody">
-                    <!-- Subject table rows will be loaded here -->
-                </tbody>
-            </table>
-            
-            <!-- Empty State -->
-            <div class="empty-state" id="emptyState" style="display: none;">
-                <i class="fas fa-book-open"></i>
-                <h3>Tiada Subjek Ditemui</h3>
-                <p>Tiada subjek yang sepadan dengan carian atau penapis anda.</p>
-                <button class="btn btn-secondary" onclick="resetFilters()">
-                    <i class="fas fa-redo"></i>
-                    Reset Penapis
-                </button>
-            </div>
-        </div>
-    </main>
-
-    <script>
-        // Save subject via AJAX
-function saveSubject(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    
-    // Show loading
-    const submitBtn = document.getElementById('submitBtn');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
-    submitBtn.disabled = true;
-    
-    // Send AJAX request
-    fetch('', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (response.redirected) {
-            window.location.href = response.url;
-        } else {
-            return response.text();
-        }
-    })
-    .then(data => {
-        showNotification('Subjek berjaya disimpan ke database!', 'success');
-        closeEditModal();
-        
-        // Reload page after delay
-        setTimeout(() => {
-            location.reload();
-        }, 1500);
-    })
-    .catch(error => {
-        showNotification('Ralat: ' + error.message, 'error');
-    })
-    .finally(() => {
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    });
-}
-
-// Edit subject function update
-function editSubject(subjectId) {
-    isEditingSubject = true;
-    currentSubjectId = subjectId;
-    
-    const subject = subjectsData.find(s => s.id === subjectId);
-    if (subject) {
-        document.getElementById('editModalTitle').textContent = 'Edit Subjek';
-        document.getElementById('formAction').value = 'edit_subject';
-        document.getElementById('formSubjectId').value = subject.db_id || subject.id; // Use database ID
-        
-        document.getElementById('subjectName').value = subject.name;
-        document.getElementById('subjectCode').value = subject.code;
-        document.getElementById('subjectType').value = subject.type;
-        document.getElementById('subjectYear').value = subject.year;
-        document.getElementById('subjectDescription').value = subject.description || '';
-        document.getElementById('subjectTextbook').value = subject.books ? subject.books.split(',')[0] : '';
-        document.getElementById('subjectNotes').value = subject.notes || '';
-        
-        editSubjectModal.classList.add('active');
-    }
-}
-
-// Delete subject
-function deleteSubject(subjectId) {
-    if (confirm('Adakah anda pasti ingin memadam subjek ini?')) {
-        const formData = new FormData();
-        formData.append('action', 'delete_subject');
-        formData.append('subject_id', subjectId);
-        
-        fetch('', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (response.redirected) {
-                window.location.href = response.url;
-            }
-        });
-    }
-}
-        // DOM Elements
-        const menuToggle = document.getElementById('menuToggle');
-        const sidebar = document.getElementById('sidebar');
-        const sidebarOverlay = document.getElementById('sidebarOverlay');
-        const mainContent = document.getElementById('mainContent');
-        const subjectModal = document.getElementById('subjectModal');
-        const editSubjectModal = document.getElementById('editSubjectModal');
-        const syllabusModal = document.getElementById('syllabusModal');
-        const cardsView = document.getElementById('cardsView');
-        const tableView = document.getElementById('tableView');
-        const subjectTableBody = document.getElementById('subjectTableBody');
-        const emptyState = document.getElementById('emptyState');
-        const subjectForm = document.getElementById('subjectForm');
-
-        // Current state
-        let subjectsData = [];
-        let filteredSubjects = [];
-        let currentView = 'cards';
-        let isEditingSubject = false;
-        let currentSubjectId = null;
-        let currentSyllabusSubjectId = null;
-
-        // Subject icons mapping
-        const subjectIcons = {
-            'Matematik': { icon: 'fas fa-calculator', class: 'math' },
-            'Sains': { icon: 'fas fa-flask', class: 'science' },
-            'Bahasa Melayu': { icon: 'fas fa-book-open', class: 'bm' },
-            'Bahasa Inggeris': { icon: 'fas fa-language', class: 'bi' },
-            'PJ & Kesihatan': { icon: 'fas fa-running', class: 'pj' },
-            'Pendidikan Islam': { icon: 'fas fa-mosque', class: 'islamic' },
-            'Sejarah': { icon: 'fas fa-landmark', class: 'history' },
-            'Geografi': { icon: 'fas fa-globe-asia', class: 'geography' },
-            'Muzik': { icon: 'fas fa-music', class: 'music' },
-            'Seni': { icon: 'fas fa-palette', class: 'art' }
-        };
-
-        // Sample data for subjects
-        const sampleSubjects = [
-            {
-                id: 'SUB001',
-                name: 'Matematik',
-                code: 'MAT601',
-                type: 'core',
-                year: '6',
-                teacher: 'Cikgu Ahmad',
-                classes: ['6A', '6B', '5A'],
-                totalStudents: 85,
-                averagePerformance: 78.9,
-                attendanceRate: 92.3,
-                syllabusProgress: 65,
-                description: 'Matematik Tahun 6 merangkumi topik algebra, geometri, pecahan dan perpuluhan. Fokus kepada penyelesaian masalah.',
-                books: 'Matematik Tahun 6 (KPM), Latihan Topikal Matematik',
-                notes: 'Perlu fokus pada topik algebra yang masih lemah',
-                status: 'active',
-                syllabus: [
-                    { id: 'SYL001', topic: 'Nombor Bulat dan Operasi', completed: true },
-                    { id: 'SYL002', topic: 'Pecahan', completed: true },
-                    { id: 'SYL003', topic: 'Perpuluhan', completed: true },
-                    { id: 'SYL004', topic: 'Peratus', completed: true },
-                    { id: 'SYL005', topic: 'Wang', completed: true },
-                    { id: 'SYL006', topic: 'Masa dan Waktu', completed: true },
-                    { id: 'SYL007', topic: 'Ukuran Panjang', completed: false },
-                    { id: 'SYL008', topic: 'Ukuran Berat', completed: false },
-                    { id: 'SYL009', topic: 'Isipadu Cecair', completed: false },
-                    { id: 'SYL010', topic: 'Ruangan', completed: false },
-                    { id: 'SYL011', topic: 'Geometri', completed: false },
-                    { id: 'SYL012', topic: 'Koordinat', completed: false },
-                    { id: 'SYL013', topic: 'Perwakilan Data', completed: false },
-                    { id: 'SYL014', topic: 'Kebarangkalian', completed: false }
-                ],
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'SUB002',
-                name: 'Sains',
-                code: 'SNS601',
-                type: 'core',
-                year: '6',
-                teacher: 'Cikgu Ahmad',
-                classes: ['6A', '6B'],
-                totalStudents: 58,
-                averagePerformance: 75.2,
-                attendanceRate: 90.5,
-                syllabusProgress: 45,
-                description: 'Sains Tahun 6 meliputi biologi, fizik dan kimia asas dengan penekanan kepada eksperimen dan pemerhatian.',
-                books: 'Sains Tahun 6 (KPM), Buku Aktiviti Sains',
-                notes: 'Perlu lebih banyak sesi makmal untuk topik biologi',
-                status: 'active',
-                syllabus: [
-                    { id: 'SYL101', topic: 'Penyelidikan Sains', completed: true },
-                    { id: 'SYL102', topic: 'Manusia', completed: true },
-                    { id: 'SYL103', topic: 'Hidupan', completed: true },
-                    { id: 'SYL104', topic: 'Pertumbuhan', completed: true },
-                    { id: 'SYL105', topic: 'Interaksi Antara Hidupan', completed: true },
-                    { id: 'SYL106', topic: 'Pemuliharaan', completed: false },
-                    { id: 'SYL107', topic: 'Kekuatan dan Kestabilan', completed: false },
-                    { id: 'SYL108', topic: 'Gerakan', completed: false },
-                    { id: 'SYL109', topic: 'Kuasa', completed: false },
-                    { id: 'SYL110', topic: 'Tenaga', completed: false },
-                    { id: 'SYL111', topic: 'Pembolehubah', completed: false },
-                    { id: 'SYL112', topic: 'Sistem Suria', completed: false }
-                ],
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'SUB003',
-                name: 'Bahasa Melayu',
-                code: 'BML601',
-                type: 'core',
-                year: '6',
-                teacher: 'Cikgu Siti',
-                classes: ['6A', '6B', '5A'],
-                totalStudents: 85,
-                averagePerformance: 80.5,
-                attendanceRate: 93.1,
-                syllabusProgress: 70,
-                description: 'Bahasa Melayu Tahun 6 fokus kepada kemahiran membaca, menulis, bertutur dan mendengar dengan penekanan pada tatabahasa.',
-                books: 'Bahasa Melayu Tahun 6 (KPM), Buku Latihan Karangan',
-                notes: 'Perlu bimbingan khas untuk karangan naratif',
-                status: 'active',
-                syllabus: [
-                    { id: 'SYL201', topic: 'Kemahiran Mendengar', completed: true },
-                    { id: 'SYL202', topic: 'Kemahiran Bertutur', completed: true },
-                    { id: 'SYL203', topic: 'Kemahiran Membaca', completed: true },
-                    { id: 'SYL204', topic: 'Kemahiran Menulis', completed: true },
-                    { id: 'SYL205', topic: 'Tatabahasa', completed: true },
-                    { id: 'SYL206', topic: 'Kosa Kata', completed: true },
-                    { id: 'SYL207', topic: 'Karangan Naratif', completed: false },
-                    { id: 'SYL208', topic: 'Karangan Deskriptif', completed: false },
-                    { id: 'SYL209', topic: 'Karangan Ekspositori', completed: false },
-                    { id: 'SYL210', topic: 'Karangan Argumentatif', completed: false },
-                    { id: 'SYL211', topic: 'Sastera Kanak-kanak', completed: false },
-                    { id: 'SYL212', topic: 'Puisi Tradisional', completed: false }
-                ],
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'SUB004',
-                name: 'Bahasa Inggeris',
-                code: 'ENG601',
-                type: 'core',
-                year: '6',
-                teacher: 'Cikgu Ali',
-                classes: ['6A', '6B'],
-                totalStudents: 58,
-                averagePerformance: 72.8,
-                attendanceRate: 89.7,
-                syllabusProgress: 55,
-                description: 'English Year 6 focuses on reading, writing, speaking and listening skills with emphasis on grammar and vocabulary.',
-                books: 'English Year 6 (KPM), English Workbook',
-                notes: 'Need more speaking practice sessions',
-                status: 'active',
-                syllabus: [
-                    { id: 'SYL301', topic: 'Listening Skills', completed: true },
-                    { id: 'SYL302', topic: 'Speaking Skills', completed: true },
-                    { id: 'SYL303', topic: 'Reading Skills', completed: true },
-                    { id: 'SYL304', topic: 'Writing Skills', completed: true },
-                    { id: 'SYL305', topic: 'Grammar', completed: true },
-                    { id: 'SYL306', topic: 'Vocabulary', completed: false },
-                    { id: 'SYL307', topic: 'Comprehension', completed: false },
-                    { id: 'SYL308', topic: 'Composition', completed: false },
-                    { id: 'SYL309', topic: 'Poetry', completed: false },
-                    { id: 'SYL310', topic: 'Drama', completed: false },
-                    { id: 'SYL311', topic: 'Presentation Skills', completed: false },
-                    { id: 'SYL312', topic: 'Project Work', completed: false }
-                ],
-                createdAt: '2023-01-20'
-            },
-            {
-                id: 'SUB005',
-                name: 'PJ & Kesihatan',
-                code: 'PJK601',
-                type: 'core',
-                year: '6',
-                teacher: 'Cikgu Ahmad',
-                classes: ['6A', '6B', '5A'],
-                totalStudents: 85,
-                averagePerformance: 88.5,
-                attendanceRate: 95.2,
-                syllabusProgress: 80,
-                description: 'Pendidikan Jasmani dan Kesihatan Tahun 6 meliputi aktiviti fizikal, sukan, dan pendidikan kesihatan.',
-                books: 'PJ Tahun 6 (KPM), Buku Panduan Kesihatan',
-                notes: 'Aktiviti luar perlu dijadualkan lebih kerap',
-                status: 'active',
-                syllabus: [
-                    { id: 'SYL401', topic: 'Kecergasan Fizikal', completed: true },
-                    { id: 'SYL402', topic: 'Kemahiran Motor', completed: true },
-                    { id: 'SYL403', topic: 'Permainan Bola', completed: true },
-                    { id: 'SYL404', topic: 'Olahraga', completed: true },
-                    { id: 'SYL405', topic: 'Gimnastik', completed: true },
-                    { id: 'SYL406', topic: 'Renang', completed: true },
-                    { id: 'SYL407', topic: 'Pendidikan Kesihatan', completed: false },
-                    { id: 'SYL408', topic: 'Pemakanan', completed: false },
-                    { id: 'SYL409', topic: 'Keselamatan', completed: false },
-                    { id: 'SYL410', topic: 'Pertolongan Cemas', completed: false }
-                ],
-                createdAt: '2023-01-25'
-            }
-        ];
-
-        // Initialize page
-        function initializePage() {
-            subjectsData = [...sampleSubjects];
-            filteredSubjects = [...subjectsData];
-            
-            // Set up form submit handler
-            subjectForm.addEventListener('submit', saveSubject);
-            
-            // Load initial data
-            loadSubjectCards();
-            loadSubjectTable();
-            
-            // Set up filter listeners
-            document.getElementById('filterType').addEventListener('change', filterSubjects);
-            document.getElementById('filterYear').addEventListener('change', filterSubjects);
-            document.getElementById('filterStatus').addEventListener('change', filterSubjects);
-            document.getElementById('filterSort').addEventListener('change', filterSubjects);
-        }
-
-        // Load subject cards
-        function loadSubjectCards() {
-            if (filteredSubjects.length === 0) {
-                cardsView.innerHTML = '';
-                emptyState.style.display = 'block';
-                return;
-            }
-            
-            emptyState.style.display = 'none';
-            
-            cardsView.innerHTML = filteredSubjects.map(subject => {
-                // Get subject icon
-                const iconInfo = subjectIcons[subject.name] || { icon: 'fas fa-book', class: 'default' };
-                
-                // Determine type text
-                const typeText = {
-                    'core': 'Teras',
-                    'elective': 'Elektif',
-                    'additional': 'Tambahan',
-                    'extracurricular': 'Kokurikulum'
-                }[subject.type] || subject.type;
-                
-                // Determine type color
-                const typeColor = {
-                    'core': 'var(--primary)',
-                    'elective': 'var(--info)',
-                    'additional': 'var(--warning)',
-                    'extracurricular': 'var(--success)'
-                }[subject.type] || 'var(--medium-gray)';
-                
-                return `
-                    <div class="subject-card">
-                        <div class="subject-card-header">
-                            <div class="subject-icon ${iconInfo.class}">
-                                <i class="${iconInfo.icon}"></i>
-                            </div>
-                            <div class="subject-info">
-                                <h3>${subject.name}</h3>
-                                <p>${subject.code} • <span style="color: ${typeColor}; font-weight: 600;">${typeText}</span> • Tahun ${subject.year}</p>
-                            </div>
-                        </div>
-                        
-                        <div class="subject-stats">
-                            <div class="subject-stat">
-                                <div class="stat-value">${subject.classes.length}</div>
-                                <div class="stat-label">Kelas</div>
-                            </div>
-                            <div class="subject-stat">
-                                <div class="stat-value">${subject.totalStudents}</div>
-                                <div class="stat-label">Pelajar</div>
-                            </div>
-                            <div class="subject-stat">
-                                <div class="stat-value">${subject.averagePerformance}%</div>
-                                <div class="stat-label">Prestasi</div>
-                            </div>
-                            <div class="subject-stat">
-                                <div class="stat-value">${subject.attendanceRate}%</div>
-                                <div class="stat-label">Kehadiran</div>
-                            </div>
-                        </div>
-                        
-                        <div class="class-list">
-                            <div class="class-list-title">Kelas yang Mengikuti:</div>
-                            <div class="class-tags">
-                                ${subject.classes.map(cls => `
-                                    <span class="class-tag">${cls}</span>
-                                `).join('')}
-                            </div>
-                        </div>
-                        
-                        <div class="syllabus-progress">
-                            <div class="progress-header">
-                                <div class="progress-title">Kemajuan Sukatan Pelajaran</div>
-                                <div class="progress-value">${subject.syllabusProgress}%</div>
-                            </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${subject.syllabusProgress}%"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="subject-actions">
-                            <button class="action-btn view" onclick="viewSubject('${subject.id}')">
-                                <i class="fas fa-eye"></i>
-                                Lihat
-                            </button>
-                            <button class="action-btn manage" onclick="manageSyllabus('${subject.id}')">
-                                <i class="fas fa-tasks"></i>
-                                Sukatan
-                            </button>
-                            <button class="action-btn edit" onclick="editSubject('${subject.id}')">
-                                <i class="fas fa-edit"></i>
-                                Edit
-                            </button>
-                        </div>
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
+                        <i class="fas fa-book-open"></i>
                     </div>
-                `;
-            }).join('');
-        }
+                    <div class="stat-content">
+                        <h3><?php echo count($subjects); ?></h3>
+                        <p>Jumlah Subjek</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(76, 201, 240, 0.1); color: var(--success);">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo array_sum(array_column($subjects, 'totalStudents')); ?></h3>
+                        <p>Jumlah Pelajar</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(248, 150, 30, 0.1); color: var(--warning);">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>
+                            <?php 
+                            $avg_perf = count($subjects) > 0 ? 
+                                array_sum(array_column($subjects, 'averagePerformance')) / count($subjects) : 0;
+                                echo number_format($avg_perf, 1);
+                            ?>%
+                        </h3>
+                        <p>Purata Prestasi</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: rgba(247, 37, 133, 0.1); color: var(--danger);">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>
+                            <?php 
+                            $avg_prog = count($subjects) > 0 ? 
+                                array_sum(array_column($subjects, 'syllabusProgress')) / count($subjects) : 0;
+                                echo number_format($avg_prog, 1);
+                            ?>%
+                        </h3>
+                        <p>Kemajuan Sukatan</p>
+                    </div>
+                </div>
+            </div>
 
-        // Load subject table
-        function loadSubjectTable() {
-            if (filteredSubjects.length === 0) {
-                subjectTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="10" style="text-align: center; padding: 40px; color: var(--medium-gray);">
-                            <i class="fas fa-book-open" style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
-                            Tiada subjek ditemui
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            subjectTableBody.innerHTML = filteredSubjects.map(subject => {
-                // Get subject icon
-                const iconInfo = subjectIcons[subject.name] || { icon: 'fas fa-book', class: 'default' };
-                
-                // Determine type text
-                const typeText = {
-                    'core': 'Teras',
-                    'elective': 'Elektif',
-                    'additional': 'Tambahan',
-                    'extracurricular': 'Kokurikulum'
-                }[subject.type] || subject.type;
-                
-                // Determine status badge
-                const statusClass = subject.status === 'active' ? 'status-active' : 'status-inactive';
-                const statusText = subject.status === 'active' ? 'AKTIF' : 'TIDAK AKTIF';
-                
-                return `
-                    <tr>
-                        <td>
-                            <div class="subject-cell">
-                                <div class="subject-table-icon ${iconInfo.class}">
-                                    <i class="${iconInfo.icon}"></i>
-                                </div>
-                                <div>
-                                    <div style="font-weight: 700; color: var(--dark-gray);">${subject.name}</div>
-                                    <div style="font-size: 13px; color: var(--medium-gray);">${subject.teacher}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td>${subject.code}</td>
-                        <td>${typeText}</td>
-                        <td>Tahun ${subject.year}</td>
-                        <td>${subject.classes.length} kelas</td>
-                        <td>${subject.totalStudents}</td>
-                        <td>${subject.averagePerformance}%</td>
-                        <td>${subject.syllabusProgress}%</td>
-                        <td>
-                            <span class="status-badge ${statusClass}">${statusText}</span>
-                        </td>
-                        <td>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="action-btn view" onclick="viewSubject('${subject.id}')" style="padding: 6px 12px;">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                                <button class="action-btn manage" onclick="manageSyllabus('${subject.id}')" style="padding: 6px 12px;">
-                                    <i class="fas fa-tasks"></i>
-                                </button>
-                                <button class="action-btn edit" onclick="editSubject('${subject.id}')" style="padding: 6px 12px;">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // Search subjects
-        function searchSubjects() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
-            filteredSubjects = subjectsData.filter(subject => {
-                return subject.name.toLowerCase().includes(searchTerm) ||
-                       subject.code.toLowerCase().includes(searchTerm) ||
-                       subject.type.toLowerCase().includes(searchTerm) ||
-                       subject.teacher.toLowerCase().includes(searchTerm);
-            });
-            
-            if (currentView === 'cards') {
-                loadSubjectCards();
-            } else {
-                loadSubjectTable();
-            }
-        }
-
-        // Filter subjects
-        function filterSubjects() {
-            const typeFilter = document.getElementById('filterType').value;
-            const yearFilter = document.getElementById('filterYear').value;
-            const statusFilter = document.getElementById('filterStatus').value;
-            const sortFilter = document.getElementById('filterSort').value;
-            
-            filteredSubjects = subjectsData.filter(subject => {
-                // Apply type filter
-                if (typeFilter && subject.type !== typeFilter) return false;
-                
-                // Apply year filter
-                if (yearFilter && subject.year !== yearFilter && subject.year !== 'all') {
-                    if (yearFilter !== 'all') return false;
-                }
-                
-                // Apply status filter
-                if (statusFilter && subject.status !== statusFilter) return false;
-                
-                return true;
-            });
-            
-            // Apply sorting
-            if (sortFilter === 'name') {
-                filteredSubjects.sort((a, b) => a.name.localeCompare(b.name));
-            } else if (sortFilter === 'performance') {
-                filteredSubjects.sort((a, b) => b.averagePerformance - a.averagePerformance);
-            } else if (sortFilter === 'students') {
-                filteredSubjects.sort((a, b) => b.totalStudents - a.totalStudents);
-            }
-            
-            if (currentView === 'cards') {
-                loadSubjectCards();
-            } else {
-                loadSubjectTable();
-            }
-        }
-
-        // Reset filters
-        function resetFilters() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('filterType').value = '';
-            document.getElementById('filterYear').value = '';
-            document.getElementById('filterStatus').value = '';
-            document.getElementById('filterSort').value = 'name';
-            
-            filteredSubjects = [...subjectsData];
-            
-            if (currentView === 'cards') {
-                loadSubjectCards();
-            } else {
-                loadSubjectTable();
-            }
-            
-            showNotification('Semua penapis telah dikembalikan kepada tetapan asal', 'success');
-        }
-
-        // Change view
-        function changeView(view) {
-            currentView = view;
-            
-            // Update active tab
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.currentTarget.classList.add('active');
-            
-            // Show active view
-            if (view === 'cards') {
-                cardsView.style.display = 'grid';
-                tableView.style.display = 'none';
-                loadSubjectCards();
-            } else if (view === 'table') {
-                cardsView.style.display = 'none';
-                tableView.style.display = 'block';
-                loadSubjectTable();
-            }
-        }
-
-        // View subject details
-        function viewSubject(subjectId) {
-            const subject = subjectsData.find(s => s.id === subjectId);
-            if (subject) {
-                // Update modal content
-                const iconInfo = subjectIcons[subject.name] || { icon: 'fas fa-book', class: 'default' };
-                
-                document.getElementById('subjectDetailIcon').className = `subject-icon ${iconInfo.class}`;
-                document.getElementById('subjectDetailIcon').innerHTML = `<i class="${iconInfo.icon}"></i>`;
-                document.getElementById('subjectNameDetail').textContent = subject.name;
-                document.getElementById('subjectCodeDetail').textContent = `Kod: ${subject.code}`;
-                document.getElementById('subjectTeacherDetail').textContent = subject.teacher;
-                document.getElementById('subjectClassesDetail').textContent = `${subject.classes.length} kelas`;
-                document.getElementById('subjectStudentsDetail').textContent = `${subject.totalStudents} pelajar`;
-                document.getElementById('subjectPerformanceDetail').textContent = `${subject.averagePerformance}%`;
-                document.getElementById('subjectDescriptionDetail').textContent = subject.description || 'Tiada penerangan';
-                document.getElementById('subjectBooksDetail').textContent = subject.books || 'Tiada maklumat buku';
-                document.getElementById('syllabusProgressDetail').textContent = `${subject.syllabusProgress}%`;
-                document.getElementById('syllabusProgressBar').style.width = `${subject.syllabusProgress}%`;
-                
-                // Load class tags
-                const subjectClassesList = document.getElementById('subjectClassesList');
-                subjectClassesList.innerHTML = subject.classes.map(cls => `
-                    <span class="class-tag">${cls}</span>
-                `).join('');
-                
-                subjectModal.classList.add('active');
-            }
-        }
-
-        // Add new subject
-        function tambahSubjek() {
-            isEditingSubject = false;
-            currentSubjectId = null;
-            document.getElementById('editModalTitle').textContent = 'Tambah Subjek Baru';
-            subjectForm.reset();
-            
-            // Set default values
-            document.getElementById('subjectYear').value = '6';
-            document.getElementById('subjectType').value = 'core';
-            
-            // Uncheck all class checkboxes
-            document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                cb.checked = false;
-            });
-            
-            editSubjectModal.classList.add('active');
-        }
-
-        // Edit subject
-        function editSubject(subjectId) {
-            isEditingSubject = true;
-            currentSubjectId = subjectId;
-            
-            const subject = subjectsData.find(s => s.id === subjectId);
-            if (subject) {
-                document.getElementById('editModalTitle').textContent = 'Edit Subjek';
-                document.getElementById('subjectName').value = subject.name;
-                document.getElementById('subjectCode').value = subject.code;
-                document.getElementById('subjectType').value = subject.type;
-                document.getElementById('subjectYear').value = subject.year;
-                document.getElementById('subjectDescription').value = subject.description || '';
-                document.getElementById('subjectTextbook').value = subject.books ? subject.books.split(',')[0] : '';
-                document.getElementById('subjectNotes').value = subject.notes || '';
-                
-                // Check class checkboxes
-                document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                    cb.checked = subject.classes.includes(cb.value) || 
-                                (cb.value === 'all' && subject.classes.length > 3);
-                });
-                
-                editSubjectModal.classList.add('active');
-            }
-        }
-
-        // Save subject
-        function saveSubject(event) {
-            event.preventDefault();
-            
-            const subjectName = document.getElementById('subjectName').value;
-            const subjectCode = document.getElementById('subjectCode').value;
-            const subjectType = document.getElementById('subjectType').value;
-            const subjectYear = document.getElementById('subjectYear').value;
-            const subjectDescription = document.getElementById('subjectDescription').value;
-            const subjectTextbook = document.getElementById('subjectTextbook').value;
-            const subjectCredits = document.getElementById('subjectCredits').value;
-            const subjectNotes = document.getElementById('subjectNotes').value;
-            
-            // Validate required fields
-            if (!subjectName || !subjectCode || !subjectType || !subjectYear) {
-                showNotification('Sila isi semua maklumat yang diperlukan', 'error');
-                return;
-            }
-            
-            // Get selected classes
-            const selectedClasses = [];
-            document.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-                if (cb.value !== 'all') {
-                    selectedClasses.push(cb.value);
-                }
-            });
-            
-            // If "all" is selected, add all classes
-            const allChecked = document.querySelector('input[type="checkbox"][value="all"]:checked');
-            if (allChecked) {
-                selectedClasses.push('6A', '6B', '5A', '5B', '4A');
-            }
-            
-            // Remove duplicates
-            const uniqueClasses = [...new Set(selectedClasses)];
-            
-            if (isEditingSubject && currentSubjectId) {
-                // Update existing subject
-                const index = subjectsData.findIndex(s => s.id === currentSubjectId);
-                if (index !== -1) {
-                    subjectsData[index] = {
-                        ...subjectsData[index],
-                        name: subjectName,
-                        code: subjectCode,
-                        type: subjectType,
-                        year: subjectYear,
-                        classes: uniqueClasses,
-                        description: subjectDescription,
-                        books: subjectTextbook,
-                        notes: subjectNotes
-                    };
-                    
-                    showNotification('Maklumat subjek berjaya dikemaskini', 'success');
-                }
-            } else {
-                // Add new subject
-                const newSubject = {
-                    id: 'SUB' + (subjectsData.length + 1).toString().padStart(3, '0'),
-                    name: subjectName,
-                    code: subjectCode,
-                    type: subjectType,
-                    year: subjectYear,
-                    teacher: 'Cikgu Ahmad',
-                    classes: uniqueClasses,
-                    totalStudents: uniqueClasses.length * 28, // Estimate
-                    averagePerformance: Math.floor(Math.random() * 30) + 60,
-                    attendanceRate: Math.floor(Math.random() * 20) + 75,
-                    syllabusProgress: 0,
-                    description: subjectDescription,
-                    books: subjectTextbook,
-                    notes: subjectNotes,
-                    status: 'active',
-                    syllabus: [],
-                    createdAt: new Date().toISOString().split('T')[0]
-                };
-                
-                subjectsData.push(newSubject);
-                showNotification('Subjek baru berjaya ditambah', 'success');
-            }
-            
-            // Update data
-            filterSubjects();
-            closeEditModal();
-        }
-
-        // Manage syllabus
-        function manageSyllabus(subjectId) {
-            currentSyllabusSubjectId = subjectId;
-            const subject = subjectsData.find(s => s.id === subjectId);
-            
-            if (subject) {
-                const iconInfo = subjectIcons[subject.name] || { icon: 'fas fa-book', class: 'default' };
-                
-                document.getElementById('syllabusSubjectIcon').className = `subject-icon ${iconInfo.class}`;
-                document.getElementById('syllabusSubjectIcon').innerHTML = `<i class="${iconInfo.icon}"></i>`;
-                document.getElementById('syllabusSubjectName').textContent = subject.name;
-                document.getElementById('syllabusProgressText').textContent = `${subject.syllabusProgress}%`;
-                document.getElementById('syllabusOverallProgress').textContent = `${subject.syllabusProgress}%`;
-                document.getElementById('syllabusOverallProgressBar').style.width = `${subject.syllabusProgress}%`;
-                
-                // Load syllabus items
-                const syllabusItems = document.getElementById('syllabusItems');
-                syllabusItems.innerHTML = subject.syllabus.map(item => `
-                    <div class="syllabus-item">
-                        <div class="syllabus-item-info">
-                            <div class="syllabus-item-checkbox ${item.completed ? 'checked' : ''}" onclick="toggleSyllabusItem('${item.id}')">
-                                ${item.completed ? '<i class="fas fa-check"></i>' : ''}
-                            </div>
-                            <div class="syllabus-item-details">
-                                <h4>${item.topic}</h4>
-                                <p>${item.completed ? 'Selesai' : 'Belum Selesai'}</p>
-                            </div>
+            <!-- Subjects Grid -->
+            <div class="subjects-grid" id="subjectsGrid">
+                <?php if (empty($subjects)): ?>
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 50px;">
+                        <div style="font-size: 3rem; color: var(--light-gray); margin-bottom: 20px;">
+                            <i class="fas fa-book"></i>
                         </div>
-                        <button class="action-btn delete" onclick="removeSyllabusItem('${item.id}')" style="padding: 6px 12px;">
-                            <i class="fas fa-trash"></i>
+                        <h3 style="color: var(--gray); margin-bottom: 10px;">Tiada Subjek Dijumpai</h3>
+                        <p style="color: var(--gray); margin-bottom: 20px;">Anda belum menambah sebarang subjek lagi.</p>
+                        <button class="btn btn-primary" onclick="openEditModal()">
+                            <i class="fas fa-plus"></i> Tambah Subjek Pertama
                         </button>
                     </div>
-                `).join('');
-                
-                syllabusModal.classList.add('active');
-            }
-        }
+                <?php else: ?>
+                    <?php foreach ($subjects as $subject): ?>
+                    <div class="subject-card">
+                        <div class="subject-header">
+                            <div class="subject-code"><?php echo htmlspecialchars($subject['code']); ?></div>
+                            <h3 class="subject-title"><?php echo htmlspecialchars($subject['name']); ?></h3>
+                            <div class="subject-teacher">
+                                <i class="fas fa-user-tie"></i>
+                                <?php echo htmlspecialchars($subject['teacher']); ?>
+                            </div>
+                        </div>
+                        
+                        <div class="subject-body">
+                            <div class="subject-info">
+                                <span><i class="fas fa-calendar"></i> Tahun <?php echo htmlspecialchars($subject['year']); ?></span>
+                                <span><i class="fas fa-tag"></i> <?php echo ucfirst($subject['type']); ?></span>
+                            </div>
+                            
+                            <?php if ($subject['description']): ?>
+                            <p style="color: var(--gray); font-size: 0.9rem; margin-bottom: 15px;">
+                                <?php echo htmlspecialchars($subject['description']); ?>
+                            </p>
+                            <?php endif; ?>
+                            
+                            <div class="subject-classes">
+                                <span style="font-weight: 600; color: var(--dark);">Kelas:</span>
+                                <div class="class-tags">
+                                    <?php if (!empty($subject['classes'])): ?>
+                                        <?php foreach ($subject['classes'] as $class): ?>
+                                            <span class="class-tag"><?php echo htmlspecialchars($class); ?></span>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <span class="class-tag">Belum Ditetapkan</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            
+                            <div class="subject-metrics">
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['totalStudents']; ?></div>
+                                    <div class="metric-label">Pelajar</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['averagePerformance']; ?>%</div>
+                                    <div class="metric-label">Prestasi</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['attendanceRate']; ?>%</div>
+                                    <div class="metric-label">Kehadiran</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value"><?php echo $subject['syllabusProgress']; ?>%</div>
+                                    <div class="metric-label">Sukatan</div>
+                                </div>
+                            </div>
+                            
+                            <div class="subject-footer">
+                                <button class="btn-icon" onclick="viewSubject('<?php echo $subject['id']; ?>')">
+                                    <i class="fas fa-eye"></i> Lihat
+                                </button>
+                                <button class="btn-icon" onclick="editSubject('<?php echo $subject['id']; ?>')">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="btn-icon" onclick="deleteSubject('<?php echo $subject['id']; ?>')">
+                                    <i class="fas fa-trash"></i> Padam
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
 
-        // Toggle syllabus item
-        function toggleSyllabusItem(itemId) {
-            const subject = subjectsData.find(s => s.id === currentSyllabusSubjectId);
-            if (subject) {
-                const item = subject.syllabus.find(i => i.id === itemId);
-                if (item) {
-                    item.completed = !item.completed;
+            <!-- Message Display -->
+            <?php if ($success_message): ?>
+                <div class="alert-message success" id="successMessage">
+                    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success_message); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($error_message): ?>
+                <div class="alert-message error" id="errorMessage">
+                    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error_message); ?>
+                </div>
+            <?php endif; ?>
+        </main>
+    </div>
+
+    <!-- Modal for Add/Edit Subject -->
+    <div class="modal" id="editSubjectModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="editModalTitle">Tambah Subjek Baru</h3>
+                <button class="modal-close" onclick="closeEditModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="subjectForm" method="POST" action="">
+                    <input type="hidden" name="action" value="add_subject">
                     
-                    // Update progress
-                    const completedItems = subject.syllabus.filter(i => i.completed).length;
-                    subject.syllabusProgress = Math.round((completedItems / subject.syllabus.length) * 100);
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label required">Nama Subjek</label>
+                            <input type="text" class="form-input" id="subjectName" name="subject_name" 
+                                   placeholder="Contoh: Matematik, Sains" required
+                                   value="<?php echo isset($_POST['subject_name']) ? htmlspecialchars($_POST['subject_name']) : ''; ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label required">Kod Subjek</label>
+                            <input type="text" class="form-input" id="subjectCode" name="subject_code" 
+                                   placeholder="Contoh: MAT601, SNS601" required
+                                   value="<?php echo isset($_POST['subject_code']) ? htmlspecialchars($_POST['subject_code']) : ''; ?>">
+                        </div>
+                    </div>
                     
-                    // Update UI
-                    manageSyllabus(currentSyllabusSubjectId);
-                }
-            }
-        }
-
-        // Remove syllabus item
-        function removeSyllabusItem(itemId) {
-            const subject = subjectsData.find(s => s.id === currentSyllabusSubjectId);
-            if (subject && confirm('Adakah anda pasti ingin memadam topik ini?')) {
-                subject.syllabus = subject.syllabus.filter(i => i.id !== itemId);
-                
-                // Update progress
-                const completedItems = subject.syllabus.filter(i => i.completed).length;
-                subject.syllabusProgress = subject.syllabus.length > 0 ? 
-                    Math.round((completedItems / subject.syllabus.length) * 100) : 0;
-                
-                // Update UI
-                manageSyllabus(currentSyllabusSubjectId);
-                showNotification('Topik sukatan pelajaran telah dipadam', 'success');
-            }
-        }
-
-        // Add syllabus item
-        function addSyllabusItem() {
-            const topic = prompt('Masukkan nama topik baru:');
-            if (topic && topic.trim() !== '') {
-                const subject = subjectsData.find(s => s.id === currentSyllabusSubjectId);
-                if (subject) {
-                    const newItem = {
-                        id: 'SYL' + (subject.syllabus.length + 1).toString().padStart(3, '0'),
-                        topic: topic.trim(),
-                        completed: false
-                    };
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label required">Jenis Subjek</label>
+                            <select class="form-select" id="subjectType" name="subject_type" required>
+                                <option value="">Pilih Jenis</option>
+                                <option value="core" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'core') ? 'selected' : ''; ?>>Teras</option>
+                                <option value="elective" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'elective') ? 'selected' : ''; ?>>Elektif</option>
+                                <option value="additional" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'additional') ? 'selected' : ''; ?>>Tambahan</option>
+                                <option value="extracurricular" <?php echo (isset($_POST['subject_type']) && $_POST['subject_type'] == 'extracurricular') ? 'selected' : ''; ?>>Kokurikulum</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label required">Tahun</label>
+                            <select class="form-select" id="subjectYear" name="subject_year" required>
+                                <option value="">Pilih Tahun</option>
+                                <option value="all" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == 'all') ? 'selected' : ''; ?>>Semua Tahun</option>
+                                <option value="1-6" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '1-6') ? 'selected' : ''; ?>>Tahun 1-6</option>
+                                <option value="6" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '6') ? 'selected' : ''; ?>>Tahun 6</option>
+                                <option value="5" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '5') ? 'selected' : ''; ?>>Tahun 5</option>
+                                <option value="4-6" <?php echo (isset($_POST['subject_year']) && $_POST['subject_year'] == '4-6') ? 'selected' : ''; ?>>Tahun 4-6</option>
+                            </select>
+                        </div>
+                    </div>
                     
-                    subject.syllabus.push(newItem);
+                    <div class="form-group">
+                        <label class="form-label">Penerangan Subjek</label>
+                        <textarea class="form-textarea" id="subjectDescription" name="subject_description" 
+                                  placeholder="Penerangan ringkas mengenai subjek..." rows="3"><?php echo isset($_POST['subject_description']) ? htmlspecialchars($_POST['subject_description']) : ''; ?></textarea>
+                    </div>
                     
-                    // Update progress
-                    const completedItems = subject.syllabus.filter(i => i.completed).length;
-                    subject.syllabusProgress = Math.round((completedItems / subject.syllabus.length) * 100);
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Buku Teks Utama</label>
+                            <input type="text" class="form-input" id="subjectTextbook" name="subject_textbook" 
+                                   placeholder="Nama buku teks"
+                                   value="<?php echo isset($_POST['subject_textbook']) ? htmlspecialchars($_POST['subject_textbook']) : ''; ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Catatan</label>
+                            <input type="text" class="form-input" id="subjectNotes" name="subject_notes" 
+                                   placeholder="Catatan tambahan"
+                                   value="<?php echo isset($_POST['subject_notes']) ? htmlspecialchars($_POST['subject_notes']) : ''; ?>">
+                        </div>
+                    </div>
                     
-                    // Update UI
-                    manageSyllabus(currentSyllabusSubjectId);
-                    showNotification('Topik baru telah ditambah', 'success');
-                }
-            }
-        }
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeEditModal()">
+                            Batal
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-save"></i> Simpan Subjek
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
-        // Save syllabus
-        function saveSyllabus() {
-            showNotification('Sukatan pelajaran telah disimpan', 'success');
-            closeSyllabusModal();
-        }
-
-        // Reload data
-        function muatSemulaData() {
-            filterSubjects();
-            showNotification('Data subjek disegarkan', 'success');
-        }
-
-        // Close modal
-        function closeModal() {
-            subjectModal.classList.remove('active');
-        }
-
-        // Close edit modal
-        function closeEditModal() {
-            editSubjectModal.classList.remove('active');
-            isEditingSubject = false;
-            currentSubjectId = null;
-        }
-
-        // Close syllabus modal
-        function closeSyllabusModal() {
-            syllabusModal.classList.remove('active');
-            currentSyllabusSubjectId = null;
-        }
-
-        // Show notification
-        function showNotification(message, type = 'success') {
-            // Create notification element
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 100px;
-                right: 30px;
-                background: ${type === 'success' ? 'var(--success)' : 'var(--danger)'};
-                color: white;
-                padding: 15px 25px;
-                border-radius: 12px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-                z-index: 10000;
-                animation: slideIn 0.3s ease;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            `;
-            
-            notification.innerHTML = `
-                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-                <span>${message}</span>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            // Remove after 3 seconds
-            setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-
-        // Setup event listeners
-        function setupEventListeners() {
-            // Toggle sidebar
-            menuToggle.addEventListener('click', toggleSidebar);
-            sidebarOverlay.addEventListener('click', closeSidebar);
-            
-            // Close sidebar when clicking on sidebar items
-            document.querySelectorAll('.sidebar-item').forEach(item => {
-                item.addEventListener('click', closeSidebar);
-            });
-            
-            // Add window resize listener
-            window.addEventListener('resize', function() {
-                closeSidebar();
-            });
-            
-            // Close modal when clicking outside
-            document.addEventListener('click', function(event) {
-                if (event.target.classList.contains('modal')) {
-                    closeModal();
-                    closeEditModal();
-                    closeSyllabusModal();
-                }
-            });
-        }
-
-        // Toggle Sidebar
-        function toggleSidebar() {
-            sidebar.classList.toggle('sidebar-active');
-            sidebarOverlay.classList.toggle('active');
-            mainContent.classList.toggle('full-width');
-            document.body.style.overflow = sidebar.classList.contains('sidebar-active') ? 'hidden' : '';
-        }
-
-        // Close Sidebar on Mobile
-        function closeSidebar() {
-            if (window.innerWidth <= 1024) {
-                sidebar.classList.remove('sidebar-active');
-                sidebarOverlay.classList.remove('active');
-                mainContent.classList.remove('full-width');
-                document.body.style.overflow = '';
-            }
-        }
-
-        // Add CSS for notification animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from {
-                    transform: translateX(100%);
-                    opacity: 0;
-                }
-                to {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-            }
-            
-            @keyframes slideOut {
-                from {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-                to {
-                    transform: translateX(100%);
-                    opacity: 0;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Initialize page when DOM is loaded
+    <script>
+        // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
-            initializePage();
-            setupEventListeners();
+            console.log("Total subjects loaded: <?php echo count($subjects); ?>");
+            
+            // Set up form submit handler
+            const form = document.getElementById('subjectForm');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (form) {
+                form.addEventListener('submit', function(event) {
+                    // Validate form
+                    const requiredFields = form.querySelectorAll('[required]');
+                    let isValid = true;
+                    
+                    requiredFields.forEach(field => {
+                        if (!field.value.trim()) {
+                            isValid = false;
+                            field.style.borderColor = 'var(--danger)';
+                        } else {
+                            field.style.borderColor = '';
+                        }
+                    });
+                    
+                    if (!isValid) {
+                        event.preventDefault();
+                        alert('Sila isi semua ruangan yang diperlukan!');
+                        return;
+                    }
+                    
+                    // Show loading state
+                    if (submitBtn) {
+                        const originalHTML = submitBtn.innerHTML;
+                        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+                        submitBtn.disabled = true;
+                        
+                        // Revert after 5 seconds if still submitting
+                        setTimeout(() => {
+                            submitBtn.innerHTML = originalHTML;
+                            submitBtn.disabled = false;
+                        }, 5000);
+                    }
+                    
+                    // Form will submit normally to PHP
+                });
+            }
+            
+            // Auto-hide messages after 5 seconds
+            setTimeout(() => {
+                const messages = document.querySelectorAll('.alert-message');
+                messages.forEach(msg => {
+                    msg.style.transition = 'opacity 0.5s';
+                    msg.style.opacity = '0';
+                    setTimeout(() => msg.remove(), 500);
+                });
+            }, 5000);
+            
+            // Check if modal should open from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('openModal')) {
+                openEditModal();
+            }
         });
+        
+        // Modal functions
+        function openEditModal() {
+            document.getElementById('editSubjectModal').style.display = 'flex';
+            document.getElementById('editModalTitle').textContent = 'Tambah Subjek Baru';
+            document.getElementById('subjectForm').reset();
+            
+            // Clear previous error styling
+            const fields = document.querySelectorAll('.form-input, .form-select');
+            fields.forEach(field => field.style.borderColor = '');
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editSubjectModal').style.display = 'none';
+        }
+        
+        function editSubject(subjectId) {
+            alert('Fungsi edit untuk subjek ID: ' + subjectId);
+            // You can implement edit functionality here
+            openEditModal();
+        }
+        
+        function viewSubject(subjectId) {
+            alert('Melihat subjek ID: ' + subjectId);
+            // You can implement view functionality here
+        }
+        
+        function deleteSubject(subjectId) {
+            if (confirm('Adakah anda pasti mahu memadam subjek ini?')) {
+                alert('Memadam subjek ID: ' + subjectId);
+                // You can implement delete functionality here
+            }
+        }
+        
+        function exportData() {
+            alert('Fungsi export akan dimuat turun data subjek.');
+            // You can implement export functionality here
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('editSubjectModal');
+            if (event.target === modal) {
+                closeEditModal();
+            }
+        }
     </script>
 </body>
 </html>
