@@ -1,10 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-echo "<!-- DEBUG: Session started -->";
-echo "<!-- DEBUG: POST data: " . print_r($_POST, true) . " -->";
-echo "<!-- DEBUG: Database: " . ($database ? 'Connected' : 'NOT Connected') . " -->";
 session_start();
 ob_start();
 
