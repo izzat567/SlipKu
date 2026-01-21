@@ -1064,7 +1064,7 @@ error_log("Total subjects fetched: " . count($subjects));
                 </button>
             </div>
             <div class="modal-body">
-                <form id="subjectForm" method="POST" action="">
+                <form id="subjectForm" method="POST" action="subjek-saya.php">
                     <input type="hidden" name="action" value="add_subject">
                     
                     <div class="form-row">
