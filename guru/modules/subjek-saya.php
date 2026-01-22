@@ -1212,16 +1212,15 @@ if (!is_array($subjects)) {
                         </div>
                         
                         <div class="subject-footer">
-                            <button class="btn-icon" onclick="viewSubject(<?php echo $subject['db_id']; ?>)">
-                                <i class="fas fa-eye"></i> Lihat
-                            </button>
-                            <button class="btn-icon" onclick="editSubject(<?php echo $subject['db_id']; ?>)">
-                                <i class="fas fa-edit"></i> Edit
-                                
-                            </button>
-                            <button class="btn-icon" onclick="deleteSubject(<?php echo $subject['db_id']; ?>, '<?php echo htmlspecialchars($subject['name']); ?>')">
-                                <i class="fas fa-trash"></i> Padam
-                            </button>
+                        <button class="btn-icon" onclick="viewSubject(<?php echo $subject['db_id']; ?>)">
+                             <i class="fas fa-eye"></i> Lihat
+                         </button>
+                         <button class="btn-icon" onclick="editSubject(<?php echo $subject['db_id']; ?>)">
+                             <i class="fas fa-edit"></i> Edit
+                        </button>
+                         <button class="btn-icon" onclick="deleteSubject(<?php echo $subject['db_id']; ?>, '<?php echo htmlspecialchars($subject['name']); ?>')">
+                         <i class="fas fa-trash"></i> Padam
+                        </button>
                         </div>
                     </div>
                 </div>
@@ -1359,12 +1358,7 @@ if (!is_array($subjects)) {
             document.getElementById('editSubjectModal').style.display = 'none';
             document.body.style.overflow = 'auto';
         }
-        
-        function editSubject(subjectId) {
-            alert('Edit subjek ID: ' + subjectId + ' (Fungsi akan datang)');
-            openEditModal();
-        }
-        
+
         function viewSubject(subjectId) {
             window.location.href = 'subjek-detail.php?id=' + subjectId;
         }
