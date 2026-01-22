@@ -1217,6 +1217,7 @@ if (!is_array($subjects)) {
                             </button>
                             <button class="btn-icon" onclick="editSubject(<?php echo $subject['db_id']; ?>)">
                                 <i class="fas fa-edit"></i> Edit
+                                
                             </button>
                             <button class="btn-icon" onclick="deleteSubject(<?php echo $subject['db_id']; ?>, '<?php echo htmlspecialchars($subject['name']); ?>')">
                                 <i class="fas fa-trash"></i> Padam
@@ -1331,6 +1332,10 @@ if (!is_array($subjects)) {
     </div>
 
     <script>
+        function editSubject(subjectId) {
+    // Pastikan ini path yang betul
+    window.location.href = 'edit-subject.php?id=' + subjectId;
+    }
         // Toggle Sidebar on Mobile
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
