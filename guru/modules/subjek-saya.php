@@ -1,12 +1,152 @@
 <?php
 session_start();
 ob_start();
+
+// Include database connection
 require_once __DIR__ . '/../../config/connect.php';
 
 $error_message = '';
 $success_message = '';
+$subjects = []; // INI YANG PENTING: Initialize variable
 
-// ... (PHP code yang sama seperti sebelumnya) ...
+// 1. PROSES TAMBAH SUBJEK BARU
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_subject') {
+    $nama = trim($_POST['subject_name'] ?? '');
+    $kod = trim($_POST['subject_code'] ?? '');
+    $tahun = trim($_POST['subject_year'] ?? '');
+    $jenis = trim($_POST['subject_type'] ?? 'core');
+    $penerangan = trim($_POST['subject_description'] ?? '');
+    $buku_teks = trim($_POST['subject_textbook'] ?? '');
+    $catatan = trim($_POST['subject_notes'] ?? '');
+    
+    // Validate
+    if (empty($nama) || empty($kod) || empty($tahun)) {
+        $error_message = "Sila isi Nama, Kod dan Tahun subjek!";
+    } else {
+        // Check if kod already exists
+        $check_sql = "SELECT id FROM matapelajaran WHERE kod = ?";
+        $check_stmt = $database->prepare($check_sql);
+        $check_stmt->bind_param("s", $kod);
+        $check_stmt->execute();
+        $check_result = $check_stmt->get_result();
+        
+        if ($check_result->num_rows > 0) {
+            $error_message = "Kod subjek '$kod' sudah wujud!";
+        } else {
+            // Insert into matapelajaran
+            $sql1 = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, 1)";
+            $stmt1 = $database->prepare($sql1);
+            $stmt1->bind_param("sss", $kod, $nama, $tahun);
+            
+            if ($stmt1->execute()) {
+                $subject_id = $database->insert_id;
+                
+                // Insert into subject_details (jika table wujud)
+                $table_check = $database->query("SHOW TABLES LIKE 'subject_details'");
+                if ($table_check && $table_check->num_rows > 0) {
+                    $sql2 = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks, catatan) 
+                            VALUES (?, ?, ?, ?, ?)";
+                    $stmt2 = $database->prepare($sql2);
+                    $stmt2->bind_param("issss", $subject_id, $jenis, $penerangan, $buku_teks, $catatan);
+                    $stmt2->execute();
+                    $stmt2->close();
+                }
+                
+                $success_message = "Subjek '$nama' berjaya ditambah!";
+                header("Location: subjek-saya.php?success=1&name=" . urlencode($nama));
+                exit();
+            } else {
+                $error_message = "Gagal tambah subjek: " . $database->error;
+            }
+            $stmt1->close();
+        }
+        $check_stmt->close();
+    }
+}
+
+// 2. TUNJUK MESEJ KEJAYAAN
+if (isset($_GET['success']) && $_GET['success'] == '1') {
+    $subject_name = $_GET['name'] ?? '';
+    $success_message = "Subjek '$subject_name' berjaya ditambah!";
+}
+
+// 3. AMBIL DATA DARI DATABASE - DENGAN ERROR HANDLING
+try {
+    // Debug: Check database connection
+    if (!$database) {
+        throw new Exception("Database connection failed");
+    }
+    
+    // SQL untuk ambil semua data dengan error handling
+    $sql = "SELECT m.*, 
+                   COALESCE(sd.jenis, 'core') as jenis,
+                   COALESCE(sd.penerangan, '') as penerangan,
+                   COALESCE(sd.buku_teks, '') as buku_teks,
+                   COALESCE(sd.catatan, '') as catatan
+            FROM matapelajaran m
+            LEFT JOIN subject_details sd ON m.id = sd.id_matapelajaran
+            WHERE m.status = 1
+            ORDER BY m.nama";
+    
+    error_log("SQL Query: " . $sql); // Debug log
+    
+    $result = $database->query($sql);
+    
+    if ($result === false) {
+        throw new Exception("Query failed: " . $database->error);
+    }
+    
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            // Tentukan kelas berdasarkan tahun
+            $kelas_list = [];
+            if (strpos($row['tahun'], '6') !== false) {
+                $kelas_list = ['6A', '6B'];
+            } elseif (strpos($row['tahun'], '5') !== false) {
+                $kelas_list = ['5A', '5B'];
+            } elseif (strpos($row['tahun'], '4') !== false) {
+                $kelas_list = ['4A', '4B'];
+            } else {
+                $kelas_list = ['3A', '3B'];
+            }
+            
+            $subjects[] = [
+                'id' => 'SUB' . str_pad($row['id'], 3, '0', STR_PAD_LEFT),
+                'db_id' => $row['id'],
+                'name' => $row['nama'],
+                'code' => $row['kod'],
+                'year' => $row['tahun'],
+                'type' => $row['jenis'],
+                'description' => $row['penerangan'],
+                'books' => $row['buku_teks'],
+                'notes' => $row['catatan'],
+                'teacher' => 'Cikgu ' . ($row['id'] % 2 == 0 ? 'Ahmad' : 'Siti'),
+                'classes' => $kelas_list,
+                'totalStudents' => count($kelas_list) * 20,
+                'averagePerformance' => 70 + ($row['id'] % 25),
+                'attendanceRate' => 85 + ($row['id'] % 10),
+                'syllabusProgress' => 30 + ($row['id'] % 70),
+                'status' => 'active'
+            ];
+        }
+        $result->free();
+    } else {
+        error_log("No subjects found in database");
+        // Jika tiada subjek, biarkan $subjects sebagai array kosong
+    }
+    
+} catch (Exception $e) {
+    error_log("Database error: " . $e->getMessage());
+    // Jangan throw error, biarkan $subjects sebagai array kosong
+}
+
+// Debug: Check subjects count
+error_log("Total subjects loaded: " . count($subjects));
+
+// Pastikan $subjects sentiasa array (walaupun kosong)
+if (!is_array($subjects)) {
+    $subjects = [];
+}
 ?>
 
 <!DOCTYPE html>
@@ -559,6 +699,38 @@ $success_message = '';
             color: var(--danger);
         }
 
+        /* No Subjects State */
+        .no-subjects {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 50px;
+            background: var(--white);
+            border-radius: var(--border-radius);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        .no-subjects-icon {
+            font-size: 72px;
+            color: var(--primary-light);
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .no-subjects h3 {
+            font-size: 24px;
+            color: var(--dark-gray);
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .no-subjects p {
+            color: var(--medium-gray);
+            margin-bottom: 25px;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
         /* Modal Styles */
         .modal {
             display: none;
@@ -703,38 +875,6 @@ $success_message = '';
             margin-top: 30px;
             padding-top: 20px;
             border-top: 1px solid #e5e7eb;
-        }
-
-        /* No Subjects State */
-        .no-subjects {
-            grid-column: 1 / -1;
-            text-align: center;
-            padding: 50px;
-            background: var(--white);
-            border-radius: var(--border-radius);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-        }
-
-        .no-subjects-icon {
-            font-size: 72px;
-            color: var(--primary-light);
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .no-subjects h3 {
-            font-size: 24px;
-            color: var(--dark-gray);
-            margin-bottom: 10px;
-            font-weight: 700;
-        }
-
-        .no-subjects p {
-            color: var(--medium-gray);
-            margin-bottom: 25px;
-            max-width: 400px;
-            margin-left: auto;
-            margin-right: auto;
         }
 
         /* Mobile Responsive */
