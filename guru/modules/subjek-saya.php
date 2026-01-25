@@ -1343,28 +1343,35 @@ function viewSubject(subjectId) {
     window.location.href = 'subjek-detail.php?id=' + subjectId;
 }
 
-// Delete function
 function deleteSubject(subjectId, subjectName) {
-    // First confirmation
-    if (!confirm('Adakah anda pasti mahu memadam subjek "' + subjectName + '"?\n\nTindakan ini akan:\n• Memadam subjek ini\n• Memadam semua data berkaitan\n• TIDAK BOLEH DIPULIHKAN')) {
+    // First confirmation - lebih tegas
+    if (!confirm('⚠️ PERHATIAN: PADAM SEPENUHNYA\n\n' +
+                 'Subjek: "' + subjectName + '"\n' +
+                 'ID: ' + subjectId + '\n\n' +
+                 'Tindakan ini akan:\n' +
+                 '• MEMADAM SEPENUHNYA dari database\n' +
+                 '• Tidak boleh dipulihkan\n' +
+                 '• Semua data hilang buat selama-lamanya\n\n' +
+                 'Adakah anda SANGAT PASTI?')) {
         return;
     }
     
     // Show loading
     const deleteBtn = event.target;
     const originalHTML = deleteBtn.innerHTML;
-    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memadam...';
+    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memadam SEPENUHNYA...';
     deleteBtn.disabled = true;
     
-    // Send delete request
+    // Send delete request - HARD DELETE
     fetch('delete-subject.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'id=' + subjectId + '&confirm=1'
+        body: 'id=' + subjectId + '&confirm=1&hard_delete=1'
     })
     .then(response => {
+        console.log('Response status:', response.status);
         if (!response.ok) {
             throw new Error('Network response was not ok: ' + response.status);
         }
@@ -1379,49 +1386,31 @@ function deleteSubject(subjectId, subjectName) {
             
             if (data.success) {
                 // Show success message
-                showAlert('success', data.message);
+                showAlert('success', data.message + ' (DIPADAM SEPENUHNYA)');
                 
-                // Remove subject card from UI after 1 second
-                setTimeout(() => {
-                    const subjectCard = deleteBtn.closest('.subject-card');
-                    if (subjectCard) {
-                        subjectCard.style.opacity = '0';
-                        subjectCard.style.transform = 'scale(0.95)';
-                        setTimeout(() => {
-                            subjectCard.remove();
-                            
-                            // Update stats
-                            updateSubjectStats();
-                            
-                            // If no subjects left, show empty state
-                            if (document.querySelectorAll('.subject-card').length === 0) {
-                                showNoSubjectsState();
-                            }
-                        }, 300);
-                    } else {
-                        // If can't find card, reload page
-                        location.reload();
-                    }
-                }, 1000);
-                
-            } else if (data.needs_confirm) {
-                // Double confirmation needed
-                const confirmed = confirm(data.message + '\n\nKlik OK untuk teruskan memadam.');
-                if (confirmed) {
-                    // Send final confirmation
-                    return fetch('delete-subject.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: 'id=' + subjectId + '&confirm=1'
-                    }).then(res => res.json());
+                // Remove subject card immediately
+                const subjectCard = deleteBtn.closest('.subject-card');
+                if (subjectCard) {
+                    subjectCard.style.animation = 'fadeOut 0.5s forwards';
+                    setTimeout(() => {
+                        subjectCard.remove();
+                        
+                        // Update stats
+                        updateSubjectStats();
+                        
+                        // If no subjects left, show empty state
+                        if (document.querySelectorAll('.subject-card').length === 0) {
+                            showNoSubjectsState();
+                        }
+                    }, 500);
                 } else {
-                    throw new Error('Permintaan dibatalkan');
+                    // If can't find card, reload page
+                    setTimeout(() => location.reload(), 1500);
                 }
+                
             } else {
                 // Error
-                showAlert('error', 'Gagal memadam: ' + data.error);
+                showAlert('error', 'Gagal memadam: ' + (data.error || 'Unknown error'));
                 deleteBtn.innerHTML = originalHTML;
                 deleteBtn.disabled = false;
             }
@@ -1435,57 +1424,21 @@ function deleteSubject(subjectId, subjectName) {
     })
     .catch(error => {
         console.error('Fetch error:', error);
-        showAlert('error', 'Ralat: ' + error.message);
+        showAlert('error', 'Ralat rangkaian: ' + error.message);
         deleteBtn.innerHTML = originalHTML;
         deleteBtn.disabled = false;
     });
 }
 
-// Helper function to show alerts
-function showAlert(type, message) {
-    // Remove existing alerts
-    const existingAlerts = document.querySelectorAll('.alert-message');
-    existingAlerts.forEach(alert => alert.remove());
-    
-    // Create new alert
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert-message ${type}`;
-    alertDiv.innerHTML = `
-        <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-        ${message}
-    `;
-    
-    // Add to page
-    const mainContent = document.querySelector('.main-content');
-    const pageHeader = document.querySelector('.page-header');
-    if (pageHeader && mainContent) {
-        mainContent.insertBefore(alertDiv, pageHeader.nextSibling);
-    } else {
-        document.body.insertBefore(alertDiv, document.body.firstChild);
+// Add fadeOut animation to CSS
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeOut {
+        from { opacity: 1; transform: scale(1); }
+        to { opacity: 0; transform: scale(0.8); }
     }
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.style.opacity = '0';
-            setTimeout(() => alertDiv.remove(), 300);
-        }
-    }, 5000);
-}
-
-// Update stats after deletion
-function updateSubjectStats() {
-    const subjectCount = document.querySelectorAll('.subject-card').length;
-    const totalStudents = subjectCount * 40;
-    
-    // Update stats cards
-    const totalSubjectsElem = document.querySelector('.stat-value:first-child');
-    const totalStudentsElem = document.querySelectorAll('.stat-value')[1];
-    
-    if (totalSubjectsElem) totalSubjectsElem.textContent = subjectCount;
-    if (totalStudentsElem) totalStudentsElem.textContent = totalStudents;
-}
-
+`;
+document.head.appendChild(style);
 // Show empty state
 function showNoSubjectsState() {
     const subjectsGrid = document.getElementById('subjectsGrid');
