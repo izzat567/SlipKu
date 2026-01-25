@@ -1331,7 +1331,20 @@ if (!is_array($subjects)) {
     </div>
 
     <script>
-        function deleteSubject(subjectId, subjectName) {
+// Function untuk redirect ke edit page
+function editSubject(subjectId) {
+    console.log('Edit subject:', subjectId);
+    window.location.href = 'edit-subject.php?id=' + subjectId;
+}
+
+// Function untuk view subject
+function viewSubject(subjectId) {
+    console.log('View subject:', subjectId);
+    window.location.href = 'subjek-detail.php?id=' + subjectId;
+}
+
+// Delete function
+function deleteSubject(subjectId, subjectName) {
     // First confirmation
     if (!confirm('Adakah anda pasti mahu memadam subjek "' + subjectName + '"?\n\nTindakan ini akan:\n• Memadam subjek ini\n• Memadam semua data berkaitan\n• TIDAK BOLEH DIPULIHKAN')) {
         return;
@@ -1370,7 +1383,7 @@ if (!is_array($subjects)) {
                 
                 // Remove subject card from UI after 1 second
                 setTimeout(() => {
-                    const subjectCard = event.target.closest('.subject-card');
+                    const subjectCard = deleteBtn.closest('.subject-card');
                     if (subjectCard) {
                         subjectCard.style.opacity = '0';
                         subjectCard.style.transform = 'scale(0.95)';
@@ -1463,7 +1476,7 @@ function showAlert(type, message) {
 // Update stats after deletion
 function updateSubjectStats() {
     const subjectCount = document.querySelectorAll('.subject-card').length;
-    const totalStudents = subjectCount * 40; // Adjust calculation as needed
+    const totalStudents = subjectCount * 40;
     
     // Update stats cards
     const totalSubjectsElem = document.querySelector('.stat-value:first-child');
@@ -1477,7 +1490,7 @@ function updateSubjectStats() {
 function showNoSubjectsState() {
     const subjectsGrid = document.getElementById('subjectsGrid');
     if (subjectsGrid) {
-        subjectsGrid.innerHTML = 
+        subjectsGrid.innerHTML = `
             <div class="no-subjects" style="grid-column: 1 / -1;">
                 <div class="no-subjects-icon">
                     <i class="fas fa-book"></i>
@@ -1488,115 +1501,90 @@ function showNoSubjectsState() {
                     <i class="fas fa-plus"></i> Tambah Subjek
                 </button>
             </div>
-            
-        function editSubject(subjectId) {
-    // Pastikan ini path yang betul
-    window.location.href = 'edit-subject.php?id=' + subjectId;
+        `;
     }
-        // Toggle Sidebar on Mobile
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('mainContent');
-            sidebar.classList.toggle('active');
-            
-            if (sidebar.classList.contains('active')) {
-                mainContent.style.marginLeft = '250px';
-            } else {
-                mainContent.style.marginLeft = '0';
-            }
-        }
+}
 
-        // Modal functions
-        function openEditModal() {
-            document.getElementById('editSubjectModal').style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-        }
-        
-        function closeEditModal() {
-            document.getElementById('editSubjectModal').style.display = 'none';
-            document.body.style.overflow = 'auto';
-        }
+// Toggle Sidebar on Mobile
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('mainContent');
+    sidebar.classList.toggle('active');
+    
+    if (sidebar.classList.contains('active')) {
+        mainContent.style.marginLeft = '250px';
+    } else {
+        mainContent.style.marginLeft = '0';
+    }
+}
 
-        function viewSubject(subjectId) {
-            window.location.href = 'subjek-detail.php?id=' + subjectId;
+// Modal functions
+function openEditModal() {
+    document.getElementById('editSubjectModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEditModal() {
+    document.getElementById('editSubjectModal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+function exportData() {
+    alert('Fungsi export akan datang');
+}
+
+// Auto-hide messages after 5 seconds
+setTimeout(() => {
+    const messages = document.querySelectorAll('.alert-message');
+    messages.forEach(msg => {
+        msg.style.opacity = '0';
+        setTimeout(() => msg.remove(), 300);
+    });
+}, 5000);
+
+// Form validation
+document.getElementById('subjectForm').addEventListener('submit', function(e) {
+    const required = this.querySelectorAll('[required]');
+    let valid = true;
+    
+    required.forEach(field => {
+        if (!field.value.trim()) {
+            field.style.borderColor = 'var(--danger)';
+            valid = false;
+        } else {
+            field.style.borderColor = '';
         }
-        
-        function deleteSubject(subjectId, subjectName) {
-            if (confirm('Adakah anda pasti mahu memadam subjek "' + subjectName + '"? Tindakan ini tidak boleh dipulihkan.')) {
-                fetch('delete-subject.php?id=' + subjectId, {
-                    method: 'DELETE'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Subjek berjaya dipadam!');
-                        location.reload();
-                    } else {
-                        alert('Gagal memadam: ' + data.error);
-                    }
-                })
-                .catch(error => {
-                    alert('Ralat: ' + error);
-                });
-            }
-        }
-        
-        function exportData() {
-            alert('Fungsi export akan datang');
-        }
-        
-        // Auto-hide messages after 5 seconds
-        setTimeout(() => {
-            const messages = document.querySelectorAll('.alert-message');
-            messages.forEach(msg => {
-                msg.style.opacity = '0';
-                setTimeout(() => msg.remove(), 300);
-            });
-        }, 5000);
-        
-        // Form validation
-        document.getElementById('subjectForm').addEventListener('submit', function(e) {
-            const required = this.querySelectorAll('[required]');
-            let valid = true;
-            
-            required.forEach(field => {
-                if (!field.value.trim()) {
-                    field.style.borderColor = 'var(--danger)';
-                    valid = false;
-                } else {
-                    field.style.borderColor = '';
-                }
-            });
-            
-            if (!valid) {
-                e.preventDefault();
-                alert('Sila isi semua ruangan yang diperlukan!');
-                return;
-            }
-            
-            // Show loading state
-            const submitBtn = document.getElementById('submitBtn');
-            const originalHTML = submitBtn.innerHTML;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
-            submitBtn.disabled = true;
-            
-            // Allow form to submit normally
-        });
-        
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('editSubjectModal');
-            if (event.target === modal) {
-                closeEditModal();
-            }
-        }
-        
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeEditModal();
-            }
-        });
-    </script>
+    });
+    
+    if (!valid) {
+        e.preventDefault();
+        alert('Sila isi semua ruangan yang diperlukan!');
+        return;
+    }
+    
+    // Show loading state
+    const submitBtn = document.getElementById('submitBtn');
+    const originalHTML = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+    submitBtn.disabled = true;
+    
+    // Allow form to submit normally
+});
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('editSubjectModal');
+    if (event.target === modal) {
+        closeEditModal();
+    }
+}
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeEditModal();
+    }
+});
+</script>
 </body>
 </html>
