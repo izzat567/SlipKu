@@ -1323,7 +1323,7 @@
             </div>
         </div>
     </header>
-   <?php include 'sidebar.php'; ?>
+   <?php include '../sidebar.php'; ?>
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-section">
