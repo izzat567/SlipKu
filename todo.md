@@ -10,7 +10,7 @@
 
 ## Guru
 - TODO Login Guru
-- TODO Dashboard Guru
+<!-- - TODO Dashboard Guru -->
 - TODO Kemaskini markah
 - TODO Kemaskini kelas 
 - TODO Kemaskini mata pelajaran 
