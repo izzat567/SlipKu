@@ -207,6 +207,22 @@ CREATE TABLE `peperiksaan` (
   `status` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- Buat table guru_kelas untuk hubungan guru dengan kelas
+CREATE TABLE IF NOT EXISTS `guru_kelas` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `guru_id` INT NOT NULL,
+  `kelas_id` INT NOT NULL,
+  `tahun` INT,
+  `status` INT DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert data dummy untuk guru ID 1
+INSERT INTO `guru_kelas` (`guru_id`, `kelas_id`, `tahun`) VALUES
+(1, 1, 2024),
+(1, 2, 2024),
+(1, 3, 2024),
+(1, 4, 2024);
 --
 -- Dumping data for table `peperiksaan`
 --
