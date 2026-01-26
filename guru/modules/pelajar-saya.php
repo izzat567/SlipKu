@@ -1,3 +1,268 @@
+<?php
+session_start();
+
+// Include database functions
+require_once __DIR__ . '/../includes/db_functions.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['guru_id'])) {
+    header('Location: ../login.php');
+    exit();
+}
+
+$guru_id = $_SESSION['guru_id'];
+$action = $_GET['action'] ?? '';
+$student_id = $_GET['id'] ?? '';
+
+// Set default timezone
+date_default_timezone_set('Asia/Kuala_Lumpur');
+
+// Handle different actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    switch($action) {
+        case 'add':
+            handleAddStudent();
+            break;
+        case 'edit':
+            handleEditStudent($student_id);
+            break;
+        case 'delete':
+            handleDeleteStudent($student_id);
+            break;
+        case 'bulk_delete':
+            handleBulkDelete();
+            break;
+        case 'bulk_update':
+            handleBulkUpdate();
+            break;
+        case 'import':
+            handleImportStudents();
+            break;
+    }
+}
+
+// Get search and filter parameters
+$search = $_GET['search'] ?? '';
+$kelas = $_GET['kelas'] ?? '';
+$tahun = $_GET['tahun'] ?? '';
+$status = $_GET['status'] ?? '';
+$prestasi = $_GET['prestasi'] ?? '';
+
+// Get data from database
+$pelajar_list = getPelajarByGuru($guru_id, $search, $kelas, $tahun, $status, $prestasi);
+$kelas_guru = getKelasByGuru($guru_id);
+$statistik = getStatistikPelajar($guru_id);
+$all_kelas = getAllKelas();
+
+// If editing, get student data
+$student = null;
+if ($action === 'edit' && $student_id) {
+    $student = getPelajarById($student_id);
+}
+
+// Function to handle adding student
+function handleAddStudent() {
+    // Validate required fields
+    $required_fields = ['nama', 'no_ic', 'jantina'];
+    foreach ($required_fields as $field) {
+        if (empty($_POST[$field])) {
+            $_SESSION['error_message'] = 'Sila isi semua maklumat yang diperlukan.';
+            return;
+        }
+    }
+    
+    // Check if IC already exists
+    if (checkStudentExists($_POST['no_ic'])) {
+        $_SESSION['error_message'] = 'No. Kad Pengenalan sudah wujud dalam sistem.';
+        return;
+    }
+    
+    $data = [
+        'nama' => trim($_POST['nama']),
+        'no_ic' => trim($_POST['no_ic']),
+        'jantina' => $_POST['jantina']
+    ];
+    
+    // Optional fields
+    if (!empty($_POST['status'])) {
+        $data['status'] = $_POST['status'];
+    }
+    
+    if (tambahPelajar($data)) {
+        $_SESSION['success_message'] = 'Pelajar berjaya ditambah!';
+        header('Location: pelajar-saya.php');
+        exit();
+    } else {
+        $_SESSION['error_message'] = 'Gagal menambah pelajar. Sila cuba lagi.';
+    }
+}
+
+// Function to handle editing student
+function handleEditStudent($id) {
+    if (empty($id)) {
+        $_SESSION['error_message'] = 'ID pelajar tidak sah.';
+        return;
+    }
+    
+    // Validate required fields
+    $required_fields = ['nama', 'no_ic', 'jantina'];
+    foreach ($required_fields as $field) {
+        if (empty($_POST[$field])) {
+            $_SESSION['error_message'] = 'Sila isi semua maklumat yang diperlukan.';
+            return;
+        }
+    }
+    
+    // Check if IC already exists (excluding current student)
+    if (checkStudentExists($_POST['no_ic'], $id)) {
+        $_SESSION['error_message'] = 'No. Kad Pengenalan sudah wujud dalam sistem.';
+        return;
+    }
+    
+    $data = [
+        'nama' => trim($_POST['nama']),
+        'no_ic' => trim($_POST['no_ic']),
+        'jantina' => $_POST['jantina']
+    ];
+    
+    // Optional fields
+    if (!empty($_POST['status'])) {
+        $data['status'] = $_POST['status'];
+    }
+    
+    if (kemaskiniPelajar($id, $data)) {
+        $_SESSION['success_message'] = 'Maklumat pelajar berjaya dikemaskini!';
+        header('Location: pelajar-saya.php');
+        exit();
+    } else {
+        $_SESSION['error_message'] = 'Gagal mengemaskini pelajar. Sila cuba lagi.';
+    }
+}
+
+// Function to handle deleting student
+function handleDeleteStudent($id) {
+    if (empty($id)) {
+        $_SESSION['error_message'] = 'ID pelajar tidak sah.';
+        return;
+    }
+    
+    if (padamPelajar($id)) {
+        $_SESSION['success_message'] = 'Pelajar berjaya dipadam!';
+    } else {
+        $_SESSION['error_message'] = 'Gagal memadam pelajar. Sila cuba lagi.';
+    }
+    header('Location: pelajar-saya.php');
+    exit();
+}
+
+// Function to handle bulk delete
+function handleBulkDelete() {
+    if (isset($_POST['student_ids']) && is_array($_POST['student_ids'])) {
+        $success_count = 0;
+        foreach ($_POST['student_ids'] as $id) {
+            if (padamPelajar($id)) {
+                $success_count++;
+            }
+        }
+        
+        if ($success_count > 0) {
+            $_SESSION['success_message'] = "Berjaya memadam $success_count pelajar!";
+        } else {
+            $_SESSION['error_message'] = 'Gagal memadam pelajar terpilih.';
+        }
+    } else {
+        $_SESSION['error_message'] = 'Tiada pelajar dipilih.';
+    }
+    header('Location: pelajar-saya.php');
+    exit();
+}
+
+// Function to handle bulk update
+function handleBulkUpdate() {
+    if (isset($_POST['student_ids']) && is_array($_POST['student_ids']) && isset($_POST['bulk_action'])) {
+        $student_ids = array_map('intval', $_POST['student_ids']);
+        
+        if ($_POST['bulk_action'] === 'update_status' && isset($_POST['new_status'])) {
+            $update_data = ['status' => $_POST['new_status']];
+            if (bulkUpdateStudents($student_ids, $update_data)) {
+                $_SESSION['success_message'] = 'Status pelajar terpilih berjaya dikemaskini!';
+            } else {
+                $_SESSION['error_message'] = 'Gagal mengemaskini status pelajar.';
+            }
+        }
+    } else {
+        $_SESSION['error_message'] = 'Tiada pelajar dipilih atau tindakan tidak ditentukan.';
+    }
+    header('Location: pelajar-saya.php');
+    exit();
+}
+
+// Function to handle import students
+function handleImportStudents() {
+    // This would handle CSV/Excel file import
+    // For now, just show a message
+    if (isset($_FILES['import_file']) && $_FILES['import_file']['error'] === UPLOAD_ERR_OK) {
+        $_SESSION['success_message'] = 'Fail berjaya dimuat naik. Proses import sedang dijalankan.';
+    } else {
+        $_SESSION['error_message'] = 'Gagal memuat naik fail.';
+    }
+    header('Location: pelajar-saya.php');
+    exit();
+}
+
+// Display success/error messages
+$success_message = $_SESSION['success_message'] ?? '';
+$error_message = $_SESSION['error_message'] ?? '';
+unset($_SESSION['success_message'], $_SESSION['error_message']);
+
+// Handle AJAX requests
+if (isset($_GET['ajax'])) {
+    header('Content-Type: application/json');
+    
+    switch ($_GET['ajax']) {
+        case 'get_students':
+            // Return JSON data for AJAX loading
+            $response = [
+                'success' => true,
+                'students' => $pelajar_list,
+                'total' => count($pelajar_list),
+                'statistics' => $statistik
+            ];
+            echo json_encode($response);
+            exit;
+            
+        case 'get_student':
+            $student_id = $_GET['student_id'] ?? '';
+            $student = getPelajarById($student_id);
+            $performance = getStudentPerformance($student_id);
+            $attendance = getStudentAttendance($student_id);
+            
+            echo json_encode([
+                'success' => true,
+                'student' => $student,
+                'performance' => $performance,
+                'attendance' => $attendance
+            ]);
+            exit;
+            
+        case 'delete_student':
+            $student_id = $_GET['student_id'] ?? '';
+            if (padamPelajar($student_id)) {
+                echo json_encode(['success' => true, 'message' => 'Pelajar berjaya dipadam']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Gagal memadam pelajar']);
+            }
+            exit;
+            
+        case 'check_ic':
+            $no_ic = $_GET['no_ic'] ?? '';
+            $exclude_id = $_GET['exclude_id'] ?? null;
+            $exists = checkStudentExists($no_ic, $exclude_id);
+            echo json_encode(['exists' => $exists]);
+            exit;
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -1103,123 +1368,107 @@
 </head>
 <body>
     <!-- Modal for Add/Edit Student -->
-    <div class="modal" id="studentModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTitle">Tambah Pelajar Baru</h3>
-                <button class="modal-close" onclick="closeModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form id="studentForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label required">Nama Penuh</label>
-                            <input type="text" class="form-input" id="studentName" placeholder="Nama penuh pelajar" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label required">No. Kad Pengenalan</label>
-                            <input type="text" class="form-input" id="studentIC" placeholder="Contoh: 030101-14-1234" required>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label required">Kelas</label>
-                            <select class="form-select" id="studentClass" required>
-                                <option value="">Pilih Kelas</option>
-                                <option value="6A">Kelas 6A</option>
-                                <option value="6B">Kelas 6B</option>
-                                <option value="5A">Kelas 5A</option>
-                                <option value="5B">Kelas 5B</option>
-                                <option value="4A">Kelas 4A</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label required">Tahun</label>
-                            <select class="form-select" id="studentYear" required>
-                                <option value="">Pilih Tahun</option>
-                                <option value="1">Tahun 1</option>
-                                <option value="2">Tahun 2</option>
-                                <option value="3">Tahun 3</option>
-                                <option value="4">Tahun 4</option>
-                                <option value="5">Tahun 5</option>
-                                <option value="6">Tahun 6</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label required">Jantina</label>
-                            <select class="form-select" id="studentGender" required>
-                                <option value="">Pilih Jantina</option>
-                                <option value="male">Lelaki</option>
-                                <option value="female">Perempuan</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label required">Tarikh Lahir</label>
-                            <input type="date" class="form-date" id="studentDOB" required>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label required">No. Telefon</label>
-                            <input type="tel" class="form-input" id="studentPhone" placeholder="Contoh: 012-345 6789" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Emel</label>
-                            <input type="email" class="form-input" id="studentEmail" placeholder="pelajar@email.com">
-                        </div>
+    <!-- Modal for Add/Edit Student -->
+<div class="modal" id="studentModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle"><?= isset($student) ? 'Edit Pelajar' : 'Tambah Pelajar Baru' ?></h3>
+            <button class="modal-close" onclick="closeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="studentForm" method="POST" action="?action=<?= isset($student) ? 'edit&id=' . $student['id'] : 'add' ?>">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Nama Penuh</label>
+                        <input type="text" class="form-input" id="studentName" name="nama" 
+                               placeholder="Nama penuh pelajar" required 
+                               value="<?= isset($student) ? htmlspecialchars($student['nama']) : '' ?>">
                     </div>
                     
                     <div class="form-group">
-                        <label class="form-label required">Alamat</label>
-                        <textarea class="form-input" id="studentAddress" rows="3" placeholder="Alamat penuh pelajar" required></textarea>
+                        <label class="form-label required">No. Kad Pengenalan</label>
+                        <input type="text" class="form-input" id="studentIC" name="no_ic" 
+                               placeholder="Contoh: 030101-14-1234" required 
+                               value="<?= isset($student) ? htmlspecialchars($student['no_kp']) : '' ?>"
+                               onblur="checkICExists()">
+                        <small id="icError" style="color: var(--danger); display: none;">
+                            No. KP sudah wujud dalam sistem
+                        </small>
                     </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Nama Penjaga</label>
-                            <input type="text" class="form-input" id="studentGuardian" placeholder="Nama penjaga">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Hubungan</label>
-                            <select class="form-select" id="studentRelationship">
-                                <option value="">Pilih Hubungan</option>
-                                <option value="father">Bapa</option>
-                                <option value="mother">Ibu</option>
-                                <option value="guardian">Penjaga</option>
-                                <option value="sibling">Abang/Kakak</option>
-                            </select>
-                        </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label required">Jantina</label>
+                        <select class="form-select" id="studentGender" name="jantina" required>
+                            <option value="">Pilih Jantina</option>
+                            <option value="male" <?= (isset($student) && $student['jantina'] == 'L') ? 'selected' : '' ?>>Lelaki</option>
+                            <option value="female" <?= (isset($student) && $student['jantina'] == 'P') ? 'selected' : '' ?>>Perempuan</option>
+                        </select>
                     </div>
                     
                     <div class="form-group">
-                        <label class="form-label">Catatan Perubatan/Khas</label>
-                        <textarea class="form-input" id="studentMedical" rows="2" placeholder="Catatan khas (jika ada)"></textarea>
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="studentStatus" name="status">
+                            <option value="active" <?= (isset($student) && $student['status'] == 1) ? 'selected' : '' ?>>Aktif</option>
+                            <option value="inactive" <?= (isset($student) && $student['status'] == 0) ? 'selected' : '' ?>>Tidak Aktif</option>
+                            <option value="graduated" <?= (isset($student) && $student['status'] == 2) ? 'selected' : '' ?>>Tamat</option>
+                        </select>
                     </div>
-                    
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal()">
-                            Batal
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                            Simpan Pelajar
-                        </button>
-                    </div>
-                </form>
-            </div>
+                </div>
+                
+                <input type="hidden" id="currentStudentId" value="<?= isset($student) ? $student['id'] : '' ?>">
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <?= isset($student) ? 'Kemaskini Pelajar' : 'Simpan Pelajar' ?>
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
+
+<!-- Add success/error message display -->
+<?php if (!empty($success_message)): ?>
+<div class="alert alert-success" style="position: fixed; top: 100px; right: 30px; z-index: 10000; padding: 15px 25px; background: var(--success); color: white; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;">
+    <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success_message) ?>
+</div>
+<script>
+    setTimeout(() => {
+        document.querySelector('.alert').style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => document.querySelector('.alert').remove(), 300);
+    }, 3000);
+</script>
+<?php endif; ?>
+
+<?php if (!empty($error_message)): ?>
+<div class="alert alert-error" style="position: fixed; top: 100px; right: 30px; z-index: 10000; padding: 15px 25px; background: var(--danger); color: white; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;">
+    <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error_message) ?>
+</div>
+<script>
+    setTimeout(() => {
+        document.querySelector('.alert').style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => document.querySelector('.alert').remove(), 300);
+    }, 3000);
+</script>
+<?php endif; ?>
+
+<style>
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+</style>
 
     <!-- Modal for Bulk Import -->
     <div class="modal" id="importModal">
@@ -1852,722 +2101,430 @@
             }
         ];
 
-        // Initialize page
-        function initializePage() {
-            studentsData = [...sampleStudents];
+     // Update initializePage function
+function initializePage() {
+    // Load data from server
+    loadStudentsFromServer();
+    
+    // Set up event listeners
+    setupEventListeners();
+    
+    // Initialize search and filter
+    initializeFilters();
+}
+
+// Initialize filters with real data
+function initializeFilters() {
+    // Load class options from server
+    fetch('?ajax=get_classes')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const classSelect = document.getElementById('filterClass');
+            const yearSelect = document.getElementById('filterYear');
+            
+            // Clear existing options except the first one
+            while (classSelect.options.length > 1) classSelect.remove(1);
+            while (yearSelect.options.length > 1) yearSelect.remove(1);
+            
+            // Add class options
+            const uniqueClasses = [...new Set(data.classes.map(c => c.nama))];
+            uniqueClasses.forEach(className => {
+                const option = document.createElement('option');
+                option.value = className;
+                option.textContent = `Kelas ${className}`;
+                classSelect.appendChild(option);
+            });
+            
+            // Add year options
+            const uniqueYears = [...new Set(data.classes.map(c => c.tahun))].sort((a, b) => b - a);
+            uniqueYears.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = `Tahun ${year}`;
+                yearSelect.appendChild(option);
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error loading filters:', error);
+    });
+}
+
+// Load students from server
+function loadStudentsFromServer() {
+    showLoading(true);
+    
+    // Build query string from filters
+    const search = document.getElementById('searchInput').value;
+    const kelas = document.getElementById('filterClass').value;
+    const tahun = document.getElementById('filterYear').value;
+    const status = document.getElementById('filterStatus').value;
+    const prestasi = document.getElementById('filterPerformance').value;
+    
+    let query = '?ajax=get_students';
+    if (search) query += `&search=${encodeURIComponent(search)}`;
+    if (kelas) query += `&kelas=${encodeURIComponent(kelas)}`;
+    if (tahun) query += `&tahun=${encodeURIComponent(tahun)}`;
+    if (status) query += `&status=${encodeURIComponent(status)}`;
+    if (prestasi) query += `&prestasi=${encodeURIComponent(prestasi)}`;
+    
+    fetch(query, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            studentsData = data.students.map(student => formatStudentData(student));
             filteredStudents = [...studentsData];
-            
-            // Set up form submit handler
-            studentForm.addEventListener('submit', saveStudent);
-            
-            // Load initial data
-            updateSummary();
+            updateSummary(data.statistics);
             loadStudentTable();
             updatePaginationInfo();
-            
-            // Set today's date for date input
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('studentDOB').max = today;
+        } else {
+            showNotification('Gagal memuatkan data pelajar', 'error');
         }
+        showLoading(false);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+        showLoading(false);
+    });
+}
 
-        // Load student table
-        function loadStudentTable() {
-            if (filteredStudents.length === 0) {
-                studentTableBody.innerHTML = '';
-                emptyState.style.display = 'block';
-                bulkActions.style.display = 'none';
-                return;
-            }
-            
-            emptyState.style.display = 'none';
-            
-            // Calculate pagination
-            const startIndex = (currentPage - 1) * studentsPerPage;
-            const endIndex = startIndex + studentsPerPage;
-            displayedStudents = filteredStudents.slice(startIndex, endIndex);
-            
-            studentTableBody.innerHTML = displayedStudents.map(student => {
-                // Get initials for avatar
-                const initials = student.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                
-                // Determine performance class
-                let performanceClass = '';
-                let performanceWidth = '';
-                if (student.performance >= 85) {
-                    performanceClass = 'performance-excellent';
-                    performanceWidth = '90%';
-                } else if (student.performance >= 70) {
-                    performanceClass = 'performance-good';
-                    performanceWidth = '75%';
-                } else if (student.performance >= 60) {
-                    performanceClass = 'performance-average';
-                    performanceWidth = '60%';
-                } else {
-                    performanceClass = 'performance-poor';
-                    performanceWidth = '40%';
-                }
-                
-                // Determine status badge
-                let statusClass = '';
-                let statusText = '';
-                switch(student.status) {
-                    case 'active':
-                        statusClass = 'status-active';
-                        statusText = 'AKTIF';
-                        break;
-                    case 'inactive':
-                        statusClass = 'status-inactive';
-                        statusText = 'TIDAK AKTIF';
-                        break;
-                    case 'graduated':
-                        statusClass = 'status-graduated';
-                        statusText = 'TAMAT';
-                        break;
-                }
-                
-                // Determine gender text
-                const genderText = student.gender === 'male' ? 'Lelaki' : 'Perempuan';
-                
-                return `
-                    <tr>
-                        <td>
-                            <input type="checkbox" class="student-checkbox" value="${student.id}" onchange="toggleStudentSelection('${student.id}')">
-                        </td>
-                        <td>
-                            <div class="student-avatar-cell">
-                                <div class="student-avatar">
-                                    ${initials}
-                                </div>
-                                <div class="student-info">
-                                    <div class="student-name">${student.name}</div>
-                                    <div class="student-id">${student.id}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td>${student.class}</td>
-                        <td>Tahun ${student.year}</td>
-                        <td>${genderText}</td>
-                        <td>
-                            <div class="performance-cell">
-                                <div class="performance-bar">
-                                    <div class="performance-fill ${performanceClass}" style="width: ${performanceWidth}"></div>
-                                </div>
-                                <div class="performance-value">${student.performance}%</div>
-                            </div>
-                        </td>
-                        <td>${student.attendance}%</td>
-                        <td>
-                            <span class="status-badge ${statusClass}">${statusText}</span>
-                        </td>
-                        <td>
-                            <div class="action-cell">
-                                <button class="action-btn view" onclick="viewStudent('${student.id}')">
-                                    <i class="fas fa-eye"></i>
-                                    Lihat
-                                </button>
-                                <button class="action-btn edit" onclick="editStudent('${student.id}')">
-                                    <i class="fas fa-edit"></i>
-                                    Edit
-                                </button>
-                                <button class="action-btn delete" onclick="deleteStudent('${student.id}')">
-                                    <i class="fas fa-trash"></i>
-                                    Padam
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-            
-            // Update bulk actions visibility
-            updateBulkActions();
+// Format student data for frontend
+function formatStudentData(dbStudent) {
+    // Calculate attendance percentage
+    const attendance = dbStudent.attendance_percentage || 
+        (dbStudent.total_kehadiran > 0 ? 
+            Math.round((dbStudent.jumlah_kehadiran / dbStudent.total_kehadiran) * 100) : 0);
+    
+    // Get gender text
+    const genderText = dbStudent.jantina === 'L' ? 'Lelaki' : 'Perempuan';
+    
+    // Get status
+    let status = 'active';
+    let statusText = 'AKTIF';
+    if (dbStudent.status === 0) {
+        status = 'inactive';
+        statusText = 'TIDAK AKTIF';
+    } else if (dbStudent.status === 2) {
+        status = 'graduated';
+        statusText = 'TAMAT';
+    }
+    
+    return {
+        id: dbStudent.id.toString(),
+        name: dbStudent.nama,
+        ic: dbStudent.no_kp || '',
+        class: dbStudent.kelas_nama || 'N/A',
+        year: dbStudent.tahun ? `Tahun ${dbStudent.tahun}` : 'N/A',
+        gender: dbStudent.jantina === 'L' ? 'male' : 'female',
+        genderText: genderText,
+        performance: parseFloat(dbStudent.prestasi_purata) || 0,
+        attendance: attendance,
+        status: status,
+        statusText: statusText,
+        student_id: dbStudent.student_id || dbStudent.id_kelas || '',
+        kelas_nama: dbStudent.kelas_nama || '',
+        tahun: dbStudent.tahun || ''
+    };
+}
+
+// Update summary with real data
+function updateSummary(statistics) {
+    if (statistics) {
+        document.getElementById('totalStudents').textContent = statistics.total_pelajar || 0;
+        document.getElementById('activeStudents').textContent = statistics.pelajar_aktif || 0;
+        document.getElementById('averagePerformance').textContent = (statistics.prestasi_purata || 0).toFixed(1) + '%';
+        document.getElementById('attendanceRate').textContent = (statistics.kadar_kehadiran || 0).toFixed(1) + '%';
+    }
+}
+
+// Update student table with real data
+function loadStudentTable() {
+    if (filteredStudents.length === 0) {
+        studentTableBody.innerHTML = '';
+        emptyState.style.display = 'block';
+        bulkActions.style.display = 'none';
+        return;
+    }
+    
+    emptyState.style.display = 'none';
+    
+    // Calculate pagination
+    const startIndex = (currentPage - 1) * studentsPerPage;
+    const endIndex = startIndex + studentsPerPage;
+    displayedStudents = filteredStudents.slice(startIndex, endIndex);
+    
+    studentTableBody.innerHTML = displayedStudents.map(student => {
+        // Get initials for avatar
+        const initials = student.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        
+        // Determine performance class
+        let performanceClass = '';
+        let performanceWidth = '';
+        if (student.performance >= 85) {
+            performanceClass = 'performance-excellent';
+            performanceWidth = '90%';
+        } else if (student.performance >= 70) {
+            performanceClass = 'performance-good';
+            performanceWidth = '75%';
+        } else if (student.performance >= 60) {
+            performanceClass = 'performance-average';
+            performanceWidth = '60%';
+        } else {
+            performanceClass = 'performance-poor';
+            performanceWidth = '40%';
         }
-
-        // Update summary statistics
-        function updateSummary() {
-            const totalStudents = studentsData.length;
-            const activeStudents = studentsData.filter(s => s.status === 'active').length;
-            
-            // Calculate average performance
-            const totalPerformance = studentsData.reduce((sum, student) => sum + student.performance, 0);
-            const averagePerformance = totalPerformance / totalStudents;
-            
-            // Calculate average attendance
-            const totalAttendance = studentsData.reduce((sum, student) => sum + student.attendance, 0);
-            const averageAttendance = totalAttendance / totalStudents;
-            
-            document.getElementById('totalStudents').textContent = totalStudents;
-            document.getElementById('activeStudents').textContent = activeStudents;
-            document.getElementById('averagePerformance').textContent = averagePerformance.toFixed(1) + '%';
-            document.getElementById('attendanceRate').textContent = averageAttendance.toFixed(1) + '%';
+        
+        // Determine status badge
+        let statusClass = '';
+        let statusText = '';
+        switch(student.status) {
+            case 'active':
+                statusClass = 'status-active';
+                statusText = 'AKTIF';
+                break;
+            case 'inactive':
+                statusClass = 'status-inactive';
+                statusText = 'TIDAK AKTIF';
+                break;
+            case 'graduated':
+                statusClass = 'status-graduated';
+                statusText = 'TAMAT';
+                break;
         }
+        
+        return `
+            <tr>
+                <td>
+                    <input type="checkbox" class="student-checkbox" value="${student.id}" onchange="toggleStudentSelection('${student.id}')">
+                </td>
+                <td>
+                    <div class="student-avatar-cell">
+                        <div class="student-avatar">
+                            ${initials}
+                        </div>
+                        <div class="student-info">
+                            <div class="student-name">${student.name}</div>
+                            <div class="student-id">${student.student_id}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>${student.kelas_nama || student.class}</td>
+                <td>${student.year}</td>
+                <td>${student.genderText}</td>
+                <td>
+                    <div class="performance-cell">
+                        <div class="performance-bar">
+                            <div class="performance-fill ${performanceClass}" style="width: ${performanceWidth}"></div>
+                        </div>
+                        <div class="performance-value">${student.performance.toFixed(1)}%</div>
+                    </div>
+                </td>
+                <td>${student.attendance}%</td>
+                <td>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </td>
+                <td>
+                    <div class="action-cell">
+                        <button class="action-btn view" onclick="viewStudent('${student.id}')">
+                            <i class="fas fa-eye"></i>
+                            Lihat
+                        </button>
+                        <button class="action-btn edit" onclick="editStudent('${student.id}')">
+                            <i class="fas fa-edit"></i>
+                            Edit
+                        </button>
+                        <button class="action-btn delete" onclick="deleteStudent('${student.id}', '${student.name.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-trash"></i>
+                            Padam
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Update bulk actions visibility
+    updateBulkActions();
+}
 
-        // Search students
-        function searchStudents() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+// View student details
+function viewStudent(studentId) {
+    showLoading(true);
+    
+    fetch(`?ajax=get_student&student_id=${studentId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.student) {
+            const student = data.student;
             
-            filteredStudents = studentsData.filter(student => {
-                return student.name.toLowerCase().includes(searchTerm) ||
-                       student.id.toLowerCase().includes(searchTerm) ||
-                       student.class.toLowerCase().includes(searchTerm) ||
-                       student.ic.includes(searchTerm);
-            });
-            
-            currentPage = 1;
-            loadStudentTable();
-            updatePaginationInfo();
-        }
-
-        // Filter students
-        function filterStudents() {
-            const classFilter = document.getElementById('filterClass').value;
-            const yearFilter = document.getElementById('filterYear').value;
-            const statusFilter = document.getElementById('filterStatus').value;
-            const performanceFilter = document.getElementById('filterPerformance').value;
-            
-            filteredStudents = studentsData.filter(student => {
-                // Apply class filter
-                if (classFilter && student.class !== classFilter) return false;
-                
-                // Apply year filter
-                if (yearFilter && student.year !== yearFilter) return false;
-                
-                // Apply status filter
-                if (statusFilter && student.status !== statusFilter) return false;
-                
-                // Apply performance filter
-                if (performanceFilter) {
-                    if (performanceFilter === 'excellent' && student.performance < 85) return false;
-                    if (performanceFilter === 'good' && (student.performance < 70 || student.performance >= 85)) return false;
-                    if (performanceFilter === 'average' && (student.performance < 60 || student.performance >= 70)) return false;
-                    if (performanceFilter === 'poor' && student.performance >= 60) return false;
-                }
-                
-                return true;
-            });
-            
-            currentPage = 1;
-            loadStudentTable();
-            updatePaginationInfo();
-        }
-
-        // Reset filters
-        function resetFilters() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('filterClass').value = '';
-            document.getElementById('filterYear').value = '';
-            document.getElementById('filterStatus').value = '';
-            document.getElementById('filterPerformance').value = '';
-            
-            filteredStudents = [...studentsData];
-            currentPage = 1;
-            loadStudentTable();
-            updatePaginationInfo();
-            showNotification('Semua penapis telah dikembalikan kepada tetapan asal', 'success');
-        }
-
-        // Update pagination info
-        function updatePaginationInfo() {
-            const total = filteredStudents.length;
-            const start = Math.min((currentPage - 1) * studentsPerPage + 1, total);
-            const end = Math.min(currentPage * studentsPerPage, total);
-            
-            document.getElementById('paginationInfo').textContent = 
-                `Menunjukkan ${start}-${end} daripada ${total} pelajar`;
-        }
-
-        // Change page
-        function changePage(direction) {
-            const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
-            
-            if (direction === 'prev' && currentPage > 1) {
-                currentPage--;
-            } else if (direction === 'next' && currentPage < totalPages) {
-                currentPage++;
-            }
-            
-            loadStudentTable();
-            updatePaginationInfo();
-            
-            // Update active page buttons (simplified)
-            const pageButtons = document.querySelectorAll('.page-btn');
-            pageButtons.forEach((btn, index) => {
-                btn.classList.remove('active');
-                if (index === currentPage) {
-                    btn.classList.add('active');
-                }
-            });
-        }
-
-        // Add new student
-        function tambahPelajar() {
-            isEditingStudent = false;
-            currentStudentId = null;
-            document.getElementById('modalTitle').textContent = 'Tambah Pelajar Baru';
-            studentForm.reset();
-            
-            // Set default values
-            document.getElementById('studentYear').value = '6';
-            document.getElementById('studentClass').value = '6A';
-            document.getElementById('studentGender').value = 'male';
-            
-            studentModal.classList.add('active');
-        }
-
-        // Edit student
-        function editStudent(studentId) {
-            isEditingStudent = true;
-            currentStudentId = studentId;
-            
-            const student = studentsData.find(s => s.id === studentId);
-            if (student) {
-                document.getElementById('modalTitle').textContent = 'Edit Pelajar';
-                document.getElementById('studentName').value = student.name;
-                document.getElementById('studentIC').value = student.ic;
-                document.getElementById('studentClass').value = student.class;
-                document.getElementById('studentYear').value = student.year;
-                document.getElementById('studentGender').value = student.gender;
-                document.getElementById('studentDOB').value = student.dob;
-                document.getElementById('studentPhone').value = student.phone;
-                document.getElementById('studentEmail').value = student.email || '';
-                document.getElementById('studentAddress').value = student.address;
-                document.getElementById('studentGuardian').value = student.guardian || '';
-                document.getElementById('studentRelationship').value = student.relationship || '';
-                document.getElementById('studentMedical').value = student.medical || '';
-                
-                studentModal.classList.add('active');
-            }
-        }
-
-        // Save student
-        function saveStudent(event) {
-            event.preventDefault();
-            
-            const studentName = document.getElementById('studentName').value;
-            const studentIC = document.getElementById('studentIC').value;
-            const studentClass = document.getElementById('studentClass').value;
-            const studentYear = document.getElementById('studentYear').value;
-            const studentGender = document.getElementById('studentGender').value;
-            const studentDOB = document.getElementById('studentDOB').value;
-            const studentPhone = document.getElementById('studentPhone').value;
-            const studentEmail = document.getElementById('studentEmail').value;
-            const studentAddress = document.getElementById('studentAddress').value;
-            const studentGuardian = document.getElementById('studentGuardian').value;
-            const studentRelationship = document.getElementById('studentRelationship').value;
-            const studentMedical = document.getElementById('studentMedical').value;
-            
-            // Validate required fields
-            if (!studentName || !studentIC || !studentClass || !studentYear || !studentGender || !studentDOB || !studentPhone || !studentAddress) {
-                showNotification('Sila isi semua maklumat yang diperlukan', 'error');
-                return;
-            }
-            
-            if (isEditingStudent && currentStudentId) {
-                // Update existing student
-                const index = studentsData.findIndex(s => s.id === currentStudentId);
-                if (index !== -1) {
-                    studentsData[index] = {
-                        ...studentsData[index],
-                        name: studentName,
-                        ic: studentIC,
-                        class: studentClass,
-                        year: studentYear,
-                        gender: studentGender,
-                        dob: studentDOB,
-                        phone: studentPhone,
-                        email: studentEmail,
-                        address: studentAddress,
-                        guardian: studentGuardian,
-                        relationship: studentRelationship,
-                        medical: studentMedical
-                    };
-                    
-                    showNotification('Maklumat pelajar berjaya dikemaskini', 'success');
-                }
-            } else {
-                // Add new student
-                const newStudent = {
-                    id: 'ST' + (studentsData.length + 1).toString().padStart(3, '0'),
-                    name: studentName,
-                    ic: studentIC,
-                    class: studentClass,
-                    year: studentYear,
-                    gender: studentGender,
-                    dob: studentDOB,
-                    phone: studentPhone,
-                    email: studentEmail,
-                    address: studentAddress,
-                    guardian: studentGuardian,
-                    relationship: studentRelationship,
-                    medical: studentMedical,
-                    performance: Math.floor(Math.random() * 30) + 60, // Random performance 60-90
-                    attendance: Math.floor(Math.random() * 20) + 80, // Random attendance 80-100
-                    status: 'active',
-                    createdAt: new Date().toISOString().split('T')[0]
-                };
-                
-                studentsData.push(newStudent);
-                showNotification('Pelajar baru berjaya ditambah', 'success');
-            }
-            
-            // Update data
-            filterStudents();
-            updateSummary();
-            closeModal();
-        }
-
-        // View student details
-        function viewStudent(studentId) {
-            const student = studentsData.find(s => s.id === studentId);
-            if (student) {
-                // Calculate age from DOB
-                const dob = new Date(student.dob);
+            // Calculate age if DOB exists
+            let ageInfo = '';
+            if (student.tarikh_lahir) {
+                const dob = new Date(student.tarikh_lahir);
                 const today = new Date();
                 let age = today.getFullYear() - dob.getFullYear();
                 const monthDiff = today.getMonth() - dob.getMonth();
                 if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
                     age--;
                 }
-                
-                // Format DOB
-                const formattedDOB = new Date(student.dob).toLocaleDateString('ms-MY', {
+                ageInfo = `Umur: ${age} tahun\n`;
+            }
+            
+            // Format DOB
+            let dobInfo = '';
+            if (student.tarikh_lahir) {
+                const formattedDOB = new Date(student.tarikh_lahir).toLocaleDateString('ms-MY', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                 });
-                
-                alert(`MAKLUMAT PELAJAR\n\n` +
-                      `Nama: ${student.name}\n` +
-                      `No. KP: ${student.ic}\n` +
-                      `Umur: ${age} tahun\n` +
-                      `Tarikh Lahir: ${formattedDOB}\n` +
-                      `Kelas: ${student.class}\n` +
-                      `Tahun: ${student.year}\n` +
-                      `Jantina: ${student.gender === 'male' ? 'Lelaki' : 'Perempuan'}\n` +
-                      `Telefon: ${student.phone}\n` +
-                      `Emel: ${student.email || 'Tiada'}\n` +
-                      `Alamat: ${student.address}\n` +
-                      `Penjaga: ${student.guardian || 'Tiada'} (${student.relationship || 'Tiada'})\n` +
-                      `Catatan Perubatan: ${student.medical || 'Tiada'}\n` +
-                      `Prestasi: ${student.performance}%\n` +
-                      `Kehadiran: ${student.attendance}%\n` +
-                      `Status: ${student.status === 'active' ? 'Aktif' : student.status === 'inactive' ? 'Tidak Aktif' : 'Tamat'}\n` +
-                      `Didaftarkan pada: ${student.createdAt}`);
-            }
-        }
-
-        // Delete student
-        function deleteStudent(studentId) {
-            const student = studentsData.find(s => s.id === studentId);
-            if (!student) return;
-            
-            if (confirm(`Adakah anda pasti ingin memadam pelajar ini?\n\n${student.name}\n${student.id}\n${student.class}`)) {
-                // Remove student
-                const index = studentsData.findIndex(s => s.id === studentId);
-                if (index !== -1) {
-                    studentsData.splice(index, 1);
-                    
-                    // Remove from selected students
-                    selectedStudents.delete(studentId);
-                    
-                    // Update data
-                    filterStudents();
-                    updateSummary();
-                    updateBulkActions();
-                    
-                    showNotification('Pelajar berjaya dipadam', 'success');
-                }
-            }
-        }
-
-        // Toggle student selection
-        function toggleStudentSelection(studentId) {
-            if (selectedStudents.has(studentId)) {
-                selectedStudents.delete(studentId);
-            } else {
-                selectedStudents.add(studentId);
-            }
-            updateBulkActions();
-        }
-
-        // Toggle all selection
-        function toggleAllSelection() {
-            const selectAll = document.getElementById('selectAll').checked;
-            const checkboxes = document.querySelectorAll('.student-checkbox');
-            
-            if (selectAll) {
-                displayedStudents.forEach(student => {
-                    selectedStudents.add(student.id);
-                });
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = true;
-                });
-            } else {
-                displayedStudents.forEach(student => {
-                    selectedStudents.delete(student.id);
-                });
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = false;
-                });
-            }
-            updateBulkActions();
-        }
-
-        // Toggle all bulk
-        function toggleAllBulk() {
-            const selectAllBulk = document.getElementById('selectAllBulk').checked;
-            const selectAll = document.getElementById('selectAll');
-            
-            if (selectAllBulk) {
-                // Select all students across all pages
-                filteredStudents.forEach(student => {
-                    selectedStudents.add(student.id);
-                });
-                selectAll.checked = true;
-            } else {
-                // Deselect all students
-                selectedStudents.clear();
-                selectAll.checked = false;
+                dobInfo = `Tarikh Lahir: ${formattedDOB}\n`;
             }
             
-            // Update all checkboxes on current page
-            const checkboxes = document.querySelectorAll('.student-checkbox');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAllBulk;
-            });
+            // Get gender text
+            const genderText = student.jantina === 'L' ? 'Lelaki' : 'Perempuan';
             
-            updateBulkActions();
-        }
-
-        // Update bulk actions
-        function updateBulkActions() {
-            const selectedCount = selectedStudents.size;
-            document.getElementById('selectedCount').textContent = selectedCount;
+            // Get status text
+            let statusText = 'Aktif';
+            if (student.status === 0) statusText = 'Tidak Aktif';
+            else if (student.status === 2) statusText = 'Tamat';
             
-            if (selectedCount > 0) {
-                bulkActions.style.display = 'flex';
-                document.getElementById('selectAllBulk').checked = selectedCount === filteredStudents.length;
-            } else {
-                bulkActions.style.display = 'none';
-            }
-            
-            // Update select all checkbox
-            const allDisplayedSelected = displayedStudents.every(student => selectedStudents.has(student.id));
-            document.getElementById('selectAll').checked = allDisplayedSelected && displayedStudents.length > 0;
+            alert(`MAKLUMAT PELAJAR\n\n` +
+                  `Nama: ${student.nama}\n` +
+                  `No. KP: ${student.no_kp}\n` +
+                  `ID Pelajar: ${student.id_kelas}\n` +
+                  `${ageInfo}` +
+                  `${dobInfo}` +
+                  `Kelas: ${student.kelas_nama || 'N/A'}\n` +
+                  `Tahun: ${student.tahun ? 'Tahun ' + student.tahun : 'N/A'}\n` +
+                  `Jantina: ${genderText}\n` +
+                  `Status: ${statusText}\n` +
+                  `Prestasi Purata: ${student.prestasi_purata || 0}%\n` +
+                  `Kehadiran: ${student.attendance_percentage || 0}%`);
+        } else {
+            showNotification('Gagal memuatkan maklumat pelajar', 'error');
         }
+        showLoading(false);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+        showLoading(false);
+    });
+}
 
-        // Assign class to selected students
-        function assignClassBulk() {
-            if (selectedStudents.size === 0) return;
-            
-            const newClass = prompt('Masukkan kelas baru untuk pelajar terpilih:');
-            if (newClass) {
-                studentsData.forEach(student => {
-                    if (selectedStudents.has(student.id)) {
-                        student.class = newClass;
-                    }
-                });
-                
-                selectedStudents.clear();
-                filterStudents();
-                updateBulkActions();
-                showNotification(`${selectedStudents.size} pelajar telah ditugaskan ke kelas ${newClass}`, 'success');
-            }
-        }
+// Search students
+function searchStudents() {
+    // Reload data from server with search filter
+    loadStudentsFromServer();
+}
 
-        // Update status of selected students
-        function updateStatusBulk() {
-            if (selectedStudents.size === 0) return;
-            
-            const newStatus = prompt('Masukkan status baru (active/inactive/graduated):');
-            if (newStatus && ['active', 'inactive', 'graduated'].includes(newStatus)) {
-                studentsData.forEach(student => {
-                    if (selectedStudents.has(student.id)) {
-                        student.status = newStatus;
-                    }
-                });
-                
-                selectedStudents.clear();
-                filterStudents();
-                updateSummary();
-                updateBulkActions();
-                showNotification(`Status ${selectedStudents.size} pelajar telah dikemaskini`, 'success');
-            }
-        }
+// Filter students
+function filterStudents() {
+    // Reload data from server with all filters
+    loadStudentsFromServer();
+}
 
-        // Delete selected students
-        function deleteStudentsBulk() {
-            if (selectedStudents.size === 0) return;
-            
-            if (confirm(`Adakah anda pasti ingin memadam ${selectedStudents.size} pelajar terpilih?`)) {
-                // Remove selected students
-                studentsData = studentsData.filter(student => !selectedStudents.has(student.id));
-                
-                selectedStudents.clear();
-                filterStudents();
-                updateSummary();
-                updateBulkActions();
-                showNotification(`${selectedStudents.size} pelajar telah dipadam`, 'success');
-            }
-        }
+// Reset filters
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('filterClass').value = '';
+    document.getElementById('filterYear').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterPerformance').value = '';
+    
+    loadStudentsFromServer();
+    showNotification('Semua penapis telah dikembalikan kepada tetapan asal', 'success');
+}
 
-        // Open import modal
-        function openImportModal() {
-            importModal.classList.add('active');
-        }
-
-        // Close import modal
-        function closeImportModal() {
-            importModal.classList.remove('active');
-        }
-
-        // Handle file upload
-        function handleFileUpload(input) {
-            const file = input.files[0];
-            if (file) {
-                const fileName = file.name;
-                const fileSize = (file.size / 1024).toFixed(2);
-                showNotification(`Fail "${fileName}" (${fileSize} KB) berjaya dimuat naik`, 'success');
-            }
-        }
-
-        // Download template
-        function downloadTemplate() {
-            showNotification('Template Excel sedang dimuat turun...', 'info');
-            // In a real app, this would download a template file
-        }
-
-        // Process import
-        function processImport() {
-            showNotification('Memproses import data pelajar...', 'info');
-            setTimeout(() => {
-                showNotification('Import berjaya! 10 rekod pelajar telah ditambah.', 'success');
-                closeImportModal();
-            }, 2000);
-        }
-
-        // Reload data
-        function muatSemulaData() {
-            filterStudents();
-            showNotification('Data pelajar disegarkan', 'success');
-        }
-
-        // Close modal
-        function closeModal() {
-            studentModal.classList.remove('active');
-            isEditingStudent = false;
-            currentStudentId = null;
-        }
-
-        // Show notification
-        function showNotification(message, type = 'success') {
-            // Create notification element
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 100px;
-                right: 30px;
-                background: ${type === 'success' ? 'var(--success)' : 'var(--danger)'};
-                color: white;
-                padding: 15px 25px;
-                border-radius: 12px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-                z-index: 10000;
-                animation: slideIn 0.3s ease;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            `;
-            
-            notification.innerHTML = `
-                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-                <span>${message}</span>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            // Remove after 3 seconds
-            setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-
-        // Setup event listeners
-        function setupEventListeners() {
-            // Toggle sidebar
-            menuToggle.addEventListener('click', toggleSidebar);
-            sidebarOverlay.addEventListener('click', closeSidebar);
-            
-            // Close sidebar when clicking on sidebar items
-            document.querySelectorAll('.sidebar-item').forEach(item => {
-                item.addEventListener('click', closeSidebar);
-            });
-            
-            // Add window resize listener
-            window.addEventListener('resize', function() {
-                closeSidebar();
-            });
-            
-            // Close modal when clicking outside
-            document.addEventListener('click', function(event) {
-                if (event.target.classList.contains('modal')) {
-                    closeModal();
-                    closeImportModal();
-                }
-            });
-        }
-
-        // Toggle Sidebar
-        function toggleSidebar() {
-            sidebar.classList.toggle('sidebar-active');
-            sidebarOverlay.classList.toggle('active');
-            mainContent.classList.toggle('full-width');
-            document.body.style.overflow = sidebar.classList.contains('sidebar-active') ? 'hidden' : '';
-        }
-
-        // Close Sidebar on Mobile
-        function closeSidebar() {
-            if (window.innerWidth <= 1024) {
-                sidebar.classList.remove('sidebar-active');
-                sidebarOverlay.classList.remove('active');
-                mainContent.classList.remove('full-width');
-                document.body.style.overflow = '';
-            }
-        }
-
-        // Add CSS for notification animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from {
-                    transform: translateX(100%);
-                    opacity: 0;
-                }
-                to {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-            }
-            
-            @keyframes slideOut {
-                from {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-                to {
-                    transform: translateX(100%);
-                    opacity: 0;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Initialize page when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            initializePage();
-            setupEventListeners();
+// Bulk delete students
+function deleteStudentsBulk() {
+    if (selectedStudents.size === 0) return;
+    
+    if (confirm(`Adakah anda pasti ingin memadam ${selectedStudents.size} pelajar terpilih?`)) {
+        showLoading(true);
+        
+        const formData = new FormData();
+        formData.append('bulk_action', 'delete');
+        Array.from(selectedStudents).forEach(id => {
+            formData.append('student_ids[]', id);
         });
+        
+        fetch('?action=bulk_delete', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+            showLoading(false);
+        });
+    }
+}
+
+// Bulk update status
+function updateStatusBulk() {
+    if (selectedStudents.size === 0) return;
+    
+    const newStatus = prompt('Masukkan status baru (active/inactive/graduated):');
+    if (newStatus && ['active', 'inactive', 'graduated'].includes(newStatus)) {
+        showLoading(true);
+        
+        const formData = new FormData();
+        formData.append('bulk_action', 'update_status');
+        formData.append('new_status', newStatus);
+        Array.from(selectedStudents).forEach(id => {
+            formData.append('student_ids[]', id);
+        });
+        
+        fetch('?action=bulk_update', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+            showLoading(false);
+        });
+    }
+}
+
+// Add new AJAX endpoint to pelajar-saya.php
+// In your PHP code, add this to the AJAX handler:
+/*
+case 'get_classes':
+    echo json_encode([
+        'success' => true,
+        'classes' => $all_kelas
+    ]);
+    exit;
+*/
+
+// Initialize page when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializePage();
+});
     </script>
 </body>
 </html>
