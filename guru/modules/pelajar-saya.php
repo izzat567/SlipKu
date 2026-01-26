@@ -4,13 +4,15 @@ session_start();
 // Include database functions
 require_once __DIR__ . '/../includes/db_functions.php';
 
-// Check if user is logged in
-if (!isset($_SESSION['guru_id'])) {
-    header('Location: ../login.php');
-    exit();
-}
+// Check if user is logged in - REMOVED FOR TESTING
+// if (!isset($_SESSION['guru_id'])) {
+//     header('Location: ../login.php');
+//     exit();
+// }
 
-$guru_id = $_SESSION['guru_id'];
+// FOR TESTING ONLY - Set a default guru_id
+$guru_id = $_SESSION['guru_id'] ?? 1; // Default to guru ID 1 for testing
+
 $action = $_GET['action'] ?? '';
 $student_id = $_GET['id'] ?? '';
 
@@ -260,6 +262,13 @@ if (isset($_GET['ajax'])) {
             $exists = checkStudentExists($no_ic, $exclude_id);
             echo json_encode(['exists' => $exists]);
             exit;
+            
+        case 'get_classes':
+            echo json_encode([
+                'success' => true,
+                'classes' => $all_kelas
+            ]);
+            exit;
     }
 }
 ?>
@@ -306,6 +315,141 @@ if (isset($_GET['ajax'])) {
             min-height: 100vh;
             overflow-x: hidden;
         }
+
+        /* ... (CSS yang sama seperti sebelumnya) ... */
+
+        /* Alert styles - TAMBAH INI */
+        .alert {
+            position: fixed;
+            top: 100px;
+            right: 30px;
+            z-index: 10000;
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .alert-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .alert-error {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .alert-warning {
+            background: var(--warning);
+            color: white;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Loading overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.8);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #loadingOverlay.active {
+            display: flex;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--primary-light);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        /* Student details modal - TAMBAH INI */
+        .student-details-modal {
+            padding: 20px;
+        }
+        
+        .student-header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .student-avatar-lg {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .student-info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        .info-item {
+            background: var(--light-gray);
+            padding: 15px;
+            border-radius: 12px;
+        }
+        
+        .info-label {
+            display: block;
+            font-size: 12px;
+            color: var(--medium-gray);
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-weight: 600;
+            color: var(--dark-gray);
+        }
+        
+        .page-ellipsis {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            color: var(--medium-gray);
+        }
+
+        /* ... (CSS yang selebihnya sama seperti sebelumnya) ... */
 
         /* Mobile Menu Toggle */
         .menu-toggle {
@@ -393,6 +537,10 @@ if (isset($_GET['ajax'])) {
 
         .sidebar.sidebar-hidden {
             transform: translateX(-100%);
+        }
+
+        .sidebar.sidebar-active {
+            transform: translateX(0);
         }
 
         .sidebar-section {
@@ -870,22 +1018,18 @@ if (isset($_GET['ajax'])) {
 
         .performance-excellent {
             background: var(--success);
-            width: 90%;
         }
 
         .performance-good {
             background: #3b82f6;
-            width: 75%;
         }
 
         .performance-average {
             background: var(--warning);
-            width: 60%;
         }
 
         .performance-poor {
             background: var(--danger);
-            width: 40%;
         }
 
         .performance-value {
@@ -1367,156 +1511,76 @@ if (isset($_GET['ajax'])) {
     </style>
 </head>
 <body>
-    <!-- Modal for Add/Edit Student -->
-    <!-- Modal for Add/Edit Student -->
-<div class="modal" id="studentModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 id="modalTitle"><?= isset($student) ? 'Edit Pelajar' : 'Tambah Pelajar Baru' ?></h3>
-            <button class="modal-close" onclick="closeModal()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="modal-body">
-            <form id="studentForm" method="POST" action="?action=<?= isset($student) ? 'edit&id=' . $student['id'] : 'add' ?>">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label required">Nama Penuh</label>
-                        <input type="text" class="form-input" id="studentName" name="nama" 
-                               placeholder="Nama penuh pelajar" required 
-                               value="<?= isset($student) ? htmlspecialchars($student['nama']) : '' ?>">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label required">No. Kad Pengenalan</label>
-                        <input type="text" class="form-input" id="studentIC" name="no_ic" 
-                               placeholder="Contoh: 030101-14-1234" required 
-                               value="<?= isset($student) ? htmlspecialchars($student['no_kp']) : '' ?>"
-                               onblur="checkICExists()">
-                        <small id="icError" style="color: var(--danger); display: none;">
-                            No. KP sudah wujud dalam sistem
-                        </small>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label required">Jantina</label>
-                        <select class="form-select" id="studentGender" name="jantina" required>
-                            <option value="">Pilih Jantina</option>
-                            <option value="male" <?= (isset($student) && $student['jantina'] == 'L') ? 'selected' : '' ?>>Lelaki</option>
-                            <option value="female" <?= (isset($student) && $student['jantina'] == 'P') ? 'selected' : '' ?>>Perempuan</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Status</label>
-                        <select class="form-select" id="studentStatus" name="status">
-                            <option value="active" <?= (isset($student) && $student['status'] == 1) ? 'selected' : '' ?>>Aktif</option>
-                            <option value="inactive" <?= (isset($student) && $student['status'] == 0) ? 'selected' : '' ?>>Tidak Aktif</option>
-                            <option value="graduated" <?= (isset($student) && $student['status'] == 2) ? 'selected' : '' ?>>Tamat</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <input type="hidden" id="currentStudentId" value="<?= isset($student) ? $student['id'] : '' ?>">
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal()">
-                        Batal
-                    </button>
-                    <button type="submit" class="btn btn-primary" id="submitBtn">
-                        <?= isset($student) ? 'Kemaskini Pelajar' : 'Simpan Pelajar' ?>
-                    </button>
-                </div>
-            </form>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <p style="color: var(--primary); font-weight: 600;">Memuatkan...</p>
         </div>
     </div>
-</div>
 
-<!-- Add success/error message display -->
-<?php if (!empty($success_message)): ?>
-<div class="alert alert-success" style="position: fixed; top: 100px; right: 30px; z-index: 10000; padding: 15px 25px; background: var(--success); color: white; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;">
-    <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success_message) ?>
-</div>
-<script>
-    setTimeout(() => {
-        document.querySelector('.alert').style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => document.querySelector('.alert').remove(), 300);
-    }, 3000);
-</script>
-<?php endif; ?>
-
-<?php if (!empty($error_message)): ?>
-<div class="alert alert-error" style="position: fixed; top: 100px; right: 30px; z-index: 10000; padding: 15px 25px; background: var(--danger); color: white; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;">
-    <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error_message) ?>
-</div>
-<script>
-    setTimeout(() => {
-        document.querySelector('.alert').style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => document.querySelector('.alert').remove(), 300);
-    }, 3000);
-</script>
-<?php endif; ?>
-
-<style>
-@keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
-@keyframes slideOut {
-    from { transform: translateX(0); opacity: 1; }
-    to { transform: translateX(100%); opacity: 0; }
-}
-</style>
-
-    <!-- Modal for Bulk Import -->
-    <div class="modal" id="importModal">
+    <!-- Modal for Add/Edit Student -->
+    <div class="modal" id="studentModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Import Pelajar</h3>
-                <button class="modal-close" onclick="closeImportModal()">
+                <h3 id="modalTitle"><?= isset($student) ? 'Edit Pelajar' : 'Tambah Pelajar Baru' ?></h3>
+                <button class="modal-close" onclick="closeModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div style="width: 80px; height: 80px; background: var(--primary-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 32px; margin: 0 auto 15px;">
-                        <i class="fas fa-file-import"></i>
+                <form id="studentForm" method="POST" action="?action=<?= isset($student) ? 'edit&id=' . $student['id'] : 'add' ?>">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label required">Nama Penuh</label>
+                            <input type="text" class="form-input" id="studentName" name="nama" 
+                                   placeholder="Nama penuh pelajar" required 
+                                   value="<?= isset($student) ? htmlspecialchars($student['nama']) : '' ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label required">No. Kad Pengenalan</label>
+                            <input type="text" class="form-input" id="studentIC" name="no_ic" 
+                                   placeholder="Contoh: 030101-14-1234" required 
+                                   value="<?= isset($student) ? htmlspecialchars($student['no_kp']) : '' ?>"
+                                   onblur="checkICExists()">
+                            <small id="icError" style="color: var(--danger); display: none;">
+                                No. KP sudah wujud dalam sistem
+                            </small>
+                        </div>
                     </div>
-                    <h4 style="font-size: 18px; margin-bottom: 10px; color: var(--dark-gray);">Import Data Pelajar</h4>
-                    <p style="color: var(--medium-gray); font-size: 14px;">Muat naik fail Excel atau CSV yang mengandungi data pelajar</p>
-                </div>
-                
-                <div style="border: 2px dashed #e5e7eb; border-radius: 12px; padding: 40px 20px; text-align: center; margin-bottom: 20px; cursor: pointer;" onclick="document.getElementById('fileInput').click()">
-                    <i class="fas fa-cloud-upload-alt" style="font-size: 48px; color: var(--primary-light); margin-bottom: 15px;"></i>
-                    <p style="color: var(--medium-gray); margin-bottom: 10px;">Klik untuk muat naik fail atau seret fail ke sini</p>
-                    <p style="font-size: 12px; color: var(--medium-gray);">Format yang disokong: .xlsx, .xls, .csv</p>
-                </div>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileUpload(this)">
-                
-                <div style="background: var(--light-gray); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-                    <h5 style="font-size: 14px; margin-bottom: 10px; color: var(--dark-gray);">
-                        <i class="fas fa-info-circle" style="color: var(--info);"></i>
-                        Panduan Format Data
-                    </h5>
-                    <ul style="font-size: 13px; color: var(--medium-gray); padding-left: 20px;">
-                        <li>Pastikan fail mengandungi kolom: Nama, IC, Kelas, Tahun, Jantina</li>
-                        <li>Format tarikh: YYYY-MM-DD</li>
-                        <li>Muat turun template untuk format yang betul</li>
-                    </ul>
-                </div>
-                
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="btn btn-secondary" onclick="downloadTemplate()">
-                        <i class="fas fa-download"></i>
-                        Template
-                    </button>
-                    <button class="btn btn-primary" onclick="processImport()">
-                        <i class="fas fa-upload"></i>
-                        Import
-                    </button>
-                </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label required">Jantina</label>
+                            <select class="form-select" id="studentGender" name="jantina" required>
+                                <option value="">Pilih Jantina</option>
+                                <option value="male" <?= (isset($student) && $student['jantina'] == 'L') ? 'selected' : '' ?>>Lelaki</option>
+                                <option value="female" <?= (isset($student) && $student['jantina'] == 'P') ? 'selected' : '' ?>>Perempuan</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" id="studentStatus" name="status">
+                                <option value="active" <?= (isset($student) && $student['status'] == 1) ? 'selected' : '' ?>>Aktif</option>
+                                <option value="inactive" <?= (isset($student) && $student['status'] == 0) ? 'selected' : '' ?>>Tidak Aktif</option>
+                                <option value="graduated" <?= (isset($student) && $student['status'] == 2) ? 'selected' : '' ?>>Tamat</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <input type="hidden" id="currentStudentId" value="<?= isset($student) ? $student['id'] : '' ?>">
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                            Batal
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <?= isset($student) ? 'Kemaskini Pelajar' : 'Simpan Pelajar' ?>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1533,7 +1597,7 @@ if (isset($_GET['ajax'])) {
             </button>
 
             <!-- Logo -->
-            <a href="dashboard-admin.html" class="logo">
+            <a href="#" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1543,122 +1607,17 @@ if (isset($_GET['ajax'])) {
                 </div>
             </a>
 
-            <!-- Desktop Navigation -->
-            <nav class="top-nav">
-                <a href="dashboard-admin.html" class="nav-item">
-                    <i class="fas fa-home"></i>
-                    Utama
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-bell"></i>
-                    Pemberitahuan
-                    <span class="notification-badge">5</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-envelope"></i>
-                    Mesej
-                    <span class="notification-badge">3</span>
-                </a>
-            </nav>
-
             <!-- User Profile -->
             <div class="user-profile" id="userProfile">
                 <div class="user-avatar">GU</div>
                 <div class="user-info">
-                    <h4>Cikgu Ahmad</h4>
-                    <p>Admin Guru Tahun 6</p>
+                    <h4>Cikgu Demo</h4>
+                    <p>Guru Demo (No Login Required)</p>
                 </div>
                 <i class="fas fa-chevron-down"></i>
             </div>
         </div>
     </header>
-   <?php include '../includes/sidebar.php'; ?>
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-section">
-            <div class="sidebar-title">Menu Utama</div>
-            <a href="dashboard-guru.php" class="sidebar-item">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="kelas-saya.php" class="sidebar-item">
-                <i class="fas fa-users"></i>
-                Kelas Saya
-                <span class="badge">3</span>
-            </a>
-            <a href="pelajar-saya.php" class="sidebar-item active">
-                <i class="fas fa-user-graduate"></i>
-                Pelajar Saya
-                <span class="badge">85</span>
-            </a>
-            <a href="subjek-saya.php" class="sidebar-item">
-                <i class="fas fa-book"></i>
-                Subjek Saya
-                <span class="badge">4</span>
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.php" class="sidebar-item">
-                <i class="fas fa-plus-circle"></i>
-                Tambah Markah
-            </a>
-            <a href="kemaskini-markah.php" class="sidebar-item">
-                <i class="fas fa-edit"></i>
-                Kemaskini Markah
-            </a>
-            <a href="semak-markah.php" class="sidebar-item">
-                <i class="fas fa-search"></i>
-                Semak Markah
-            </a>
-            <a href="laporan-prestasi.php" class="sidebar-item">
-                <i class="fas fa-chart-bar"></i>
-                Laporan Prestasi
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Pengurusan</div>
-            <a href="jadual-ujian.php" class="sidebar-item">
-                <i class="fas fa-calendar-alt"></i>
-                Jadual Ujian
-            </a>
-            <a href="tugasan.php" class="sidebar-item">
-                <i class="fas fa-tasks"></i>
-                Tugasan
-                <span class="badge">12</span>
-            </a>
-            <a href="kehadiran.php" class="sidebar-item">
-                <i class="fas fa-clipboard-check"></i>
-                Kehadiran
-            </a>
-            <a href="komunikasi.php" class="sidebar-item">
-                <i class="fas fa-comments"></i>
-                Komunikasi Ibu Bapa
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Sistem</div>
-            <a href="profil.php" class="sidebar-item">
-                <i class="fas fa-user-cog"></i>
-                Profil Saya
-            </a>
-            <a href="tetapan.php" class="sidebar-item">
-                <i class="fas fa-cog"></i>
-                Tetapan
-            </a>
-            <a href="bantuan-admin.php" class="sidebar-item">
-                <i class="fas fa-question-circle"></i>
-                Bantuan
-            </a>
-            <a href="#" class="sidebar-item" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                Log Keluar
-            </a>
-        </div>
-    </aside>
 
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
@@ -1672,10 +1631,6 @@ if (isset($_GET['ajax'])) {
                 <button class="btn btn-secondary" onclick="muatSemulaData()">
                     <i class="fas fa-sync-alt"></i>
                     Muat Semula
-                </button>
-                <button class="btn btn-info" onclick="openImportModal()">
-                    <i class="fas fa-file-import"></i>
-                    Import
                 </button>
                 <button class="btn btn-primary" onclick="tambahPelajar()">
                     <i class="fas fa-plus-circle"></i>
@@ -1692,19 +1647,19 @@ if (isset($_GET['ajax'])) {
             </div>
             <div class="summary-stats">
                 <div class="summary-stat">
-                    <div class="stat-number" id="totalStudents">85</div>
+                    <div class="stat-number" id="totalStudents">0</div>
                     <div class="stat-label">Pelajar</div>
                 </div>
                 <div class="summary-stat">
-                    <div class="stat-number" id="activeStudents">82</div>
+                    <div class="stat-number" id="activeStudents">0</div>
                     <div class="stat-label">Aktif</div>
                 </div>
                 <div class="summary-stat">
-                    <div class="stat-number" id="averagePerformance">78.9%</div>
+                    <div class="stat-number" id="averagePerformance">0%</div>
                     <div class="stat-label">Prestasi Purata</div>
                 </div>
                 <div class="summary-stat">
-                    <div class="stat-number" id="attendanceRate">92.3%</div>
+                    <div class="stat-number" id="attendanceRate">0%</div>
                     <div class="stat-label">Kehadiran</div>
                 </div>
             </div>
@@ -1722,11 +1677,6 @@ if (isset($_GET['ajax'])) {
                     <label class="filter-label">Kelas:</label>
                     <select class="filter-select" id="filterClass" onchange="filterStudents()">
                         <option value="">Semua Kelas</option>
-                        <option value="6A">Kelas 6A</option>
-                        <option value="6B">Kelas 6B</option>
-                        <option value="5A">Kelas 5A</option>
-                        <option value="5B">Kelas 5B</option>
-                        <option value="4A">Kelas 4A</option>
                     </select>
                 </div>
                 
@@ -1734,12 +1684,6 @@ if (isset($_GET['ajax'])) {
                     <label class="filter-label">Tahun:</label>
                     <select class="filter-select" id="filterYear" onchange="filterStudents()">
                         <option value="">Semua Tahun</option>
-                        <option value="6">Tahun 6</option>
-                        <option value="5">Tahun 5</option>
-                        <option value="4">Tahun 4</option>
-                        <option value="3">Tahun 3</option>
-                        <option value="2">Tahun 2</option>
-                        <option value="1">Tahun 1</option>
                     </select>
                 </div>
                 
@@ -1763,30 +1707,6 @@ if (isset($_GET['ajax'])) {
                         <option value="poor">Lemah (≤59%)</option>
                     </select>
                 </div>
-            </div>
-        </div>
-
-        <!-- Bulk Actions -->
-        <div class="bulk-actions" id="bulkActions" style="display: none;">
-            <div class="bulk-select">
-                <input type="checkbox" id="selectAllBulk" onchange="toggleAllBulk()">
-                <label for="selectAllBulk" style="font-weight: 600; color: var(--dark-gray);">
-                    <span id="selectedCount">0</span> pelajar dipilih
-                </label>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button class="action-btn add" onclick="assignClassBulk()">
-                    <i class="fas fa-users"></i>
-                    Tugaskan Kelas
-                </button>
-                <button class="action-btn edit" onclick="updateStatusBulk()">
-                    <i class="fas fa-edit"></i>
-                    Kemaskini Status
-                </button>
-                <button class="action-btn delete" onclick="deleteStudentsBulk()">
-                    <i class="fas fa-trash"></i>
-                    Padam
-                </button>
             </div>
         </div>
 
@@ -1814,31 +1734,23 @@ if (isset($_GET['ajax'])) {
             </table>
             
             <!-- Empty State -->
-            <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-state" id="emptyState">
                 <i class="fas fa-user-graduate"></i>
-                <h3>Tiada Pelajar Ditemui</h3>
-                <p>Tiada pelajar yang sepadan dengan carian atau penapis anda.</p>
-                <button class="btn btn-secondary" onclick="resetFilters()">
-                    <i class="fas fa-redo"></i>
-                    Reset Penapis
-                </button>
+                <h3>Memuatkan data pelajar...</h3>
+                <p>Sila tunggu sebentar.</p>
             </div>
         </div>
 
         <!-- Pagination -->
         <div class="pagination">
             <div class="pagination-info" id="paginationInfo">
-                Menunjukkan 1-10 daripada 85 pelajar
+                Memuatkan data...
             </div>
             <div class="pagination-controls">
                 <button class="page-btn" onclick="changePage('prev')">
                     <i class="fas fa-chevron-left"></i>
                 </button>
                 <button class="page-btn active">1</button>
-                <button class="page-btn">2</button>
-                <button class="page-btn">3</button>
-                <button class="page-btn">4</button>
-                <button class="page-btn">5</button>
                 <button class="page-btn" onclick="changePage('next')">
                     <i class="fas fa-chevron-right"></i>
                 </button>
@@ -1853,678 +1765,860 @@ if (isset($_GET['ajax'])) {
         const sidebarOverlay = document.getElementById('sidebarOverlay');
         const mainContent = document.getElementById('mainContent');
         const studentModal = document.getElementById('studentModal');
-        const importModal = document.getElementById('importModal');
         const studentTableBody = document.getElementById('studentTableBody');
         const emptyState = document.getElementById('emptyState');
-        const bulkActions = document.getElementById('bulkActions');
         const studentForm = document.getElementById('studentForm');
 
         // Current state
         let studentsData = [];
         let filteredStudents = [];
         let displayedStudents = [];
-        let isEditingStudent = false;
-        let currentStudentId = null;
-        let selectedStudents = new Set();
         let currentPage = 1;
         const studentsPerPage = 10;
 
-        // Sample data for students
-        const sampleStudents = [
-            {
-                id: 'ST001',
-                name: 'Ahmad bin Ali',
-                ic: '080101-14-1234',
-                class: '6A',
-                year: '6',
-                gender: 'male',
-                dob: '2008-01-01',
-                phone: '012-345 6789',
-                email: 'ahmad.ali@email.com',
-                address: 'No. 123, Jalan Merdeka, Taman Sentosa, 43000 Kajang, Selangor',
-                guardian: 'Ali bin Abu',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 85,
-                attendance: 95,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST002',
-                name: 'Siti binti Abu',
-                ic: '080215-08-5678',
-                class: '6A',
-                year: '6',
-                gender: 'female',
-                dob: '2008-02-15',
-                phone: '013-456 7890',
-                email: 'siti.abu@email.com',
-                address: 'No. 456, Jalan Damai, Taman Harmoni, 43000 Kajang, Selangor',
-                guardian: 'Abu bin Hassan',
-                relationship: 'father',
-                medical: 'Asma (ringan)',
-                performance: 90,
-                attendance: 98,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST003',
-                name: 'Muhammad bin Hassan',
-                ic: '080305-10-9012',
-                class: '6A',
-                year: '6',
-                gender: 'male',
-                dob: '2008-03-05',
-                phone: '014-567 8901',
-                email: 'muhammad.hassan@email.com',
-                address: 'No. 789, Jalan Sejahtera, Taman Murni, 43000 Kajang, Selangor',
-                guardian: 'Hassan bin Ismail',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 78,
-                attendance: 92,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST004',
-                name: 'Aisha binti Kamal',
-                ic: '080410-06-3456',
-                class: '6A',
-                year: '6',
-                gender: 'female',
-                dob: '2008-04-10',
-                phone: '015-678 9012',
-                email: 'aisha.kamal@email.com',
-                address: 'No. 101, Jalan Aman, Taman Sentosa, 43000 Kajang, Selangor',
-                guardian: 'Kamal bin Yusuf',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 92,
-                attendance: 96,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST005',
-                name: 'Ali bin Omar',
-                ic: '080512-12-7890',
-                class: '6A',
-                year: '6',
-                gender: 'male',
-                dob: '2008-05-12',
-                phone: '016-789 0123',
-                email: 'ali.omar@email.com',
-                address: 'No. 202, Jalan Bahagia, Taman Harmoni, 43000 Kajang, Selangor',
-                guardian: 'Omar bin Ahmad',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 76,
-                attendance: 89,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST006',
-                name: 'Fatimah binti Yusuf',
-                ic: '080623-08-1234',
-                class: '6A',
-                year: '6',
-                gender: 'female',
-                dob: '2008-06-23',
-                phone: '017-890 1234',
-                email: 'fatimah.yusuf@email.com',
-                address: 'No. 303, Jalan Makmur, Taman Murni, 43000 Kajang, Selangor',
-                guardian: 'Yusuf bin Ali',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 88,
-                attendance: 94,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST007',
-                name: 'Ravi a/l Kumar',
-                ic: '080701-14-5678',
-                class: '6B',
-                year: '6',
-                gender: 'male',
-                dob: '2008-07-01',
-                phone: '018-901 2345',
-                email: 'ravi.kumar@email.com',
-                address: 'No. 404, Jalan Ceria, Taman Sentosa, 43000 Kajang, Selangor',
-                guardian: 'Kumar a/l Raj',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 72,
-                attendance: 85,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST008',
-                name: 'Priya a/p Raj',
-                ic: '080815-06-9012',
-                class: '6B',
-                year: '6',
-                gender: 'female',
-                dob: '2008-08-15',
-                phone: '019-012 3456',
-                email: 'priya.raj@email.com',
-                address: 'No. 505, Jalan Indah, Taman Harmoni, 43000 Kajang, Selangor',
-                guardian: 'Raj a/l Muthu',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 85,
-                attendance: 90,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST009',
-                name: 'Kumar a/l Muthu',
-                ic: '080920-10-3456',
-                class: '6B',
-                year: '6',
-                gender: 'male',
-                dob: '2008-09-20',
-                phone: '011-123 4567',
-                email: 'kumar.muthu@email.com',
-                address: 'No. 606, Jalan Permai, Taman Murni, 43000 Kajang, Selangor',
-                guardian: 'Muthu a/l Samy',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 68,
-                attendance: 82,
-                status: 'inactive',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST010',
-                name: 'Mei Ling',
-                ic: '081010-08-7890',
-                class: '6B',
-                year: '6',
-                gender: 'female',
-                dob: '2008-10-10',
-                phone: '012-234 5678',
-                email: 'mei.ling@email.com',
-                address: 'No. 707, Jalan Seri, Taman Sentosa, 43000 Kajang, Selangor',
-                guardian: 'Ling Hock',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 90,
-                attendance: 96,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST011',
-                name: 'Wei Jian',
-                ic: '081115-12-1234',
-                class: '6B',
-                year: '6',
-                gender: 'male',
-                dob: '2008-11-15',
-                phone: '013-345 6789',
-                email: 'wei.jian@email.com',
-                address: 'No. 808, Jalan Damai, Taman Harmoni, 43000 Kajang, Selangor',
-                guardian: 'Jian Min',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 79,
-                attendance: 88,
-                status: 'active',
-                createdAt: '2023-01-15'
-            },
-            {
-                id: 'ST012',
-                name: 'Sofia binti David',
-                ic: '081220-06-5678',
-                class: '6B',
-                year: '6',
-                gender: 'female',
-                dob: '2008-12-20',
-                phone: '014-456 7890',
-                email: 'sofia.david@email.com',
-                address: 'No. 909, Jalan Bahagia, Taman Murni, 43000 Kajang, Selangor',
-                guardian: 'David bin Joseph',
-                relationship: 'father',
-                medical: 'Tiada',
-                performance: 82,
-                attendance: 91,
-                status: 'graduated',
-                createdAt: '2023-01-15'
+        // Initialize page
+        function initializePage() {
+            // Load data from server
+            loadStudentsFromServer();
+            
+            // Initialize filters
+            initializeFilters();
+            
+            // Setup event listeners
+            setupEventListeners();
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Toggle sidebar
+            if (menuToggle) {
+                menuToggle.addEventListener('click', toggleSidebar);
             }
-        ];
-
-     // Update initializePage function
-function initializePage() {
-    // Load data from server
-    loadStudentsFromServer();
-    
-    // Set up event listeners
-    setupEventListeners();
-    
-    // Initialize search and filter
-    initializeFilters();
-}
-
-// Initialize filters with real data
-function initializeFilters() {
-    // Load class options from server
-    fetch('?ajax=get_classes')
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const classSelect = document.getElementById('filterClass');
-            const yearSelect = document.getElementById('filterYear');
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', closeSidebar);
+            }
             
-            // Clear existing options except the first one
-            while (classSelect.options.length > 1) classSelect.remove(1);
-            while (yearSelect.options.length > 1) yearSelect.remove(1);
-            
-            // Add class options
-            const uniqueClasses = [...new Set(data.classes.map(c => c.nama))];
-            uniqueClasses.forEach(className => {
-                const option = document.createElement('option');
-                option.value = className;
-                option.textContent = `Kelas ${className}`;
-                classSelect.appendChild(option);
-            });
-            
-            // Add year options
-            const uniqueYears = [...new Set(data.classes.map(c => c.tahun))].sort((a, b) => b - a);
-            uniqueYears.forEach(year => {
-                const option = document.createElement('option');
-                option.value = year;
-                option.textContent = `Tahun ${year}`;
-                yearSelect.appendChild(option);
-            });
-        }
-    })
-    .catch(error => {
-        console.error('Error loading filters:', error);
-    });
-}
-
-// Load students from server
-function loadStudentsFromServer() {
-    showLoading(true);
-    
-    // Build query string from filters
-    const search = document.getElementById('searchInput').value;
-    const kelas = document.getElementById('filterClass').value;
-    const tahun = document.getElementById('filterYear').value;
-    const status = document.getElementById('filterStatus').value;
-    const prestasi = document.getElementById('filterPerformance').value;
-    
-    let query = '?ajax=get_students';
-    if (search) query += `&search=${encodeURIComponent(search)}`;
-    if (kelas) query += `&kelas=${encodeURIComponent(kelas)}`;
-    if (tahun) query += `&tahun=${encodeURIComponent(tahun)}`;
-    if (status) query += `&status=${encodeURIComponent(status)}`;
-    if (prestasi) query += `&prestasi=${encodeURIComponent(prestasi)}`;
-    
-    fetch(query, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            studentsData = data.students.map(student => formatStudentData(student));
-            filteredStudents = [...studentsData];
-            updateSummary(data.statistics);
-            loadStudentTable();
-            updatePaginationInfo();
-        } else {
-            showNotification('Gagal memuatkan data pelajar', 'error');
-        }
-        showLoading(false);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showNotification('Ralat sistem. Sila cuba lagi.', 'error');
-        showLoading(false);
-    });
-}
-
-// Format student data for frontend
-function formatStudentData(dbStudent) {
-    // Calculate attendance percentage
-    const attendance = dbStudent.attendance_percentage || 
-        (dbStudent.total_kehadiran > 0 ? 
-            Math.round((dbStudent.jumlah_kehadiran / dbStudent.total_kehadiran) * 100) : 0);
-    
-    // Get gender text
-    const genderText = dbStudent.jantina === 'L' ? 'Lelaki' : 'Perempuan';
-    
-    // Get status
-    let status = 'active';
-    let statusText = 'AKTIF';
-    if (dbStudent.status === 0) {
-        status = 'inactive';
-        statusText = 'TIDAK AKTIF';
-    } else if (dbStudent.status === 2) {
-        status = 'graduated';
-        statusText = 'TAMAT';
-    }
-    
-    return {
-        id: dbStudent.id.toString(),
-        name: dbStudent.nama,
-        ic: dbStudent.no_kp || '',
-        class: dbStudent.kelas_nama || 'N/A',
-        year: dbStudent.tahun ? `Tahun ${dbStudent.tahun}` : 'N/A',
-        gender: dbStudent.jantina === 'L' ? 'male' : 'female',
-        genderText: genderText,
-        performance: parseFloat(dbStudent.prestasi_purata) || 0,
-        attendance: attendance,
-        status: status,
-        statusText: statusText,
-        student_id: dbStudent.student_id || dbStudent.id_kelas || '',
-        kelas_nama: dbStudent.kelas_nama || '',
-        tahun: dbStudent.tahun || ''
-    };
-}
-
-// Update summary with real data
-function updateSummary(statistics) {
-    if (statistics) {
-        document.getElementById('totalStudents').textContent = statistics.total_pelajar || 0;
-        document.getElementById('activeStudents').textContent = statistics.pelajar_aktif || 0;
-        document.getElementById('averagePerformance').textContent = (statistics.prestasi_purata || 0).toFixed(1) + '%';
-        document.getElementById('attendanceRate').textContent = (statistics.kadar_kehadiran || 0).toFixed(1) + '%';
-    }
-}
-
-// Update student table with real data
-function loadStudentTable() {
-    if (filteredStudents.length === 0) {
-        studentTableBody.innerHTML = '';
-        emptyState.style.display = 'block';
-        bulkActions.style.display = 'none';
-        return;
-    }
-    
-    emptyState.style.display = 'none';
-    
-    // Calculate pagination
-    const startIndex = (currentPage - 1) * studentsPerPage;
-    const endIndex = startIndex + studentsPerPage;
-    displayedStudents = filteredStudents.slice(startIndex, endIndex);
-    
-    studentTableBody.innerHTML = displayedStudents.map(student => {
-        // Get initials for avatar
-        const initials = student.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        
-        // Determine performance class
-        let performanceClass = '';
-        let performanceWidth = '';
-        if (student.performance >= 85) {
-            performanceClass = 'performance-excellent';
-            performanceWidth = '90%';
-        } else if (student.performance >= 70) {
-            performanceClass = 'performance-good';
-            performanceWidth = '75%';
-        } else if (student.performance >= 60) {
-            performanceClass = 'performance-average';
-            performanceWidth = '60%';
-        } else {
-            performanceClass = 'performance-poor';
-            performanceWidth = '40%';
-        }
-        
-        // Determine status badge
-        let statusClass = '';
-        let statusText = '';
-        switch(student.status) {
-            case 'active':
-                statusClass = 'status-active';
-                statusText = 'AKTIF';
-                break;
-            case 'inactive':
-                statusClass = 'status-inactive';
-                statusText = 'TIDAK AKTIF';
-                break;
-            case 'graduated':
-                statusClass = 'status-graduated';
-                statusText = 'TAMAT';
-                break;
-        }
-        
-        return `
-            <tr>
-                <td>
-                    <input type="checkbox" class="student-checkbox" value="${student.id}" onchange="toggleStudentSelection('${student.id}')">
-                </td>
-                <td>
-                    <div class="student-avatar-cell">
-                        <div class="student-avatar">
-                            ${initials}
-                        </div>
-                        <div class="student-info">
-                            <div class="student-name">${student.name}</div>
-                            <div class="student-id">${student.student_id}</div>
-                        </div>
-                    </div>
-                </td>
-                <td>${student.kelas_nama || student.class}</td>
-                <td>${student.year}</td>
-                <td>${student.genderText}</td>
-                <td>
-                    <div class="performance-cell">
-                        <div class="performance-bar">
-                            <div class="performance-fill ${performanceClass}" style="width: ${performanceWidth}"></div>
-                        </div>
-                        <div class="performance-value">${student.performance.toFixed(1)}%</div>
-                    </div>
-                </td>
-                <td>${student.attendance}%</td>
-                <td>
-                    <span class="status-badge ${statusClass}">${statusText}</span>
-                </td>
-                <td>
-                    <div class="action-cell">
-                        <button class="action-btn view" onclick="viewStudent('${student.id}')">
-                            <i class="fas fa-eye"></i>
-                            Lihat
-                        </button>
-                        <button class="action-btn edit" onclick="editStudent('${student.id}')">
-                            <i class="fas fa-edit"></i>
-                            Edit
-                        </button>
-                        <button class="action-btn delete" onclick="deleteStudent('${student.id}', '${student.name.replace(/'/g, "\\'")}')">
-                            <i class="fas fa-trash"></i>
-                            Padam
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-    
-    // Update bulk actions visibility
-    updateBulkActions();
-}
-
-// View student details
-function viewStudent(studentId) {
-    showLoading(true);
-    
-    fetch(`?ajax=get_student&student_id=${studentId}`)
-    .then(response => response.json())
-    .then(data => {
-        if (data.success && data.student) {
-            const student = data.student;
-            
-            // Calculate age if DOB exists
-            let ageInfo = '';
-            if (student.tarikh_lahir) {
-                const dob = new Date(student.tarikh_lahir);
-                const today = new Date();
-                let age = today.getFullYear() - dob.getFullYear();
-                const monthDiff = today.getMonth() - dob.getMonth();
-                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-                    age--;
+            // Close modal when clicking outside
+            document.addEventListener('click', function(event) {
+                if (event.target.classList.contains('modal')) {
+                    closeModal();
                 }
-                ageInfo = `Umur: ${age} tahun\n`;
-            }
+            });
             
-            // Format DOB
-            let dobInfo = '';
-            if (student.tarikh_lahir) {
-                const formattedDOB = new Date(student.tarikh_lahir).toLocaleDateString('ms-MY', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                });
-                dobInfo = `Tarikh Lahir: ${formattedDOB}\n`;
+            // Add window resize listener
+            window.addEventListener('resize', function() {
+                closeSidebar();
+            });
+        }
+
+        // Toggle Sidebar
+        function toggleSidebar() {
+            if (sidebar) {
+                sidebar.classList.toggle('sidebar-active');
             }
+            if (sidebarOverlay) {
+                sidebarOverlay.classList.toggle('active');
+            }
+            if (mainContent) {
+                mainContent.classList.toggle('full-width');
+            }
+            document.body.style.overflow = sidebar && sidebar.classList.contains('sidebar-active') ? 'hidden' : '';
+        }
+
+        // Close Sidebar on Mobile
+        function closeSidebar() {
+            if (window.innerWidth <= 1024) {
+                if (sidebar) sidebar.classList.remove('sidebar-active');
+                if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+                if (mainContent) mainContent.classList.remove('full-width');
+                document.body.style.overflow = '';
+            }
+        }
+
+        // Initialize filters with real data
+        function initializeFilters() {
+            // Load class options from server
+            fetch('?ajax=get_classes')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const classSelect = document.getElementById('filterClass');
+                    const yearSelect = document.getElementById('filterYear');
+                    
+                    // Clear existing options except the first one
+                    if (classSelect) {
+                        while (classSelect.options.length > 1) classSelect.remove(1);
+                    }
+                    if (yearSelect) {
+                        while (yearSelect.options.length > 1) yearSelect.remove(1);
+                    }
+                    
+                    // Add class options
+                    const uniqueClasses = [...new Set(data.classes.map(c => c.nama))];
+                    uniqueClasses.forEach(className => {
+                        const option = document.createElement('option');
+                        option.value = className;
+                        option.textContent = `Kelas ${className}`;
+                        if (classSelect) classSelect.appendChild(option);
+                    });
+                    
+                    // Add year options
+                    const uniqueYears = [...new Set(data.classes.map(c => c.tahun))].sort((a, b) => b - a);
+                    uniqueYears.forEach(year => {
+                        const option = document.createElement('option');
+                        option.value = year;
+                        option.textContent = `Tahun ${year}`;
+                        if (yearSelect) yearSelect.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading filters:', error);
+            });
+        }
+
+        // Load students from server
+        function loadStudentsFromServer() {
+            showLoading(true);
+            
+            // Build query string from filters
+            const search = document.getElementById('searchInput')?.value || '';
+            const kelas = document.getElementById('filterClass')?.value || '';
+            const tahun = document.getElementById('filterYear')?.value || '';
+            const status = document.getElementById('filterStatus')?.value || '';
+            const prestasi = document.getElementById('filterPerformance')?.value || '';
+            
+            let query = '?ajax=get_students';
+            if (search) query += `&search=${encodeURIComponent(search)}`;
+            if (kelas) query += `&kelas=${encodeURIComponent(kelas)}`;
+            if (tahun) query += `&tahun=${encodeURIComponent(tahun)}`;
+            if (status) query += `&status=${encodeURIComponent(status)}`;
+            if (prestasi) query += `&prestasi=${encodeURIComponent(prestasi)}`;
+            
+            fetch(query, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    studentsData = data.students.map(student => formatStudentData(student));
+                    filteredStudents = [...studentsData];
+                    updateSummary(data.statistics);
+                    loadStudentTable();
+                    updatePaginationInfo();
+                } else {
+                    showNotification('Gagal memuatkan data pelajar', 'error');
+                }
+                showLoading(false);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+                showLoading(false);
+            });
+        }
+
+        // Format student data for frontend
+        function formatStudentData(dbStudent) {
+            // Calculate attendance percentage
+            const attendance = dbStudent.attendance_percentage || 
+                (dbStudent.total_kehadiran > 0 ? 
+                    Math.round((dbStudent.jumlah_kehadiran / dbStudent.total_kehadiran) * 100) : 0);
             
             // Get gender text
-            const genderText = student.jantina === 'L' ? 'Lelaki' : 'Perempuan';
+            const genderText = dbStudent.jantina === 'L' ? 'Lelaki' : 'Perempuan';
             
-            // Get status text
-            let statusText = 'Aktif';
-            if (student.status === 0) statusText = 'Tidak Aktif';
-            else if (student.status === 2) statusText = 'Tamat';
+            // Get status
+            let status = 'active';
+            let statusText = 'AKTIF';
+            if (dbStudent.status === 0) {
+                status = 'inactive';
+                statusText = 'TIDAK AKTIF';
+            } else if (dbStudent.status === 2) {
+                status = 'graduated';
+                statusText = 'TAMAT';
+            }
             
-            alert(`MAKLUMAT PELAJAR\n\n` +
-                  `Nama: ${student.nama}\n` +
-                  `No. KP: ${student.no_kp}\n` +
-                  `ID Pelajar: ${student.id_kelas}\n` +
-                  `${ageInfo}` +
-                  `${dobInfo}` +
-                  `Kelas: ${student.kelas_nama || 'N/A'}\n` +
-                  `Tahun: ${student.tahun ? 'Tahun ' + student.tahun : 'N/A'}\n` +
-                  `Jantina: ${genderText}\n` +
-                  `Status: ${statusText}\n` +
-                  `Prestasi Purata: ${student.prestasi_purata || 0}%\n` +
-                  `Kehadiran: ${student.attendance_percentage || 0}%`);
-        } else {
-            showNotification('Gagal memuatkan maklumat pelajar', 'error');
+            return {
+                id: dbStudent.id.toString(),
+                name: dbStudent.nama,
+                ic: dbStudent.no_kp || '',
+                class: dbStudent.kelas_nama || 'N/A',
+                year: dbStudent.tahun ? `Tahun ${dbStudent.tahun}` : 'N/A',
+                gender: dbStudent.jantina === 'L' ? 'male' : 'female',
+                genderText: genderText,
+                performance: parseFloat(dbStudent.prestasi_purata) || 0,
+                attendance: attendance,
+                status: status,
+                statusText: statusText,
+                student_id: dbStudent.student_id || dbStudent.id_kelas || '',
+                kelas_nama: dbStudent.kelas_nama || '',
+                tahun: dbStudent.tahun || ''
+            };
         }
-        showLoading(false);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showNotification('Ralat sistem. Sila cuba lagi.', 'error');
-        showLoading(false);
-    });
-}
 
-// Search students
-function searchStudents() {
-    // Reload data from server with search filter
-    loadStudentsFromServer();
-}
-
-// Filter students
-function filterStudents() {
-    // Reload data from server with all filters
-    loadStudentsFromServer();
-}
-
-// Reset filters
-function resetFilters() {
-    document.getElementById('searchInput').value = '';
-    document.getElementById('filterClass').value = '';
-    document.getElementById('filterYear').value = '';
-    document.getElementById('filterStatus').value = '';
-    document.getElementById('filterPerformance').value = '';
-    
-    loadStudentsFromServer();
-    showNotification('Semua penapis telah dikembalikan kepada tetapan asal', 'success');
-}
-
-// Bulk delete students
-function deleteStudentsBulk() {
-    if (selectedStudents.size === 0) return;
-    
-    if (confirm(`Adakah anda pasti ingin memadam ${selectedStudents.size} pelajar terpilih?`)) {
-        showLoading(true);
-        
-        const formData = new FormData();
-        formData.append('bulk_action', 'delete');
-        Array.from(selectedStudents).forEach(id => {
-            formData.append('student_ids[]', id);
-        });
-        
-        fetch('?action=bulk_delete', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (response.redirected) {
-                window.location.href = response.url;
-            } else {
-                window.location.reload();
+        // Update summary with real data
+        function updateSummary(statistics) {
+            if (statistics) {
+                const totalStudents = document.getElementById('totalStudents');
+                const activeStudents = document.getElementById('activeStudents');
+                const averagePerformance = document.getElementById('averagePerformance');
+                const attendanceRate = document.getElementById('attendanceRate');
+                
+                if (totalStudents) totalStudents.textContent = statistics.total_pelajar || 0;
+                if (activeStudents) activeStudents.textContent = statistics.pelajar_aktif || 0;
+                if (averagePerformance) averagePerformance.textContent = (statistics.prestasi_purata || 0).toFixed(1) + '%';
+                if (attendanceRate) attendanceRate.textContent = (statistics.kadar_kehadiran || 0).toFixed(1) + '%';
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Ralat sistem. Sila cuba lagi.', 'error');
-            showLoading(false);
-        });
-    }
-}
+        }
 
-// Bulk update status
-function updateStatusBulk() {
-    if (selectedStudents.size === 0) return;
-    
-    const newStatus = prompt('Masukkan status baru (active/inactive/graduated):');
-    if (newStatus && ['active', 'inactive', 'graduated'].includes(newStatus)) {
-        showLoading(true);
-        
-        const formData = new FormData();
-        formData.append('bulk_action', 'update_status');
-        formData.append('new_status', newStatus);
-        Array.from(selectedStudents).forEach(id => {
-            formData.append('student_ids[]', id);
-        });
-        
-        fetch('?action=bulk_update', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (response.redirected) {
-                window.location.href = response.url;
-            } else {
-                window.location.reload();
+        // Update student table with real data
+        function loadStudentTable() {
+            if (filteredStudents.length === 0) {
+                studentTableBody.innerHTML = '';
+                if (emptyState) {
+                    emptyState.style.display = 'block';
+                    emptyState.innerHTML = `
+                        <i class="fas fa-user-graduate"></i>
+                        <h3>Tiada Pelajar Ditemui</h3>
+                        <p>Tiada pelajar yang sepadan dengan carian atau penapis anda.</p>
+                        <button class="btn btn-secondary" onclick="resetFilters()">
+                            <i class="fas fa-redo"></i>
+                            Reset Penapis
+                        </button>
+                    `;
+                }
+                return;
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Ralat sistem. Sila cuba lagi.', 'error');
-            showLoading(false);
+            
+            if (emptyState) emptyState.style.display = 'none';
+            
+            // Calculate pagination
+            const startIndex = (currentPage - 1) * studentsPerPage;
+            const endIndex = startIndex + studentsPerPage;
+            displayedStudents = filteredStudents.slice(startIndex, endIndex);
+            
+            if (studentTableBody) {
+                studentTableBody.innerHTML = displayedStudents.map(student => {
+                    // Get initials for avatar
+                    const initials = student.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                    
+                    // Determine performance class
+                    let performanceClass = '';
+                    let performanceWidth = '';
+                    if (student.performance >= 85) {
+                        performanceClass = 'performance-excellent';
+                        performanceWidth = '90%';
+                    } else if (student.performance >= 70) {
+                        performanceClass = 'performance-good';
+                        performanceWidth = '75%';
+                    } else if (student.performance >= 60) {
+                        performanceClass = 'performance-average';
+                        performanceWidth = '60%';
+                    } else {
+                        performanceClass = 'performance-poor';
+                        performanceWidth = '40%';
+                    }
+                    
+                    // Determine status badge
+                    let statusClass = '';
+                    let statusText = '';
+                    switch(student.status) {
+                        case 'active':
+                            statusClass = 'status-active';
+                            statusText = 'AKTIF';
+                            break;
+                        case 'inactive':
+                            statusClass = 'status-inactive';
+                            statusText = 'TIDAK AKTIF';
+                            break;
+                        case 'graduated':
+                            statusClass = 'status-graduated';
+                            statusText = 'TAMAT';
+                            break;
+                    }
+                    
+                    return `
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="student-checkbox" value="${student.id}" onchange="toggleStudentSelection('${student.id}')">
+                            </td>
+                            <td>
+                                <div class="student-avatar-cell">
+                                    <div class="student-avatar">
+                                        ${initials}
+                                    </div>
+                                    <div class="student-info">
+                                        <div class="student-name">${student.name}</div>
+                                        <div class="student-id">${student.student_id || ''}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>${student.kelas_nama || student.class}</td>
+                            <td>${student.year}</td>
+                            <td>${student.genderText}</td>
+                            <td>
+                                <div class="performance-cell">
+                                    <div class="performance-bar">
+                                        <div class="performance-fill ${performanceClass}" style="width: ${performanceWidth}"></div>
+                                    </div>
+                                    <div class="performance-value">${student.performance.toFixed(1)}%</div>
+                                </div>
+                            </td>
+                            <td>${student.attendance}%</td>
+                            <td>
+                                <span class="status-badge ${statusClass}">${statusText}</span>
+                            </td>
+                            <td>
+                                <div class="action-cell">
+                                    <button class="action-btn view" onclick="viewStudent('${student.id}')">
+                                        <i class="fas fa-eye"></i>
+                                        Lihat
+                                    </button>
+                                    <button class="action-btn edit" onclick="editStudent('${student.id}')">
+                                        <i class="fas fa-edit"></i>
+                                        Edit
+                                    </button>
+                                    <button class="action-btn delete" onclick="deleteStudent('${student.id}', '${student.name.replace(/'/g, "\\'")}')">
+                                        <i class="fas fa-trash"></i>
+                                        Padam
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Update pagination info
+        function updatePaginationInfo() {
+            const total = filteredStudents.length;
+            const totalPages = Math.ceil(total / studentsPerPage);
+            const start = Math.min((currentPage - 1) * studentsPerPage + 1, total);
+            const end = Math.min(currentPage * studentsPerPage, total);
+            
+            const paginationInfo = document.getElementById('paginationInfo');
+            if (paginationInfo) {
+                paginationInfo.innerHTML = `
+                    Menunjukkan ${start}-${end} daripada ${total} pelajar
+                `;
+            }
+            
+            // Update pagination controls
+            const pageControls = document.querySelector('.pagination-controls');
+            if (pageControls) {
+                if (totalPages > 1) {
+                    pageControls.innerHTML = '';
+                    
+                    // Previous button
+                    const prevBtn = document.createElement('button');
+                    prevBtn.className = 'page-btn';
+                    prevBtn.disabled = currentPage === 1;
+                    prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+                    prevBtn.onclick = () => changePage('prev');
+                    pageControls.appendChild(prevBtn);
+                    
+                    // Page numbers
+                    const maxVisiblePages = 5;
+                    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                    
+                    if (endPage - startPage + 1 < maxVisiblePages) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                    }
+                    
+                    if (startPage > 1) {
+                        const firstBtn = document.createElement('button');
+                        firstBtn.className = 'page-btn';
+                        firstBtn.textContent = '1';
+                        firstBtn.onclick = () => goToPage(1);
+                        pageControls.appendChild(firstBtn);
+                        
+                        if (startPage > 2) {
+                            const ellipsis = document.createElement('span');
+                            ellipsis.className = 'page-ellipsis';
+                            ellipsis.textContent = '...';
+                            pageControls.appendChild(ellipsis);
+                        }
+                    }
+                    
+                    for (let i = startPage; i <= endPage; i++) {
+                        const pageBtn = document.createElement('button');
+                        pageBtn.className = 'page-btn';
+                        if (i === currentPage) pageBtn.classList.add('active');
+                        pageBtn.textContent = i;
+                        pageBtn.onclick = () => goToPage(i);
+                        pageControls.appendChild(pageBtn);
+                    }
+                    
+                    if (endPage < totalPages) {
+                        if (endPage < totalPages - 1) {
+                            const ellipsis = document.createElement('span');
+                            ellipsis.className = 'page-ellipsis';
+                            ellipsis.textContent = '...';
+                            pageControls.appendChild(ellipsis);
+                        }
+                        
+                        const lastBtn = document.createElement('button');
+                        lastBtn.className = 'page-btn';
+                        lastBtn.textContent = totalPages;
+                        lastBtn.onclick = () => goToPage(totalPages);
+                        pageControls.appendChild(lastBtn);
+                    }
+                    
+                    // Next button
+                    const nextBtn = document.createElement('button');
+                    nextBtn.className = 'page-btn';
+                    nextBtn.disabled = currentPage === totalPages;
+                    nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+                    nextBtn.onclick = () => changePage('next');
+                    pageControls.appendChild(nextBtn);
+                } else {
+                    pageControls.innerHTML = '';
+                }
+            }
+        }
+
+        // Change page function
+        function changePage(direction) {
+            const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
+            
+            if (direction === 'prev' && currentPage > 1) {
+                currentPage--;
+            } else if (direction === 'next' && currentPage < totalPages) {
+                currentPage++;
+            }
+            
+            loadStudentTable();
+            updatePaginationInfo();
+        }
+
+        // Go to specific page
+        function goToPage(pageNumber) {
+            currentPage = pageNumber;
+            loadStudentTable();
+            updatePaginationInfo();
+        }
+
+        // Search students function
+        function searchStudents() {
+            const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+            currentPage = 1;
+            filterStudents();
+        }
+
+        // Filter students function
+        function filterStudents() {
+            const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+            const kelasFilter = document.getElementById('filterClass')?.value || '';
+            const tahunFilter = document.getElementById('filterYear')?.value || '';
+            const statusFilter = document.getElementById('filterStatus')?.value || '';
+            const prestasiFilter = document.getElementById('filterPerformance')?.value || '';
+            
+            filteredStudents = studentsData.filter(student => {
+                // Search filter
+                let matchesSearch = true;
+                if (searchTerm) {
+                    matchesSearch = student.name.toLowerCase().includes(searchTerm) ||
+                                   (student.ic && student.ic.includes(searchTerm)) ||
+                                   student.class.toLowerCase().includes(searchTerm) ||
+                                   (student.student_id && student.student_id.toLowerCase().includes(searchTerm));
+                }
+                
+                // Class filter
+                let matchesKelas = true;
+                if (kelasFilter) {
+                    matchesKelas = student.class.toLowerCase().includes(kelasFilter.toLowerCase()) ||
+                                  (student.kelas_nama && student.kelas_nama.toLowerCase().includes(kelasFilter.toLowerCase()));
+                }
+                
+                // Year filter
+                let matchesTahun = true;
+                if (tahunFilter) {
+                    matchesTahun = student.year.includes(tahunFilter) ||
+                                  student.tahun === tahunFilter;
+                }
+                
+                // Status filter
+                let matchesStatus = true;
+                if (statusFilter) {
+                    matchesStatus = student.status === statusFilter;
+                }
+                
+                // Performance filter
+                let matchesPrestasi = true;
+                if (prestasiFilter) {
+                    switch(prestasiFilter) {
+                        case 'excellent':
+                            matchesPrestasi = student.performance >= 85;
+                            break;
+                        case 'good':
+                            matchesPrestasi = student.performance >= 70 && student.performance < 85;
+                            break;
+                        case 'average':
+                            matchesPrestasi = student.performance >= 60 && student.performance < 70;
+                            break;
+                        case 'poor':
+                            matchesPrestasi = student.performance < 60;
+                            break;
+                    }
+                }
+                
+                return matchesSearch && matchesKelas && matchesTahun && matchesStatus && matchesPrestasi;
+            });
+            
+            loadStudentTable();
+            updatePaginationInfo();
+        }
+
+        // Reset filters function
+        function resetFilters() {
+            const searchInput = document.getElementById('searchInput');
+            const filterClass = document.getElementById('filterClass');
+            const filterYear = document.getElementById('filterYear');
+            const filterStatus = document.getElementById('filterStatus');
+            const filterPerformance = document.getElementById('filterPerformance');
+            
+            if (searchInput) searchInput.value = '';
+            if (filterClass) filterClass.value = '';
+            if (filterYear) filterYear.value = '';
+            if (filterStatus) filterStatus.value = '';
+            if (filterPerformance) filterPerformance.value = '';
+            
+            currentPage = 1;
+            filteredStudents = [...studentsData];
+            loadStudentTable();
+            updatePaginationInfo();
+        }
+
+        // Add new student function
+        function tambahPelajar() {
+            const modalTitle = document.getElementById('modalTitle');
+            const studentForm = document.getElementById('studentForm');
+            const currentStudentId = document.getElementById('currentStudentId');
+            const icError = document.getElementById('icError');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (modalTitle) modalTitle.textContent = 'Tambah Pelajar Baru';
+            if (studentForm) studentForm.action = '?action=add';
+            if (studentForm) studentForm.reset();
+            if (currentStudentId) currentStudentId.value = '';
+            if (icError) icError.style.display = 'none';
+            
+            // Enable submit button
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Simpan Pelajar';
+            }
+            
+            if (studentModal) {
+                studentModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        // Edit student function
+        function editStudent(studentId) {
+            const student = studentsData.find(s => s.id === studentId);
+            if (!student) return;
+            
+            const modalTitle = document.getElementById('modalTitle');
+            const studentForm = document.getElementById('studentForm');
+            const studentName = document.getElementById('studentName');
+            const studentIC = document.getElementById('studentIC');
+            const studentGender = document.getElementById('studentGender');
+            const studentStatus = document.getElementById('studentStatus');
+            const currentStudentId = document.getElementById('currentStudentId');
+            const icError = document.getElementById('icError');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (modalTitle) modalTitle.textContent = 'Edit Pelajar';
+            if (studentForm) studentForm.action = `?action=edit&id=${studentId}`;
+            
+            // Populate form fields
+            if (studentName) studentName.value = student.name;
+            if (studentIC) studentIC.value = student.ic;
+            
+            // Set gender
+            if (studentGender) studentGender.value = student.gender;
+            
+            // Set status
+            if (studentStatus) studentStatus.value = student.status;
+            
+            if (currentStudentId) currentStudentId.value = studentId;
+            if (icError) icError.style.display = 'none';
+            
+            // Enable submit button
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Kemaskini Pelajar';
+            }
+            
+            if (studentModal) {
+                studentModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        // View student details
+        function viewStudent(studentId) {
+            showLoading(true);
+            
+            fetch(`?ajax=get_student&student_id=${studentId}`)
+                .then(response => response.json())
+                .then(data => {
+                    showLoading(false);
+                    
+                    if (data.success) {
+                        const student = data.student;
+                        const performance = data.performance || {};
+                        const attendance = data.attendance || {};
+                        
+                        // Show student details in a modal or alert
+                        const detailsHtml = `
+                            <div class="student-details-modal">
+                                <div class="student-header">
+                                    <div class="student-avatar-lg">${student.nama?.substring(0, 2).toUpperCase() || ''}</div>
+                                    <div>
+                                        <h3>${student.nama || 'N/A'}</h3>
+                                        <p>${student.no_kp || ''}</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="student-info-grid">
+                                    <div class="info-item">
+                                        <span class="info-label">Jantina:</span>
+                                        <span class="info-value">${student.jantina === 'L' ? 'Lelaki' : 'Perempuan'}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Status:</span>
+                                        <span class="info-value">
+                                            ${student.status === 1 ? 'Aktif' : 
+                                              student.status === 0 ? 'Tidak Aktif' : 'Tamat'}
+                                        </span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Prestasi:</span>
+                                        <span class="info-value">${performance.average || 0}%</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Kehadiran:</span>
+                                        <span class="info-value">${attendance.percentage || 0}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Create modal for details
+                        const detailsModal = document.createElement('div');
+                        detailsModal.className = 'modal';
+                        detailsModal.innerHTML = `
+                            <div class="modal-content" style="max-width: 500px;">
+                                <div class="modal-header">
+                                    <h3>Butiran Pelajar</h3>
+                                    <button class="modal-close" onclick="this.parentElement.parentElement.remove(); document.body.style.overflow=''">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    ${detailsHtml}
+                                </div>
+                            </div>
+                        `;
+                        
+                        document.body.appendChild(detailsModal);
+                        detailsModal.style.display = 'block';
+                        document.body.style.overflow = 'hidden';
+                    } else {
+                        showNotification('Gagal memuatkan butiran pelajar', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showLoading(false);
+                    showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+                });
+        }
+
+        // Delete student function
+        function deleteStudent(studentId, studentName) {
+            if (confirm(`Adakah anda pasti ingin memadam pelajar: ${studentName}?\n\nTindakan ini tidak boleh dibatalkan.`)) {
+                showLoading(true);
+                
+                fetch(`?ajax=delete_student&student_id=${studentId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        showLoading(false);
+                        
+                        if (data.success) {
+                            showNotification(data.message || 'Pelajar berjaya dipadam', 'success');
+                            
+                            // Reload student data
+                            setTimeout(() => {
+                                loadStudentsFromServer();
+                            }, 1000);
+                        } else {
+                            showNotification(data.message || 'Gagal memadam pelajar', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showLoading(false);
+                        showNotification('Ralat sistem. Sila cuba lagi.', 'error');
+                    });
+            }
+        }
+
+        // Check if IC exists
+        function checkICExists() {
+            const icInput = document.getElementById('studentIC');
+            const icValue = icInput?.value.trim();
+            const currentStudentId = document.getElementById('currentStudentId')?.value;
+            const icError = document.getElementById('icError');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (!icValue) return;
+            
+            // Simple IC validation
+            const icPattern = /^\d{6}-\d{2}-\d{4}$/;
+            if (!icPattern.test(icValue)) {
+                if (icError) {
+                    icError.textContent = 'Format No. KP tidak sah. Contoh: 030101-14-1234';
+                    icError.style.display = 'block';
+                }
+                if (submitBtn) submitBtn.disabled = true;
+                return;
+            }
+            
+            showLoading(true);
+            
+            let url = `?ajax=check_ic&no_ic=${encodeURIComponent(icValue)}`;
+            if (currentStudentId) {
+                url += `&exclude_id=${currentStudentId}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    showLoading(false);
+                    
+                    if (data.exists) {
+                        if (icError) {
+                            icError.textContent = 'No. Kad Pengenalan sudah wujud dalam sistem';
+                            icError.style.display = 'block';
+                        }
+                        if (submitBtn) submitBtn.disabled = true;
+                    } else {
+                        if (icError) icError.style.display = 'none';
+                        if (submitBtn) submitBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showLoading(false);
+                    if (icError) icError.style.display = 'none';
+                    if (submitBtn) submitBtn.disabled = false;
+                });
+        }
+
+        // Toggle all student selection
+        function toggleAllSelection() {
+            const selectAllCheckbox = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.student-checkbox');
+            const checked = selectAllCheckbox?.checked;
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = checked;
+            });
+        }
+
+        // Toggle individual student selection
+        function toggleStudentSelection(studentId) {
+            const checkbox = document.querySelector(`.student-checkbox[value="${studentId}"]`);
+            const selectAllCheckbox = document.getElementById('selectAll');
+            
+            if (!selectAllCheckbox) return;
+            
+            // Update "select all" checkbox state
+            const allCheckboxes = document.querySelectorAll('.student-checkbox');
+            const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
+            selectAllCheckbox.checked = allChecked;
+            selectAllCheckbox.indeterminate = !allChecked && Array.from(allCheckboxes).some(cb => cb.checked);
+        }
+
+        // Reload data
+        function muatSemulaData() {
+            currentPage = 1;
+            loadStudentsFromServer();
+            showNotification('Data pelajar dimuat semula', 'success');
+        }
+
+        // Close modal function
+        function closeModal() {
+            if (studentModal) {
+                studentModal.style.display = 'none';
+            }
+            document.body.style.overflow = '';
+        }
+
+        // Show loading overlay
+        function showLoading(show) {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                if (show) {
+                    loadingOverlay.classList.add('active');
+                } else {
+                    setTimeout(() => {
+                        loadingOverlay.classList.remove('active');
+                    }, 300);
+                }
+            }
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            // Remove existing notification
+            const existingAlert = document.querySelector('.alert');
+            if (existingAlert) existingAlert.remove();
+            
+            // Create new notification
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                <span>${message}</span>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.style.animation = 'slideOut 0.3s ease';
+                    setTimeout(() => {
+                        if (alertDiv.parentNode) alertDiv.parentNode.removeChild(alertDiv);
+                    }, 300);
+                }
+            }, 5000);
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializePage();
+            
+            // Show success/error messages from PHP session
+            <?php if (!empty($success_message)): ?>
+                showNotification('<?= addslashes($success_message) ?>', 'success');
+            <?php endif; ?>
+            
+            <?php if (!empty($error_message)): ?>
+                showNotification('<?= addslashes($error_message) ?>', 'error');
+            <?php endif; ?>
         });
-    }
-}
-
-// Add new AJAX endpoint to pelajar-saya.php
-// In your PHP code, add this to the AJAX handler:
-/*
-case 'get_classes':
-    echo json_encode([
-        'success' => true,
-        'classes' => $all_kelas
-    ]);
-    exit;
-*/
-
-// Initialize page when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initializePage();
-});
     </script>
 </body>
 </html>
