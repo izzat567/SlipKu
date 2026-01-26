@@ -1,77 +1,108 @@
 <?php
 /**
  * FUNGSI DATABASE UNTUK MODUL PELAJAR SAYA
- * Disesuaikan dengan struktur database slipku_db
+ * Versi Disederhanakan dan Dioptimumkan
  */
 
-// Dapatkan koneksi database
+// ==================== DATABASE CONNECTION ====================
 function getDatabaseConnection() {
-    static $database = null;
-    if ($database === null) {
-        require_once __DIR__ . '/../../config/connect.php';
-        // Since connect.php returns $database, we need to capture it
-        $database = include(__DIR__ . '/../../config/connect.php');
+    static $db = null;
+    if ($db === null) {
+        $host = 'localhost';
+        $username = 'root';
+        $password = ''; // XAMPP default kosong
+        $database = 'slipku_db';
+        
+        $db = new mysqli($host, $username, $password, $database);
+        
+        if ($db->connect_error) {
+            error_log("Database connection failed: " . $db->connect_error);
+            die("Database connection failed. Please check your configuration.");
+        }
+        
+        $db->set_charset("utf8mb4");
     }
-    return $database;
+    return $db;
 }
 
-// Dapatkan pelajar berdasarkan guru
+// ==================== STUDENT FUNCTIONS ====================
+
+/**
+ * Dapatkan semua pelajar untuk guru tertentu
+ */
 function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $status = '', $prestasi = '') {
     $db = getDatabaseConnection();
     
-    // First, get kelas that this guru teaches from guru_kelas table
-    $kelasQuery = "SELECT DISTINCT kelas_id FROM guru_kelas WHERE guru_id = ?";
-    $stmt = $db->prepare($kelasQuery);
+    // Dapatkan kelas yang diajar oleh guru ini
+    $sql_kelas = "SELECT kelas_id FROM guru_kelas WHERE guru_id = ?";
+    $stmt = $db->prepare($sql_kelas);
     $stmt->bind_param("i", $guru_id);
     $stmt->execute();
-    $kelasResult = $stmt->get_result();
+    $result = $stmt->get_result();
     
     $kelas_ids = [];
-    while ($row = $kelasResult->fetch_assoc()) {
+    while ($row = $result->fetch_assoc()) {
         $kelas_ids[] = $row['kelas_id'];
     }
+    $stmt->close();
     
-    // If teacher has no classes assigned, return empty array
     if (empty($kelas_ids)) {
         return [];
     }
     
-    // Build the main query
+    // Query utama
     $sql = "SELECT 
                 p.id,
-                p.id_kelas as student_id,
+                p.no_matrik,
                 p.nama,
-                p.no_kp,
+                p.kp_lama,
+                p.kp_baru,
                 p.jantina,
                 p.status,
                 k.nama as kelas_nama,
                 k.tahun,
-                COALESCE((SELECT AVG(markah) FROM markah WHERE id_pelajar = p.id), 0) as prestasi_purata,
-                COALESCE((SELECT COUNT(*) FROM kehadiran WHERE id_pelajar = p.id AND status = 'hadir'), 0) as jumlah_kehadiran,
-                COALESCE((SELECT COUNT(*) FROM kehadiran WHERE id_pelajar = p.id), 1) as total_kehadiran
+                COALESCE(AVG(m.markah), 0) as prestasi_purata,
+                COALESCE(
+                    (SELECT COUNT(*) FROM kehadiran kh 
+                     WHERE kh.pelajar_id = p.id AND kh.status = 'hadir'), 
+                    0
+                ) as hadir_count,
+                COALESCE(
+                    (SELECT COUNT(*) FROM kehadiran kh 
+                     WHERE kh.pelajar_id = p.id), 
+                    0
+                ) as total_kehadiran
             FROM pelajar p
-            LEFT JOIN kelas k ON p.id_kelas LIKE CONCAT('%', k.nama, '%') OR p.id_kelas LIKE CONCAT(k.nama, '%')
-            WHERE p.status = 1";
+            JOIN kelas_pelajar kp ON p.id = kp.pelajar_id
+            JOIN kelas k ON kp.kelas_id = k.id
+            LEFT JOIN markah m ON p.id = m.pelajar_id
+            WHERE k.id IN (" . implode(',', array_fill(0, count($kelas_ids), '?')) . ")";
     
-    $params = [];
-    $types = "";
+    $params = $kelas_ids;
+    $types = str_repeat('i', count($kelas_ids));
     
-    // Filter by teacher's classes
-    if (!empty($kelas_ids)) {
-        $placeholders = implode(',', array_fill(0, count($kelas_ids), '?'));
-        $sql .= " AND k.id IN ($placeholders)";
-        $params = array_merge($params, $kelas_ids);
-        $types .= str_repeat('i', count($kelas_ids));
+    // Filter status
+    $statusMap = [
+        'active' => 1,
+        'inactive' => 0,
+        'graduated' => 2
+    ];
+    
+    if (!empty($status) && isset($statusMap[$status])) {
+        $sql .= " AND p.status = ?";
+        $params[] = $statusMap[$status];
+        $types .= "i";
+    } else {
+        $sql .= " AND p.status = 1"; // Default: aktif sahaja
     }
     
     // Search filter
     if (!empty($search)) {
-        $sql .= " AND (p.nama LIKE ? OR p.no_kp LIKE ? OR p.id_kelas LIKE ?)";
+        $sql .= " AND (p.nama LIKE ? OR p.no_matrik LIKE ?)";
         $searchTerm = "%$search%";
         $params[] = $searchTerm;
         $params[] = $searchTerm;
-        $params[] = $searchTerm;
-        $types .= "sss";
+        $types .= "ss";
     }
     
     // Kelas filter
@@ -85,91 +116,84 @@ function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $sta
     if (!empty($tahun)) {
         $sql .= " AND k.tahun = ?";
         $params[] = $tahun;
-        $types .= "i";
+        $types .= "s";
     }
     
-    // Status filter
-    if (!empty($status)) {
-        $statusMap = [
-            'active' => 1,
-            'inactive' => 0,
-            'graduated' => 2
-        ];
-        if (isset($statusMap[$status])) {
-            $sql .= " AND p.status = ?";
-            $params[] = $statusMap[$status];
-            $types .= "i";
-        }
-    }
-    
+    $sql .= " GROUP BY p.id, k.nama, k.tahun";
     $sql .= " ORDER BY p.nama ASC";
     
     try {
+        $stmt = $db->prepare($sql);
+        if (!$stmt) {
+            error_log("Prepare failed: " . $db->error);
+            return [];
+        }
+        
         if (!empty($params)) {
-            $stmt = $db->prepare($sql);
-            $stmt->bind_param($types, ...$params);
-        } else {
-            $stmt = $db->prepare($sql);
+         $stmt->bind_param($types, ...$params);
         }
         
         $stmt->execute();
         $result = $stmt->get_result();
-        $pelajar = $result->fetch_all(MYSQLI_ASSOC);
         
-        // Calculate attendance percentage and apply performance filter
-        $filteredPelajar = [];
-        foreach ($pelajar as $p) {
-            // Calculate attendance percentage
-            $attendance = ($p['total_kehadiran'] > 0) 
-                ? round(($p['jumlah_kehadiran'] / $p['total_kehadiran']) * 100, 1) 
+        $pelajar = [];
+        while ($row = $result->fetch_assoc()) {
+            // Kira peratus kehadiran
+            $attendance = ($row['total_kehadiran'] > 0) 
+                ? round(($row['hadir_count'] / $row['total_kehadiran']) * 100, 1) 
                 : 0;
             
-            $p['attendance_percentage'] = $attendance;
-            $p['prestasi_purata'] = round($p['prestasi_purata'], 1);
+            $row['attendance_percentage'] = $attendance;
+            $row['prestasi_purata'] = round($row['prestasi_purata'], 1);
             
-            // Apply performance filter
+            // Apply prestasi filter jika ada
             if (!empty($prestasi)) {
-                $performance = $p['prestasi_purata'];
+                $purata = $row['prestasi_purata'];
+                $include = false;
+                
                 switch($prestasi) {
-                    case 'excellent': 
-                        if ($performance >= 85) $filteredPelajar[] = $p;
-                        break;
-                    case 'good': 
-                        if ($performance >= 70 && $performance < 85) $filteredPelajar[] = $p;
-                        break;
-                    case 'average': 
-                        if ($performance >= 60 && $performance < 70) $filteredPelajar[] = $p;
-                        break;
-                    case 'poor': 
-                        if ($performance < 60) $filteredPelajar[] = $p;
-                        break;
-                    default:
-                        $filteredPelajar[] = $p;
+                    case 'excellent': $include = ($purata >= 85); break;
+                    case 'good': $include = ($purata >= 70 && $purata < 85); break;
+                    case 'average': $include = ($purata >= 60 && $purata < 70); break;
+                    case 'poor': $include = ($purata < 60); break;
+                    default: $include = true;
+                }
+                
+                if ($include) {
+                    $pelajar[] = $row;
                 }
             } else {
-                $filteredPelajar[] = $p;
+                $pelajar[] = $row;
             }
         }
         
-        return $filteredPelajar;
+        $stmt->close();
+        return $pelajar;
+        
     } catch(Exception $e) {
-        error_log("Error getPelajarByGuru: " . $e->getMessage());
+        error_log("Error in getPelajarByGuru: " . $e->getMessage());
         return [];
     }
 }
 
-// Dapatkan kelas yang diajar oleh guru
+/**
+ * Dapatkan kelas untuk guru
+ */
 function getKelasByGuru($guru_id) {
     $db = getDatabaseConnection();
     
     $sql = "SELECT 
-                k.*,
-                COUNT(p.id) as jumlah_pelajar
+                k.id,
+                k.nama,
+                k.tahun,
+                k.tarikh_mula,
+                k.tarikh_tamat,
+                COUNT(DISTINCT kp.pelajar_id) as jumlah_pelajar
             FROM kelas k
-            INNER JOIN guru_kelas gk ON k.id = gk.kelas_id
-            LEFT JOIN pelajar p ON (p.id_kelas LIKE CONCAT('%', k.nama, '%') OR p.id_kelas LIKE CONCAT(k.nama, '%')) AND p.status = 1
+            JOIN guru_kelas gk ON k.id = gk.kelas_id
+            LEFT JOIN kelas_pelajar kp ON k.id = kp.kelas_id
             WHERE gk.guru_id = ?
-            GROUP BY k.id
+            GROUP BY k.id, k.nama, k.tahun
             ORDER BY k.tahun DESC, k.nama ASC";
     
     try {
@@ -177,204 +201,102 @@ function getKelasByGuru($guru_id) {
         $stmt->bind_param("i", $guru_id);
         $stmt->execute();
         $result = $stmt->get_result();
-        return $result->fetch_all(MYSQLI_ASSOC);
+        
+        $kelas = [];
+        while ($row = $result->fetch_assoc()) {
+            $kelas[] = $row;
+        }
+        
+        $stmt->close();
+        return $kelas;
+        
     } catch(Exception $e) {
-        error_log("Error getKelasByGuru: " . $e->getMessage());
+        error_log("Error in getKelasByGuru: " . $e->getMessage());
         return [];
     }
 }
 
-// Dapatkan statistik pelajar untuk guru
+/**
+ * Statistik pelajar untuk guru
+ */
 function getStatistikPelajar($guru_id) {
     $db = getDatabaseConnection();
     
-    // Get teacher's classes
-    $kelasQuery = "SELECT DISTINCT kelas_id FROM guru_kelas WHERE guru_id = ?";
-    $stmt = $db->prepare($kelasQuery);
+    // Dapatkan kelas guru
+    $kelas_ids = [];
+    $sql_kelas = "SELECT kelas_id FROM guru_kelas WHERE guru_id = ?";
+    $stmt = $db->prepare($sql_kelas);
     $stmt->bind_param("i", $guru_id);
     $stmt->execute();
-    $kelasResult = $stmt->get_result();
+    $result = $stmt->get_result();
     
-    $kelas_ids = [];
-    while ($row = $kelasResult->fetch_assoc()) {
+    while ($row = $result->fetch_assoc()) {
         $kelas_ids[] = $row['kelas_id'];
     }
+    $stmt->close();
     
     if (empty($kelas_ids)) {
         return [
-            'total_pelajar' => 0, 
-            'pelajar_aktif' => 0, 
-            'prestasi_purata' => 0, 
+            'total_pelajar' => 0,
+            'pelajar_aktif' => 0,
+            'prestasi_purata' => 0,
             'kadar_kehadiran' => 0
         ];
     }
     
-    $placeholders = implode(',', array_fill(0, count($kelas_ids), '?'));
-    
+    // Query statistik
     $sql = "SELECT 
-                COUNT(p.id) as total_pelajar,
-                SUM(CASE WHEN p.status = 1 THEN 1 ELSE 0 END) as pelajar_aktif,
+                COUNT(DISTINCT p.id) as total_pelajar,
+                COUNT(DISTINCT CASE WHEN p.status = 1 THEN p.id END) as pelajar_aktif,
                 COALESCE(AVG(m.markah), 0) as prestasi_purata,
                 COALESCE(
-                    (SELECT AVG(
+                    AVG(
                         CASE WHEN kh.status = 'hadir' THEN 100 ELSE 0 END
-                    ) FROM kehadiran kh WHERE kh.id_pelajar = p.id), 
-                    0
-                ) as kadar_kehadiran_avg
+                    ), 0
+                ) as kadar_kehadiran
             FROM pelajar p
-            LEFT JOIN kelas k ON p.id_kelas LIKE CONCAT('%', k.nama, '%') OR p.id_kelas LIKE CONCAT(k.nama, '%')
-            LEFT JOIN markah m ON p.id = m.id_pelajar
-            WHERE k.id IN ($placeholders)
+            JOIN kelas_pelajar kp ON p.id = kp.pelajar_id
+            LEFT JOIN markah m ON p.id = m.pelajar_id
+            LEFT JOIN kehadiran kh ON p.id = kh.pelajar_id
+            WHERE kp.kelas_id IN (" . implode(',', $kelas_ids) . ")
             AND p.status = 1";
     
-    try {
-        $stmt = $db->prepare($sql);
-        $stmt->bind_param(str_repeat('i', count($kelas_ids)), ...$kelas_ids);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $data = $result->fetch_assoc();
-        
-        if (!$data) {
-            return [
-                'total_pelajar' => 0, 
-                'pelajar_aktif' => 0, 
-                'prestasi_purata' => 0, 
-                'kadar_kehadiran' => 0
-            ];
-        }
-        
+    $result = $db->query($sql);
+    if ($result && $row = $result->fetch_assoc()) {
         return [
-            'total_pelajar' => $data['total_pelajar'] ?? 0,
-            'pelajar_aktif' => $data['pelajar_aktif'] ?? 0,
-            'prestasi_purata' => round($data['prestasi_purata'] ?? 0, 1),
-            'kadar_kehadiran' => round($data['kadar_kehadiran_avg'] ?? 0, 1)
-        ];
-    } catch(Exception $e) {
-        error_log("Error getStatistikPelajar: " . $e->getMessage());
-        return [
-            'total_pelajar' => 0, 
-            'pelajar_aktif' => 0, 
-            'prestasi_purata' => 0, 
-            'kadar_kehadiran' => 0
+            'total_pelajar' => (int)$row['total_pelajar'],
+            'pelajar_aktif' => (int)$row['pelajar_aktif'],
+            'prestasi_purata' => round($row['prestasi_purata'], 1),
+            'kadar_kehadiran' => round($row['kadar_kehadiran'], 1)
         ];
     }
+    
+    return [
+        'total_pelajar' => 0,
+        'pelajar_aktif' => 0,
+        'prestasi_purata' => 0,
+        'kadar_kehadiran' => 0
+    ];
 }
 
-// Tambah pelajar baru
-function tambahPelajar($data) {
-    $db = getDatabaseConnection();
-    
-    // Generate student ID - get last ID from database
-    $lastIdQuery = "SELECT id_kelas FROM pelajar ORDER BY id DESC LIMIT 1";
-    $result = $db->query($lastIdQuery);
-    $lastStudent = $result->fetch_assoc();
-    
-    if ($lastStudent && preg_match('/S(\d+)/', $lastStudent['id_kelas'], $matches)) {
-        $nextNum = intval($matches[1]) + 1;
-    } else {
-        $nextNum = 1;
-    }
-    
-    $id_kelas = 'S' . str_pad($nextNum, 3, '0', STR_PAD_LEFT) . date('Y');
-    
-    // Convert gender from 'male'/'female' to 'L'/'P'
-    $jantina = ($data['jantina'] == 'male') ? 'L' : 'P';
-    
-    // Default status
-    $status = 1;
-    if (isset($data['status'])) {
-        $statusMap = [
-            'active' => 1,
-            'inactive' => 0,
-            'graduated' => 2
-        ];
-        $status = isset($statusMap[$data['status']]) ? $statusMap[$data['status']] : 1;
-    }
-    
-    $sql = "INSERT INTO pelajar (id_kelas, nama, no_kp, jantina, status) 
-            VALUES (?, ?, ?, ?, ?)";
-    
-    try {
-        $stmt = $db->prepare($sql);
-        return $stmt->execute([
-            $id_kelas,
-            $data['nama'],
-            $data['no_ic'],
-            $jantina,
-            $status
-        ]);
-    } catch(Exception $e) {
-        error_log("Error tambahPelajar: " . $e->getMessage());
-        return false;
-    }
-}
-
-// Kemaskini pelajar
-function kemaskiniPelajar($id, $data) {
-    $db = getDatabaseConnection();
-    
-    // Convert gender from 'male'/'female' to 'L'/'P'
-    $jantina = ($data['jantina'] == 'male') ? 'L' : 'P';
-    
-    // For status
-    $status = 1;
-    if (isset($data['status'])) {
-        $statusMap = [
-            'active' => 1,
-            'inactive' => 0,
-            'graduated' => 2
-        ];
-        $status = isset($statusMap[$data['status']]) ? $statusMap[$data['status']] : 1;
-    }
-    
-    $sql = "UPDATE pelajar 
-            SET nama = ?, no_kp = ?, jantina = ?, status = ?
-            WHERE id = ?";
-    
-    try {
-        $stmt = $db->prepare($sql);
-        return $stmt->execute([
-            $data['nama'],
-            $data['no_ic'],
-            $jantina,
-            $status,
-            $id
-        ]);
-    } catch(Exception $e) {
-        error_log("Error kemaskiniPelajar: " . $e->getMessage());
-        return false;
-    }
-}
-
-// Padam pelajar (soft delete - set status to 0)
-function padamPelajar($id) {
-    $db = getDatabaseConnection();
-    
-    $sql = "UPDATE pelajar SET status = 0 WHERE id = ?";
-    
-    try {
-        $stmt = $db->prepare($sql);
-        return $stmt->execute([$id]);
-    } catch(Exception $e) {
-        error_log("Error padamPelajar: " . $e->getMessage());
-        return false;
-    }
-}
-
-// Dapatkan maklumat pelajar
+/**
+ * Dapatkan pelajar berdasarkan ID
+ */
 function getPelajarById($id) {
     $db = getDatabaseConnection();
     
     $sql = "SELECT 
                 p.*,
-                k.nama as kelas_nama,
-                k.tahun,
-                COALESCE((SELECT AVG(markah) FROM markah WHERE id_pelajar = p.id), 0) as prestasi_purata,
-                COALESCE((SELECT COUNT(*) FROM kehadiran WHERE id_pelajar = p.id AND status = 'hadir'), 0) as jumlah_kehadiran,
-                COALESCE((SELECT COUNT(*) FROM kehadiran WHERE id_pelajar = p.id), 1) as total_kehadiran
+                GROUP_CONCAT(DISTINCT k.nama) as kelas_list,
+                GROUP_CONCAT(DISTINCT k.tahun) as tahun_list,
+                COALESCE(AVG(m.markah), 0) as purata_markah,
+                COUNT(DISTINCT m.id) as bilangan_subjek
             FROM pelajar p
-            LEFT JOIN kelas k ON p.id_kelas LIKE CONCAT('%', k.nama, '%') OR p.id_kelas LIKE CONCAT(k.nama, '%')
-            WHERE p.id = ?";
+            LEFT JOIN kelas_pelajar kp ON p.id = kp.pelajar_id
+            LEFT JOIN kelas k ON kp.kelas_id = k.id
+            LEFT JOIN markah m ON p.id = m.pelajar_id
+            WHERE p.id = ?
+            GROUP BY p.id";
     
     try {
         $stmt = $db->prepare($sql);
@@ -382,208 +304,273 @@ function getPelajarById($id) {
         $stmt->execute();
         $result = $stmt->get_result();
         $data = $result->fetch_assoc();
+        $stmt->close();
         
         if ($data) {
-            // Calculate attendance percentage
-            $attendance = ($data['total_kehadiran'] > 0) 
-                ? round(($data['jumlah_kehadiran'] / $data['total_kehadiran']) * 100, 1) 
-                : 0;
-            
-            $data['attendance_percentage'] = $attendance;
-            $data['prestasi_purata'] = round($data['prestasi_purata'], 1);
-            
-            // Convert for frontend
-            $data['gender'] = ($data['jantina'] == 'L') ? 'male' : 'female';
-            $data['status_text'] = $data['status'] == 1 ? 'active' : ($data['status'] == 2 ? 'graduated' : 'inactive');
+            // Format untuk frontend
+            $data['jantina_display'] = ($data['jantina'] == 'L') ? 'Lelaki' : 'Perempuan';
+            $data['status_display'] = match($data['status']) {
+                1 => 'Aktif',
+                2 => 'Tamat',
+                0 => 'Tidak Aktif',
+                default => 'Tidak Diketahui'
+            };
+            $data['purata_markah'] = round($data['purata_markah'], 1);
         }
         
         return $data;
+        
     } catch(Exception $e) {
-        error_log("Error getPelajarById: " . $e->getMessage());
-        return false;
-    }
-}
-
-// Dapatkan semua kelas untuk dropdown
-function getAllKelas() {
-    $db = getDatabaseConnection();
-    
-    $sql = "SELECT * FROM kelas WHERE status = 1 ORDER BY tahun DESC, nama ASC";
-    
-    try {
-        $result = $db->query($sql);
-        return $result->fetch_all(MYSQLI_ASSOC);
-    } catch(Exception $e) {
-        error_log("Error getAllKelas: " . $e->getMessage());
-        return [];
-    }
-}
-
-// Check if student exists by IC
-function checkStudentExists($no_ic, $exclude_id = null) {
-    $db = getDatabaseConnection();
-    
-    $sql = "SELECT COUNT(*) as count FROM pelajar WHERE no_kp = ?";
-    
-    if ($exclude_id) {
-        $sql .= " AND id != ?";
-    }
-    
-    try {
-        $stmt = $db->prepare($sql);
-        
-        if ($exclude_id) {
-            $stmt->bind_param("si", $no_ic, $exclude_id);
-        } else {
-            $stmt->bind_param("s", $no_ic);
-        }
-        
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        return $row['count'] > 0;
-    } catch(Exception $e) {
-        error_log("Error checkStudentExists: " . $e->getMessage());
-        return false;
-    }
-}
-
-// Get student performance details
-function getStudentPerformance($student_id) {
-    $db = getDatabaseConnection();
-    
-    $sql = "SELECT 
-                COALESCE(AVG(markah), 0) as average_score,
-                COUNT(*) as total_subjects,
-                MIN(markah) as min_score,
-                MAX(markah) as max_score
-            FROM markah 
-            WHERE id_pelajar = ?";
-    
-    try {
-        $stmt = $db->prepare($sql);
-        $stmt->bind_param("i", $student_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $data = $result->fetch_assoc();
-        
-        if ($data) {
-            $data['average_score'] = round($data['average_score'], 1);
-        }
-        
-        return $data ?: [
-            'average_score' => 0, 
-            'total_subjects' => 0, 
-            'min_score' => 0, 
-            'max_score' => 0
-        ];
-    } catch(Exception $e) {
-        error_log("Error getStudentPerformance: " . $e->getMessage());
-        return [
-            'average_score' => 0, 
-            'total_subjects' => 0, 
-            'min_score' => 0, 
-            'max_score' => 0
-        ];
-    }
-}
-
-// Get student attendance
-function getStudentAttendance($student_id) {
-    $db = getDatabaseConnection();
-    
-    $sql = "SELECT 
-                COUNT(*) as total_days,
-                SUM(CASE WHEN status = 'hadir' THEN 1 ELSE 0 END) as days_present,
-                SUM(CASE WHEN status = 'sakit' THEN 1 ELSE 0 END) as days_sick,
-                SUM(CASE WHEN status = 'cuti' THEN 1 ELSE 0 END) as days_leave,
-                SUM(CASE WHEN status = 'tidak_hadir' THEN 1 ELSE 0 END) as days_absent
-            FROM kehadiran 
-            WHERE id_pelajar = ?";
-    
-    try {
-        $stmt = $db->prepare($sql);
-        $stmt->bind_param("i", $student_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $data = $result->fetch_assoc();
-        
-        if ($data && $data['total_days'] > 0) {
-            $data['attendance_rate'] = round(($data['days_present'] / $data['total_days']) * 100, 1);
-        } else {
-            $data['attendance_rate'] = 0;
-        }
-        
-        return $data;
-    } catch(Exception $e) {
-        error_log("Error getStudentAttendance: " . $e->getMessage());
+        error_log("Error in getPelajarById: " . $e->getMessage());
         return null;
     }
 }
 
-// Bulk update students
-function bulkUpdateStudents($student_ids, $update_data) {
+/**
+ * Tambah pelajar baru
+ */
+function tambahPelajar($data) {
     $db = getDatabaseConnection();
     
-    if (empty($student_ids)) {
-        return false;
+    // Generate no_matrik (cth: S0012024)
+    $year = date('Y');
+    $sql_last = "SELECT no_matrik FROM pelajar WHERE no_matrik LIKE 'S%' ORDER BY id DESC LIMIT 1";
+    $result = $db->query($sql_last);
+    
+    if ($result && $row = $result->fetch_assoc()) {
+        // Extract number from existing no_matrik (cth: S0152024 → 15)
+        preg_match('/S(\d+)/', $row['no_matrik'], $matches);
+        $next_num = isset($matches[1]) ? intval($matches[1]) + 1 : 1;
+    } else {
+        $next_num = 1;
     }
     
-    $placeholders = implode(',', array_fill(0, count($student_ids), '?'));
-    $types = str_repeat('i', count($student_ids));
+    $no_matrik = 'S' . str_pad($next_num, 3, '0', STR_PAD_LEFT) . $year;
     
-    $sql = "UPDATE pelajar SET ";
-    $params = [];
-    $updates = [];
-    
-    // Build update fields
-    if (isset($update_data['status'])) {
-        $statusMap = [
-            'active' => 1,
-            'inactive' => 0,
-            'graduated' => 2
-        ];
-        if (isset($statusMap[$update_data['status']])) {
-            $updates[] = "status = ?";
-            $params[] = $statusMap[$update_data['status']];
-            $types .= 'i';
-        }
-    }
-    
-    if (empty($updates)) {
-        return false;
-    }
-    
-    $sql .= implode(', ', $updates);
-    $sql .= " WHERE id IN ($placeholders)";
-    $params = array_merge($params, $student_ids);
+    // Insert pelajar
+    $sql = "INSERT INTO pelajar (no_matrik, nama, kp_lama, kp_baru, jantina, status) 
+            VALUES (?, ?, ?, ?, ?, ?)";
     
     try {
         $stmt = $db->prepare($sql);
-        return $stmt->execute($params);
+        $jantina = ($data['jantina'] == 'male') ? 'L' : 'P';
+        $status = match($data['status'] ?? 'active') {
+            'active' => 1,
+            'graduated' => 2,
+            default => 0
+        };
+        
+        $stmt->bind_param(
+            "sssssi",
+            $no_matrik,
+            $data['nama'],
+            $data['kp_lama'] ?? '',
+            $data['kp_baru'] ?? '',
+            $jantina,
+            $status
+        );
+        
+        $success = $stmt->execute();
+        $student_id = $stmt->insert_id;
+        $stmt->close();
+        
+        // Jika ada kelas dipilih, tambah ke kelas_pelajar
+        if ($success && isset($data['kelas_id']) && !empty($data['kelas_id'])) {
+            $sql_kelas = "INSERT INTO kelas_pelajar (kelas_id, pelajar_id, tarikh_daftar) 
+                          VALUES (?, ?, CURDATE())";
+            $stmt = $db->prepare($sql_kelas);
+            $stmt->bind_param("ii", $data['kelas_id'], $student_id);
+            $stmt->execute();
+            $stmt->close();
+        }
+        
+        return $success;
+        
     } catch(Exception $e) {
-        error_log("Error bulkUpdateStudents: " . $e->getMessage());
+        error_log("Error in tambahPelajar: " . $e->getMessage());
         return false;
     }
 }
 
-// Bulk delete students
-function bulkDeleteStudents($student_ids) {
+/**
+ * Kemaskini pelajar
+ */
+function kemaskiniPelajar($id, $data) {
     $db = getDatabaseConnection();
     
-    if (empty($student_ids)) {
-        return false;
-    }
-    
-    $placeholders = implode(',', array_fill(0, count($student_ids), '?'));
-    
-    $sql = "UPDATE pelajar SET status = 0 WHERE id IN ($placeholders)";
+    $sql = "UPDATE pelajar 
+            SET nama = ?, 
+                kp_lama = ?, 
+                kp_baru = ?, 
+                jantina = ?, 
+                status = ? 
+            WHERE id = ?";
     
     try {
         $stmt = $db->prepare($sql);
-        return $stmt->execute($student_ids);
+        $jantina = ($data['jantina'] == 'male') ? 'L' : 'P';
+        $status = match($data['status'] ?? 'active') {
+            'active' => 1,
+            'graduated' => 2,
+            default => 0
+        };
+        
+        $stmt->bind_param(
+            "ssssii",
+            $data['nama'],
+            $data['kp_lama'] ?? '',
+            $data['kp_baru'] ?? '',
+            $jantina,
+            $status,
+            $id
+        );
+        
+        return $stmt->execute();
+        
     } catch(Exception $e) {
-        error_log("Error bulkDeleteStudents: " . $e->getMessage());
+        error_log("Error in kemaskiniPelajar: " . $e->getMessage());
         return false;
     }
 }
+
+/**
+ * Padam pelajar (soft delete)
+ */
+function padamPelajar($id) {
+    $db = getDatabaseConnection();
+    
+    $sql = "UPDATE pelajar SET status = 0 WHERE id = ?";
+    
+    try {
+        $stmt = $db->prepare($sql);
+        $stmt->bind_param("i", $id);
+        return $stmt->execute();
+    } catch(Exception $e) {
+        error_log("Error in padamPelajar: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Cari pelajar
+ */
+function cariPelajar($keyword, $guru_id = null) {
+    $db = getDatabaseConnection();
+    
+    $sql = "SELECT 
+                p.*,
+                k.nama as kelas_nama,
+                k.tahun
+            FROM pelajar p
+            LEFT JOIN kelas_pelajar kp ON p.id = kp.pelajar_id
+            LEFT JOIN kelas k ON kp.kelas_id = k.id
+            WHERE (p.nama LIKE ? OR p.no_matrik LIKE ? OR p.kp_lama LIKE ? OR p.kp_baru LIKE ?)
+            AND p.status = 1";
+    
+    if ($guru_id) {
+        $sql .= " AND EXISTS (
+                    SELECT 1 FROM guru_kelas gk 
+                    WHERE gk.kelas_id = k.id AND gk.guru_id = ?
+                )";
+    }
+    
+    $sql .= " ORDER BY p.nama LIMIT 50";
+    
+    try {
+        $stmt = $db->prepare($sql);
+        $keyword = "%$keyword%";
+        
+        if ($guru_id) {
+            $stmt->bind_param("ssssi", $keyword, $keyword, $keyword, $keyword, $guru_id);
+        } else {
+            $stmt->bind_param("ssss", $keyword, $keyword, $keyword, $keyword);
+        }
+        
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $pelajar = [];
+        while ($row = $result->fetch_assoc()) {
+            $pelajar[] = $row;
+        }
+        
+        $stmt->close();
+        return $pelajar;
+        
+    } catch(Exception $e) {
+        error_log("Error in cariPelajar: " . $e->getMessage());
+        return [];
+    }
+}
+
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Cek koneksi database
+ */
+function testDatabaseConnection() {
+    try {
+        $db = getDatabaseConnection();
+        
+        if ($db->connect_errno) {
+            return [
+                'success' => false,
+                'message' => 'Connection failed: ' . $db->connect_error
+            ];
+        }
+        
+        // Test query
+        $result = $db->query("SHOW TABLES");
+        $tables = [];
+        while ($row = $result->fetch_array()) {
+            $tables[] = $row[0];
+        }
+        
+        return [
+            'success' => true,
+            'message' => 'Database connected successfully',
+            'tables' => $tables
+        ];
+        
+    } catch(Exception $e) {
+     return [
+            'success' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Dapatkan semua kelas untuk dropdown
+ */
+function getAllKelas($aktif_sahaja = true) {
+    $db = getDatabaseConnection();
+    
+    $sql = "SELECT k.*, 
+                   COUNT(kp.pelajar_id) as jumlah_pelajar
+            FROM kelas k
+            LEFT JOIN kelas_pelajar kp ON k.id = kp.kelas_id";
+    
+    if ($aktif_sahaja) {
+        $sql .= " WHERE k.status = 1";
+    }
+    
+    $sql .= " GROUP BY k.id
+              ORDER BY k.tahun DESC, k.nama ASC";
+    
+    try {
+        $result = $db->query($sql);
+        $kelas = [];
+        
+        while ($row = $result->fetch_assoc()) {
+            $kelas[] = $row;
+        }
+        
+        return $kelas;
+        
+    } catch(Exception $e) {
+        error_log("Error in getAllKelas: " . $e->getMessage());
+        return [];
+    }
+}
+?>
