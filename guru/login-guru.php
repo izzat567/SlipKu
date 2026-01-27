@@ -20,21 +20,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || empty($password)) {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        // Check credentials
-        $guru = authenticateGuru($email, $password);
-        
-        if ($guru) {
-            // Set session
-            $_SESSION['guru_id'] = $guru['id'];
-            $_SESSION['guru_nama'] = $guru['nama'];
-            $_SESSION['guru_email'] = $guru['email'];
-            $_SESSION['guru_role'] = $guru['role'];
+        // Check hardcoded demo credentials first
+        if ($email === 'guru@demo.com' && $password === 'demo123') {
+            // Try to get guru from database first
+            $guru = authenticateGuru($email, $password);
             
-            // Redirect to dashboard
+            if ($guru) {
+                // Use database guru info
+                $_SESSION['guru_id'] = $guru['id'];
+                $_SESSION['guru_nama'] = $guru['nama'];
+                $_SESSION['guru_email'] = $guru['email'];
+                $_SESSION['guru_telefon'] = $guru['no_telefon'];
+            } else {
+                // Create demo session if guru not in database
+                $_SESSION['guru_id'] = 1;
+                $_SESSION['guru_nama'] = 'Cikgu Demo';
+                $_SESSION['guru_email'] = 'guru@demo.com';
+                $_SESSION['guru_telefon'] = '012-3456789';
+            }
+            
+            $_SESSION['guru_role'] = 'teacher';
+            $_SESSION['guru_login_time'] = time();
+            
             header('Location: dashboard-guru.php');
             exit();
         } else {
-            $error_message = 'Email atau kata laluan tidak sah.';
+            // Try database authentication for other users
+            $guru = authenticateGuru($email, $password);
+            
+            if ($guru) {
+                // Set session from database
+                $_SESSION['guru_id'] = $guru['id'];
+                $_SESSION['guru_nama'] = $guru['nama'];
+                $_SESSION['guru_email'] = $guru['email'];
+                $_SESSION['guru_telefon'] = $guru['no_telefon'] ?? '';
+                $_SESSION['guru_role'] = 'teacher';
+                $_SESSION['guru_login_time'] = time();
+                
+                header('Location: dashboard-guru.php');
+                exit();
+            } else {
+                $error_message = 'Email atau kata laluan tidak sah.';
+            }
         }
     }
 }
@@ -288,19 +315,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h4><i class="fas fa-info-circle"></i> CREDENSI DEMO</h4>
             <p>Email: guru@demo.com</p>
             <p>Kata Laluan: demo123</p>
+            <p style="font-size: 11px; margin-top: 5px; color: var(--medium-gray);">
+                <i class="fas fa-database"></i> Menggunakan database slipku_db
+            </p>
         </div>
 
         <form method="POST" action="">
             <div class="form-group">
                 <label class="form-label">Alamat Email</label>
                 <input type="email" class="form-input" name="email" required 
-                       placeholder="cth: guru@sekolah.edu.my" value="<?= isset($_POST['email']) ? htmlspecialchars($_POST['email']) : '' ?>">
+                       placeholder="cth: guru@sekolah.edu.my" value="guru@demo.com">
             </div>
 
             <div class="form-group">
                 <label class="form-label">Kata Laluan</label>
                 <input type="password" class="form-input" name="password" required 
-                       placeholder="Masukkan kata laluan anda">
+                       placeholder="Masukkan kata laluan anda" value="demo123">
             </div>
 
             <div class="form-group">
@@ -318,5 +348,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </p>
         </div>
     </div>
+
+    <script>
+        // Auto-fill demo credentials
+        document.addEventListener('DOMContentLoaded', function() {
+            const emailInput = document.querySelector('input[name="email"]');
+            const passwordInput = document.querySelector('input[name="password"]');
+            
+            if (emailInput && !emailInput.value) {
+                emailInput.value = 'guru@demo.com';
+            }
+            
+            if (passwordInput && !passwordInput.value) {
+                passwordInput.value = 'demo123';
+            }
+        });
+    </script>
 </body>
 </html>

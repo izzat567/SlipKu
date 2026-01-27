@@ -14,8 +14,23 @@ if (!isset($_SESSION['guru_id'])) {
 $guru_id = $_SESSION['guru_id'];
 $guru_info = getGuruById($guru_id);
 
-// Set default timezone
-date_default_timezone_set('Asia/Kuala_Lumpur');
+// If no guru in database, use session data
+if (!$guru_info && isset($_SESSION['guru_nama'])) {
+    $guru_info = [
+        'nama' => $_SESSION['guru_nama'],
+        'email' => $_SESSION['guru_email'],
+        'no_telefon' => $_SESSION['guru_telefon'] ?? ''
+    ];
+}
+
+// FOR TESTING ONLY - jika masih tak ada, guna default
+if (!$guru_info) {
+    $guru_info = [
+        'nama' => 'Cikgu Demo',
+        'email' => 'guru@demo.com',
+        'no_telefon' => '012-3456789'
+    ];
+}
 
 // Handle different actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
