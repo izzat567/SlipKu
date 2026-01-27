@@ -4,17 +4,15 @@ session_start();
 // Include database functions
 require_once __DIR__ . '/../includes/db_functions.php';
 
-// Check if user is logged in - REMOVED FOR TESTING
-// if (!isset($_SESSION['guru_id'])) {
-//     header('Location: ../login.php');
-//     exit();
-// }
+// Check if user is logged in
+if (!isset($_SESSION['guru_id'])) {
+    header('Location: ../login-guru.php');
+    exit();
+}
 
-// FOR TESTING ONLY - Set a default guru_id
-$guru_id = $_SESSION['guru_id'] ?? 1; // Default to guru ID 1 for testing
-
-$action = $_GET['action'] ?? '';
-$student_id = $_GET['id'] ?? '';
+// Get guru info
+$guru_id = $_SESSION['guru_id'];
+$guru_info = getGuruById($guru_id);
 
 // Set default timezone
 date_default_timezone_set('Asia/Kuala_Lumpur');
@@ -62,6 +60,51 @@ if ($action === 'edit' && $student_id) {
     $student = getPelajarById($student_id);
 }
 
+function authenticateGuru($email, $password) {
+    global $conn;
+    
+    $email = mysqli_real_escape_string($conn, $email);
+    
+    $sql = "SELECT * FROM guru WHERE email = '$email' AND status = 1 LIMIT 1";
+    $result = mysqli_query($conn, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        $guru = mysqli_fetch_assoc($result);
+        
+        // Verify password (assuming password is hashed)
+        if (password_verify($password, $guru['password'])) {
+            return $guru;
+        }
+        
+        // For demo purposes with plain text password
+        if ($password === $guru['password'] && $guru['password'] === 'demo123') {
+            return $guru;
+        }
+    }
+    
+    return false;
+}
+
+function checkGuruLogin() {
+    if (!isset($_SESSION['guru_id'])) {
+        header('Location: ../login-guru.php');
+        exit();
+    }
+}
+
+function getGuruById($guru_id) {
+    global $conn;
+    
+    $guru_id = mysqli_real_escape_string($conn, $guru_id);
+    $sql = "SELECT * FROM guru WHERE id = '$guru_id' LIMIT 1";
+    $result = mysqli_query($conn, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        return mysqli_fetch_assoc($result);
+    }
+    
+    return false;
+}
 // Function to handle adding student
 function handleAddStudent() {
     // Validate required fields
@@ -1618,7 +1661,58 @@ if (isset($_GET['ajax'])) {
             </div>
         </div>
     </header>
+        <aside class="sidebar" id="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-title">Menu Utama</div>
+            <a href="dashboard-guru.php" class="sidebar-item <?php echo ($current_page == 'dashboard-guru.php') ? 'active' : ''; ?>">
+                <i class="fas fa-tachometer-alt"></i>
+                Dashboard
+            </a>
+            <a href="kelas-saya.php" class="sidebar-item">
+                <i class="fas fa-users"></i>
+                Kelas Saya
+                <span class="badge">3</span>
+            </a>
+            <a href="pelajar-saya.php" class="sidebar-item">
+                <i class="fas fa-user-graduate"></i>
+                Pelajar Saya
+                <span class="badge">85</span>
+            </a>
+            <a href="subjek-saya.php" class="sidebar-item">
+                <i class="fas fa-book"></i>
+                Subjek Saya
+                <span class="badge">4</span>
+            </a>
+        </div>
 
+        <div class="sidebar-section">
+            <div class="sidebar-title">Peperiksaan & Penilaian</div>
+            <a href="tambah-markah.php" class="sidebar-item">
+                <i class="fas fa-plus-circle"></i>
+                Tambah Markah
+            </a>
+            <a href="semak-markah.php" class="sidebar-item">
+                <i class="fas fa-search"></i>
+                Semak Markah
+            </a>
+            <a href="laporan-prestasi.php" class="sidebar-item">
+                <i class="fas fa-chart-bar"></i>
+                Laporan Prestasi
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Sistem</div>
+            <a href="profil-saya.php" class="sidebar-item">
+                <i class="fas fa-user-cog"></i>
+                Profil Saya
+            </a>
+            <a href="logout.php" class="sidebar-item" style="color: var(--danger);">
+                <i class="fas fa-sign-out-alt"></i>
+                Log Keluar
+            </a>
+        </div>
+    </aside>
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
         <!-- Page Header -->
