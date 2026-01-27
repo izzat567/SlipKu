@@ -20,24 +20,29 @@ function connectDB() {
 
 $conn = connectDB();
 
-// Authentication function for guru
+// Authentication function for guru - updated for actual table structure
 function authenticateGuru($email, $password) {
     global $conn;
     
     $email = mysqli_real_escape_string($conn, $email);
-    $password = mysqli_real_escape_string($conn, $password);
     
-    // Check in guru table
-    $sql = "SELECT * FROM guru WHERE email = '$email' LIMIT 1";
+    // Check in guru table - updated column names
+    $sql = "SELECT * FROM guru WHERE email = '$email' AND status = 1 LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
     if ($result && mysqli_num_rows($result) > 0) {
         $guru = mysqli_fetch_assoc($result);
         
-        // For demo purposes - check plain text password
-        // In production, use password_verify() for hashed passwords
+        // Check password (assuming plain text for demo)
         if ($password === $guru['password']) {
-            return $guru;
+            // Return with correct column names
+            return [
+                'id' => $guru['id_guru'],
+                'nama' => $guru['nama'],
+                'email' => $guru['email'],
+                'no_telefon' => $guru['no_telefon'],
+                'role' => 'teacher'
+            ];
         }
     }
     
@@ -52,16 +57,22 @@ function checkGuruLogin() {
     }
 }
 
-// Get guru by ID
+// Get guru by ID - updated for actual table structure
 function getGuruById($guru_id) {
     global $conn;
     
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
-    $sql = "SELECT * FROM guru WHERE id = '$guru_id' LIMIT 1";
+    $sql = "SELECT * FROM guru WHERE id_guru = '$guru_id' AND status = 1 LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
     if ($result && mysqli_num_rows($result) > 0) {
-        return mysqli_fetch_assoc($result);
+        $guru = mysqli_fetch_assoc($result);
+        return [
+            'id' => $guru['id_guru'],
+            'nama' => $guru['nama'],
+            'email' => $guru['email'],
+            'no_telefon' => $guru['no_telefon']
+        ];
     }
     
     return false;
@@ -71,40 +82,43 @@ function getGuruById($guru_id) {
 function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $status = '', $prestasi = '') {
     global $conn;
     
-    $guru_id = mysqli_real_escape_string($conn, $guru_id);
-    $where_clauses = ["p.guru_id = '$guru_id'"];
+    $sql = "SELECT 
+                p.*, 
+                k.nama as kelas_nama,
+                k.tahun
+            FROM pelajar p
+            LEFT JOIN kelas k ON p.id_kelas = k.id
+            WHERE 1=1";
     
+    // Add search filter
     if (!empty($search)) {
         $search = mysqli_real_escape_string($conn, $search);
-        $where_clauses[] = "(p.nama LIKE '%$search%' OR p.no_kp LIKE '%$search%')";
+        $sql .= " AND (p.nama LIKE '%$search%' OR p.no_kp LIKE '%$search%')";
     }
     
+    // Add kelas filter
     if (!empty($kelas)) {
         $kelas = mysqli_real_escape_string($conn, $kelas);
-        $where_clauses[] = "k.nama = '$kelas'";
+        $sql .= " AND k.nama = '$kelas'";
     }
     
+    // Add tahun filter
     if (!empty($tahun)) {
         $tahun = mysqli_real_escape_string($conn, $tahun);
-        $where_clauses[] = "k.tahun = '$tahun'";
+        $sql .= " AND k.tahun = '$tahun'";
     }
     
+    // Add status filter
     if (!empty($status)) {
         if ($status === 'active') $status_value = 1;
         elseif ($status === 'inactive') $status_value = 0;
         elseif ($status === 'graduated') $status_value = 2;
         else $status_value = 1;
         
-        $where_clauses[] = "p.status = '$status_value'";
+        $sql .= " AND p.status = '$status_value'";
     }
     
-    $where_sql = implode(' AND ', $where_clauses);
-    
-    $sql = "SELECT p.*, k.nama as kelas_nama, k.tahun 
-            FROM pelajar p
-            LEFT JOIN kelas k ON p.kelas_id = k.id
-            WHERE $where_sql
-            ORDER BY p.nama ASC";
+    $sql .= " ORDER BY p.nama ASC";
     
     $result = mysqli_query($conn, $sql);
     $students = [];
@@ -147,8 +161,20 @@ function tambahPelajar($data) {
     $status_value = ($status === 'active') ? 1 : 
                    (($status === 'inactive') ? 0 : 2);
     
-    $sql = "INSERT INTO pelajar (nama, no_kp, jantina, status, created_at) 
-            VALUES ('$nama', '$no_ic', '$jantina', '$status_value', NOW())";
+    // Generate student ID based on latest ID
+    $last_id_sql = "SELECT MAX(id) as max_id FROM pelajar";
+    $last_id_result = mysqli_query($conn, $last_id_sql);
+    $last_id = 1;
+    
+    if ($last_id_result && mysqli_num_rows($last_id_result) > 0) {
+        $row = mysqli_fetch_assoc($last_id_result);
+        $last_id = $row['max_id'] + 1;
+    }
+    
+    $id_kelas = 'S' . str_pad($last_id, 3, '0', STR_PAD_LEFT) . date('Y');
+    
+    $sql = "INSERT INTO pelajar (nama, no_kp, jantina, status, id_kelas) 
+            VALUES ('$nama', '$no_ic', '$jantina', '$status_value', '$id_kelas')";
     
     return mysqli_query($conn, $sql);
 }
@@ -171,8 +197,7 @@ function kemaskiniPelajar($id, $data) {
             SET nama = '$nama', 
                 no_kp = '$no_ic', 
                 jantina = '$jantina', 
-                status = '$status_value',
-                updated_at = NOW()
+                status = '$status_value'
             WHERE id = '$id'";
     
     return mysqli_query($conn, $sql);
@@ -192,7 +217,7 @@ function padamPelajar($id) {
 function getAllKelas() {
     global $conn;
     
-    $sql = "SELECT * FROM kelas ORDER BY tahun DESC, nama ASC";
+    $sql = "SELECT * FROM kelas WHERE status = 1 ORDER BY tahun DESC, nama ASC";
     $result = mysqli_query($conn, $sql);
     $classes = [];
     
@@ -209,8 +234,8 @@ function getAllKelas() {
 function getKelasByGuru($guru_id) {
     global $conn;
     
-    $guru_id = mysqli_real_escape_string($conn, $guru_id);
-    $sql = "SELECT * FROM kelas WHERE guru_id = '$guru_id' ORDER BY tahun DESC, nama ASC";
+    // Since there's no direct link, get all active classes
+    $sql = "SELECT * FROM kelas WHERE status = 1 ORDER BY tahun DESC, nama ASC";
     $result = mysqli_query($conn, $sql);
     $classes = [];
     
@@ -242,32 +267,31 @@ function getPelajarById($id) {
 function getStatistikPelajar($guru_id) {
     global $conn;
     
-    $guru_id = mysqli_real_escape_string($conn, $guru_id);
+    // Get total students
+    $sql_total = "SELECT COUNT(*) as total FROM pelajar";
+    $result_total = mysqli_query($conn, $sql_total);
+    $total = 0;
     
-    $sql = "SELECT 
-                COUNT(*) as total_pelajar,
-                SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as pelajar_aktif
-            FROM pelajar p
-            LEFT JOIN kelas k ON p.kelas_id = k.id
-            WHERE k.guru_id = '$guru_id' OR p.guru_id = '$guru_id'";
+    if ($result_total && mysqli_num_rows($result_total) > 0) {
+        $row = mysqli_fetch_assoc($result_total);
+        $total = $row['total'];
+    }
     
-    $result = mysqli_query($conn, $sql);
+    // Get active students
+    $sql_active = "SELECT COUNT(*) as active FROM pelajar WHERE status = 1";
+    $result_active = mysqli_query($conn, $sql_active);
+    $active = 0;
     
-    if ($result && mysqli_num_rows($result) > 0) {
-        $stats = mysqli_fetch_assoc($result);
-        
-        // Add dummy data for demo
-        $stats['prestasi_purata'] = 78.5;
-        $stats['kadar_kehadiran'] = 92.3;
-        
-        return $stats;
+    if ($result_active && mysqli_num_rows($result_active) > 0) {
+        $row = mysqli_fetch_assoc($result_active);
+        $active = $row['active'];
     }
     
     return [
-        'total_pelajar' => 0,
-        'pelajar_aktif' => 0,
-        'prestasi_purata' => 0,
-        'kadar_kehadiran' => 0
+        'total_pelajar' => $total,
+        'pelajar_aktif' => $active,
+        'prestasi_purata' => 78.5,
+        'kadar_kehadiran' => 92.3
     ];
 }
 
@@ -307,13 +331,15 @@ function bulkUpdateStudents($student_ids, $data) {
 
 // Get student performance
 function getStudentPerformance($student_id) {
+    global $conn;
+    
     // Dummy data for demo
     return [
-        'average' => 82.5,
+        'average' => rand(60, 95),
         'subject_scores' => [
-            ['subject' => 'Matematik', 'score' => 85],
-            ['subject' => 'Sains', 'score' => 80],
-            ['subject' => 'Bahasa Melayu', 'score' => 82]
+            ['subject' => 'Matematik', 'score' => rand(60, 95)],
+            ['subject' => 'Sains', 'score' => rand(60, 95)],
+            ['subject' => 'Bahasa Melayu', 'score' => rand(60, 95)]
         ]
     ];
 }
@@ -322,15 +348,47 @@ function getStudentPerformance($student_id) {
 function getStudentAttendance($student_id) {
     // Dummy data for demo
     return [
-        'percentage' => 95,
-        'present' => 19,
-        'absent' => 1,
+        'percentage' => rand(85, 100),
+        'present' => rand(15, 20),
+        'absent' => rand(0, 5),
         'total' => 20
     ];
 }
 
-// Close database connection (optional)
+// Get kelas by ID
+function getKelasById($id) {
+    global $conn;
+    
+    $id = mysqli_real_escape_string($conn, $id);
+    $sql = "SELECT * FROM kelas WHERE id = '$id' LIMIT 1";
+    $result = mysqli_query($conn, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        return mysqli_fetch_assoc($result);
+    }
+    
+    return false;
+}
+
+// Close database connection
 function closeDB($conn) {
     mysqli_close($conn);
 }
+
+// Add default guru if not exists (for demo)
+function ensureDemoGuruExists() {
+    global $conn;
+    
+    $check_sql = "SELECT * FROM guru WHERE email = 'guru@demo.com'";
+    $result = mysqli_query($conn, $check_sql);
+    
+    if (!$result || mysqli_num_rows($result) == 0) {
+        $insert_sql = "INSERT INTO guru (nama, email, no_telefon, password, status) 
+                      VALUES ('Cikgu Demo', 'guru@demo.com', '012-3456789', 'demo123', 1)";
+        mysqli_query($conn, $insert_sql);
+    }
+}
+
+// Call this function to ensure demo guru exists
+ensureDemoGuruExists();
 ?>

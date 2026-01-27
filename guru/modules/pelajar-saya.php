@@ -32,6 +32,12 @@ if (!$guru_info) {
     ];
 }
 
+$action = $_GET['action'] ?? '';
+$student_id = $_GET['id'] ?? '';
+
+// Set default timezone
+date_default_timezone_set('Asia/Kuala_Lumpur');
+
 // Handle different actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     switch($action) {
@@ -75,51 +81,6 @@ if ($action === 'edit' && $student_id) {
     $student = getPelajarById($student_id);
 }
 
-function authenticateGuru($email, $password) {
-    global $conn;
-    
-    $email = mysqli_real_escape_string($conn, $email);
-    
-    $sql = "SELECT * FROM guru WHERE email = '$email' AND status = 1 LIMIT 1";
-    $result = mysqli_query($conn, $sql);
-    
-    if ($result && mysqli_num_rows($result) > 0) {
-        $guru = mysqli_fetch_assoc($result);
-        
-        // Verify password (assuming password is hashed)
-        if (password_verify($password, $guru['password'])) {
-            return $guru;
-        }
-        
-        // For demo purposes with plain text password
-        if ($password === $guru['password'] && $guru['password'] === 'demo123') {
-            return $guru;
-        }
-    }
-    
-    return false;
-}
-
-function checkGuruLogin() {
-    if (!isset($_SESSION['guru_id'])) {
-        header('Location: ../login-guru.php');
-        exit();
-    }
-}
-
-function getGuruById($guru_id) {
-    global $conn;
-    
-    $guru_id = mysqli_real_escape_string($conn, $guru_id);
-    $sql = "SELECT * FROM guru WHERE id = '$guru_id' LIMIT 1";
-    $result = mysqli_query($conn, $sql);
-    
-    if ($result && mysqli_num_rows($result) > 0) {
-        return mysqli_fetch_assoc($result);
-    }
-    
-    return false;
-}
 // Function to handle adding student
 function handleAddStudent() {
     // Validate required fields
