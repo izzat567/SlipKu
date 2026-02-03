@@ -1,8 +1,8 @@
 <?php
 session_start();
 
-// Include database functions
-require_once __DIR__ . '/includes/db_functions.php';
+// Include database connection
+require_once __DIR__ . '/../config/connect.php';
 
 // Redirect if already logged in
 if (isset($_SESSION['guru_id'])) {
@@ -13,56 +13,53 @@ if (isset($_SESSION['guru_id'])) {
 $error_message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
+    $email = trim($_POST['email'] ?? '');
+    $password = trim($_POST['password'] ?? '');
     
     // Validate inputs
     if (empty($email) || empty($password)) {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        // Check hardcoded demo credentials first
-        if ($email === 'guru@demo.com' && $password === 'demo123') {
-            // Try to get guru from database first
-            $guru = authenticateGuru($email, $password);
+        // Check in database
+        $sql = "SELECT id_guru, nama_guru, email, password, role, status 
+                FROM guru 
+                WHERE email = ? AND status = 1";
+        
+        $stmt = $database->prepare($sql);
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 1) {
+            $guru = $result->fetch_assoc();
             
-            if ($guru) {
-                // Use database guru info
-                $_SESSION['guru_id'] = $guru['id'];
-                $_SESSION['guru_nama'] = $guru['nama'];
+            // Verify password (simple comparison for demo)
+            // In production, use password_verify()
+            if ($password === $guru['password']) {
+                // Set session
+                $_SESSION['guru_id'] = $guru['id_guru'];
+                $_SESSION['guru_nama'] = $guru['nama_guru'];
                 $_SESSION['guru_email'] = $guru['email'];
-                $_SESSION['guru_telefon'] = $guru['no_telefon'];
-            } else {
-                // Create demo session if guru not in database
-                $_SESSION['guru_id'] = 1;
-                $_SESSION['guru_nama'] = 'Cikgu Demo';
-                $_SESSION['guru_email'] = 'guru@demo.com';
-                $_SESSION['guru_telefon'] = '012-3456789';
-            }
-            
-            $_SESSION['guru_role'] = 'teacher';
-            $_SESSION['guru_login_time'] = time();
-            
-            header('Location: dashboard-guru.php');
-            exit();
-        } else {
-            // Try database authentication for other users
-            $guru = authenticateGuru($email, $password);
-            
-            if ($guru) {
-                // Set session from database
-                $_SESSION['guru_id'] = $guru['id'];
-                $_SESSION['guru_nama'] = $guru['nama'];
-                $_SESSION['guru_email'] = $guru['email'];
-                $_SESSION['guru_telefon'] = $guru['no_telefon'] ?? '';
-                $_SESSION['guru_role'] = 'teacher';
+                $_SESSION['guru_role'] = $guru['role'];
                 $_SESSION['guru_login_time'] = time();
                 
+                // Update last login
+                $update_sql = "UPDATE guru SET last_login = NOW() WHERE id_guru = ?";
+                $update_stmt = $database->prepare($update_sql);
+                $update_stmt->bind_param("i", $guru['id_guru']);
+                $update_stmt->execute();
+                
+                // Redirect based on role
                 header('Location: dashboard-guru.php');
                 exit();
             } else {
-                $error_message = 'Email atau kata laluan tidak sah.';
+                $error_message = 'Kata laluan tidak sah.';
             }
+        } else {
+            $error_message = 'Email tidak ditemui atau akaun tidak aktif.';
         }
+        
+        $stmt->close();
     }
 }
 ?>

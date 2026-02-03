@@ -1577,10 +1577,7 @@
                 <i class="fas fa-plus-circle"></i>
                 Tambah Markah
             </a>
-            <a href="kemaskini-markah.html" class="sidebar-item">
-                <i class="fas fa-edit"></i>
-                Kemaskini Markah
-            </a>
+
             <a href="semak-markah.html" class="sidebar-item active">
                 <i class="fas fa-search"></i>
                 Semak Markah
@@ -1592,40 +1589,12 @@
         </div>
 
         <div class="sidebar-section">
-            <div class="sidebar-title">Pengurusan</div>
-            <a href="jadual-ujian.html" class="sidebar-item">
-                <i class="fas fa-calendar-alt"></i>
-                Jadual Ujian
-            </a>
-            <a href="tugasan.html" class="sidebar-item">
-                <i class="fas fa-tasks"></i>
-                Tugasan
-                <span class="badge">5</span>
-            </a>
-            <a href="kehadiran.html" class="sidebar-item">
-                <i class="fas fa-clipboard-check"></i>
-                Kehadiran
-            </a>
-            <a href="komunikasi.html" class="sidebar-item">
-                <i class="fas fa-comments"></i>
-                Komunikasi Ibu Bapa
-            </a>
-        </div>
-
-        <div class="sidebar-section">
             <div class="sidebar-title">Sistem</div>
             <a href="profil.html" class="sidebar-item">
                 <i class="fas fa-user-cog"></i>
                 Profil Saya
             </a>
-            <a href="tetapan.html" class="sidebar-item">
-                <i class="fas fa-cog"></i>
-                Tetapan
-            </a>
-            <a href="bantuan-admin.html" class="sidebar-item">
-                <i class="fas fa-question-circle"></i>
-                Bantuan
-            </a>
+
             <a href="#" class="sidebar-item" style="color: var(--danger);">
                 <i class="fas fa-sign-out-alt"></i>
                 Log Keluar
