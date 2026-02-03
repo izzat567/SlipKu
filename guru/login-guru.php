@@ -20,8 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || empty($password)) {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        // Check in database
-        $sql = "SELECT id_guru, nama_guru, email, password, role, status 
+        // Check in database - GUNA 'nama' BUKAN 'nama_guru'
+        $sql = "SELECT id_guru, nama, email, password, role, status 
                 FROM guru 
                 WHERE email = ? AND status = 1";
         
@@ -33,12 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result->num_rows === 1) {
             $guru = $result->fetch_assoc();
             
-            // Verify password (simple comparison for demo)
-            // In production, use password_verify()
+            // Verify password
             if ($password === $guru['password']) {
-                // Set session
+                // Set session variables
                 $_SESSION['guru_id'] = $guru['id_guru'];
-                $_SESSION['guru_nama'] = $guru['nama_guru'];
+                $_SESSION['guru_nama'] = $guru['nama'];  // <-- INI YANG BETUL
                 $_SESSION['guru_email'] = $guru['email'];
                 $_SESSION['guru_role'] = $guru['role'];
                 $_SESSION['guru_login_time'] = time();
@@ -48,8 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update_stmt = $database->prepare($update_sql);
                 $update_stmt->bind_param("i", $guru['id_guru']);
                 $update_stmt->execute();
+                $update_stmt->close();
                 
-                // Redirect based on role
+                // Redirect to dashboard
                 header('Location: dashboard-guru.php');
                 exit();
             } else {
