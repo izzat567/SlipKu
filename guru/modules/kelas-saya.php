@@ -23,38 +23,85 @@ if (isset($_SESSION['guru_nama'])) {
     $initials = substr($initials, 0, 2);
 }
 
-// Get classes taught by this teacher
+// PERBAIKAN 1: Update query untuk guna id_kelas bukan kelas_id
 $sql = "SELECT k.*, 
-               (SELECT COUNT(*) FROM murid WHERE kelas_id = k.id AND status = 'aktif') as total_murid,
+               (SELECT COUNT(*) FROM murid WHERE id_kelas = k.id AND status = 'aktif') as total_murid,
                (SELECT AVG(markah) FROM penilaian p 
                 JOIN murid m ON p.murid_id = m.id 
-                WHERE m.kelas_id = k.id) as average_performance
+                WHERE m.id_kelas = k.id) as average_performance
         FROM kelas k
         WHERE k.guru_id = ? 
         ORDER BY k.nama";
 
 $stmt = $database->prepare($sql);
-$stmt->bind_param("i", $guru_id);
-$stmt->execute();
-$classes_result = $stmt->get_result();
-$classes = [];
+if ($stmt) {
+    $stmt->bind_param("i", $guru_id);
+    $stmt->execute();
+    $classes_result = $stmt->get_result();
+    $classes = [];
 
-while ($row = $classes_result->fetch_assoc()) {
-    $classes[] = [
-        'id' => $row['id'],
-        'nama' => $row['nama'],
-        'tahun' => $row['tahun'],
-        'total_murid' => $row['total_murid'] ?? 0,
-        'average_performance' => $row['average_performance'] ?? 0
-    ];
+    while ($row = $classes_result->fetch_assoc()) {
+        $classes[] = [
+            'id' => $row['id'],
+            'nama' => $row['nama'],
+            'tahun' => $row['tahun'],
+            'total_murid' => $row['total_murid'] ?? 0,
+            'average_performance' => $row['average_performance'] ?? 0
+        ];
+    }
+    $stmt->close();
+} else {
+    // Jika query gagal, set empty array
+    $classes = [];
 }
-$stmt->close();
 
 // Calculate totals for stats
 $totalClasses = count($classes);
 $totalStudents = array_sum(array_column($classes, 'total_murid'));
 $totalPerformance = array_sum(array_column($classes, 'average_performance'));
 $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
+
+// Get total active students
+$total_students = 0;
+try {
+    $sql_students = "SELECT COUNT(*) as total FROM murid WHERE status = 'aktif'";
+    $stmt_students = $database->prepare($sql_students);
+    $stmt_students->execute();
+    $student_count_result = $stmt_students->get_result();
+    $total_students = $student_count_result->fetch_assoc()['total'] ?? 0;
+    $stmt_students->close();
+} catch (Exception $e) {
+    $total_students = 0;
+}
+
+// Get unmarked exams
+$unmarked_count = 0;
+try {
+    $sql_unmarked = "SELECT COUNT(*) as total 
+                     FROM penilaian p
+                     WHERE (p.gred IS NULL OR p.gred = '')";
+    $stmt_unmarked = $database->prepare($sql_unmarked);
+    $stmt_unmarked->execute();
+    $unmarked_result = $stmt_unmarked->get_result();
+    $unmarked_count = $unmarked_result->fetch_assoc()['total'] ?? 0;
+    $stmt_unmarked->close();
+} catch (Exception $e) {
+    $unmarked_count = 0;
+}
+
+// Get classes for sidebar badge
+$kelas_count = 0;
+try {
+    $sql_kelas = "SELECT COUNT(*) as total FROM kelas WHERE guru_id = ? AND status = 1";
+    $stmt_kelas = $database->prepare($sql_kelas);
+    $stmt_kelas->bind_param("i", $guru_id);
+    $stmt_kelas->execute();
+    $kelas_result = $stmt_kelas->get_result();
+    $kelas_count = $kelas_result->fetch_assoc()['total'] ?? 0;
+    $stmt_kelas->close();
+} catch (Exception $e) {
+    $kelas_count = 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -1100,14 +1147,16 @@ $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
             
             if (classData) {
                 // Update modal content with real data
+                document.getElementById('modalTitle').textContent = 'Maklumat Kelas: ' + classData.nama;
                 document.getElementById('classNameDetail').textContent = classData.nama;
                 document.getElementById('classSubjectDetail').textContent = `Tahun ${classData.tahun}`;
                 document.getElementById('classTeacherDetail').textContent = teacherName;
                 document.getElementById('classYearDetail').textContent = `Tahun ${classData.tahun}`;
-                document.getElementById('classPerformanceDetail').textContent = `${classData.average_performance.toFixed(1)}%`;
+                document.getElementById('classPerformanceDetail').textContent = classData.average_performance ? 
+                    classData.average_performance.toFixed(1) + '%' : 'Tiada data';
                 document.getElementById('classStudentsDetail').textContent = `${classData.total_murid} pelajar`;
                 
-                // Load student list via AJAX
+                // Load student list
                 loadStudentList(classId);
                 
                 // Show modal
@@ -1116,7 +1165,7 @@ $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
             }
         }
 
-        // Load student list via AJAX
+        // Load student list
         function loadStudentList(classId) {
             const studentListModal = document.getElementById('studentListModal');
             studentListModal.innerHTML = `
@@ -1126,61 +1175,68 @@ $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
                 </div>
             `;
             
-            // Simulate AJAX call to get students
-            setTimeout(() => {
-                // In real implementation, you would fetch from server
-                fetch(`get-students.php?kelas_id=${classId}`)
-                    .then(response => response.json())
-                    .then(students => {
-                        if (students.length > 0) {
-                            studentListModal.innerHTML = students.map(student => `
-                                <div class="student-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0;">
-                                    <div style="display: flex; align-items: center; gap: 12px;">
-                                        <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
-                                            ${student.nama.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <h4 style="font-size: 15px; font-weight: 600; color: var(--dark-gray); margin-bottom: 2px;">${student.nama}</h4>
-                                            <p style="font-size: 12px; color: var(--medium-gray);">No. KP: ${student.no_kad_pengenalan || 'Tiada'}</p>
-                                        </div>
+            // AJAX request to get students
+            fetch(`get-students.php?kelas_id=${classId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(students => {
+                    if (students && students.length > 0) {
+                        studentListModal.innerHTML = students.map(student => `
+                            <div class="student-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
+                                        ${student.nama ? student.nama.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '??'}
                                     </div>
-                                    <button class="action-btn view" onclick="viewStudent(${student.id})" style="padding: 6px 12px; font-size: 12px;">
-                                        <i class="fas fa-eye"></i>
-                                        Lihat
-                                    </button>
+                                    <div>
+                                        <h4 style="font-size: 15px; font-weight: 600; color: var(--dark-gray); margin-bottom: 2px;">
+                                            ${student.nama || 'Tiada Nama'}
+                                        </h4>
+                                        <p style="font-size: 12px; color: var(--medium-gray);">
+                                            ${student.no_kad_pengenalan ? 'No. KP: ' + student.no_kad_pengenalan : 'Tiada data'}
+                                        </p>
+                                    </div>
                                 </div>
-                            `).join('');
-                        } else {
-                            studentListModal.innerHTML = `
-                                <div style="text-align: center; padding: 40px; color: var(--medium-gray);">
-                                    <i class="fas fa-user-slash" style="font-size: 48px; margin-bottom: 15px;"></i>
-                                    <h3 style="color: var(--dark-gray); margin-bottom: 10px;">Tiada Pelajar</h3>
-                                    <p>Belum ada pelajar dalam kelas ini.</p>
-                                </div>
-                            `;
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading students:', error);
-                        studentListModal.innerHTML = `
-                            <div style="text-align: center; padding: 40px; color: var(--danger);">
-                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px;"></i>
-                                <h3 style="color: var(--danger); margin-bottom: 10px;">Ralat</h3>
-                                <p>Gagal memuatkan senarai pelajar.</p>
-                                <button onclick="loadStudentList(${classId})" class="btn btn-secondary" style="margin-top: 15px;">
-                                    <i class="fas fa-redo"></i>
-                                    Cuba Lagi
+                                <button class="action-btn view" onclick="viewStudent(${student.id})" style="padding: 6px 12px; font-size: 12px;">
+                                    <i class="fas fa-eye"></i>
+                                    Lihat
                                 </button>
                             </div>
+                        `).join('');
+                    } else {
+                        studentListModal.innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: var(--medium-gray);">
+                                <i class="fas fa-user-slash" style="font-size: 48px; margin-bottom: 15px;"></i>
+                                <h3 style="color: var(--dark-gray); margin-bottom: 10px;">Tiada Pelajar</h3>
+                                <p>Belum ada pelajar dalam kelas ini.</p>
+                            </div>
                         `;
-                    });
-            }, 500);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading students:', error);
+                    studentListModal.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: var(--danger);">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px;"></i>
+                            <h3 style="color: var(--danger); margin-bottom: 10px;">Ralat</h3>
+                            <p>Gagal memuatkan senarai pelajar.</p>
+                            <p style="font-size: 12px; margin-top: 10px;">Error: ${error.message}</p>
+                            <button onclick="loadStudentList(${classId})" class="btn btn-secondary" style="margin-top: 15px;">
+                                <i class="fas fa-redo"></i>
+                                Cuba Lagi
+                            </button>
+                        </div>
+                    `;
+                });
         }
 
         // View student details
         function viewStudent(studentId) {
             // In real app, this would open student detail page
-            alert('ID Pelajar: ' + studentId + '\n\nDalam aplikasi sebenar, ini akan membuka halaman maklumat pelajar.');
+            window.location.href = `pelajar-detail.php?id=${studentId}`;
         }
 
         // Edit class
@@ -1203,7 +1259,9 @@ $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
         // Setup event listeners
         document.addEventListener('DOMContentLoaded', function() {
             // Toggle sidebar
-            menuToggle.addEventListener('click', toggleSidebar);
+            if (menuToggle) {
+                menuToggle.addEventListener('click', toggleSidebar);
+            }
             
             // Close sidebar when clicking on sidebar items
             document.querySelectorAll('.sidebar-item').forEach(item => {
@@ -1214,11 +1272,13 @@ $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
             window.addEventListener('resize', closeSidebar);
             
             // Close modal when clicking outside
-            document.addEventListener('click', function(event) {
-                if (event.target.classList.contains('modal')) {
-                    closeModal();
-                }
-            });
+            if (classModal) {
+                document.addEventListener('click', function(event) {
+                    if (event.target.classList.contains('modal')) {
+                        closeModal();
+                    }
+                });
+            }
             
             // Close modal with Escape key
             document.addEventListener('keydown', function(event) {
