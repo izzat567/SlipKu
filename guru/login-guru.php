@@ -21,9 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
         // Check in database - GUNA 'nama' BUKAN 'nama_guru'
-        $sql = "SELECT id, nama, email, password, role, status 
-                FROM guru 
-                WHERE email = ? AND status = 1";
+        $sql = "SELECT id, nama, email, password, status 
+        FROM guru 
+        WHERE email = ? AND status = 'aktif'";
         
         $stmt = $database->prepare($sql);
         $stmt->bind_param("s", $email);
@@ -37,17 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($password === $guru['password']) {
                 // Set session variables
                 $_SESSION['guru_id'] = $guru['id'];
-                $_SESSION['guru_nama'] = $guru['nama'];  // <-- INI YANG BETUL
+                $_SESSION['guru_nama'] = $guru['nama'];
                 $_SESSION['guru_email'] = $guru['email'];
-                $_SESSION['guru_role'] = $guru['role'];
+                $_SESSION['guru_role'] = 'guru';  // <-- SET DEFAULT VALUE
                 $_SESSION['guru_login_time'] = time();
                 
                 // Update last login
-                $update_sql = "UPDATE guru SET last_login = NOW() WHERE id = ?";
-                $update_stmt = $database->prepare($update_sql);
-                $update_stmt->bind_param("i", $guru['id']);
-                $update_stmt->execute();
-                $update_stmt->close();
+                // $update_sql = "UPDATE guru SET last_login = NOW() WHERE id = ?";
+                // $update_stmt = $database->prepare($update_sql);
+                // $update_stmt->bind_param("i", $guru['id']);
+                // $update_stmt->execute();
+                // $update_stmt->close();
                 
                 // Redirect to dashboard
                 header('Location: dashboard-guru.php');
