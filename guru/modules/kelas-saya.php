@@ -23,12 +23,12 @@ if (isset($_SESSION['guru_nama'])) {
     $initials = substr($initials, 0, 2);
 }
 
-// PERBAIKAN 1: Update query untuk guna id_kelas bukan kelas_id
+// PERBAIKAN: Update query untuk guna tabel pelajar bukan murid
 $sql = "SELECT k.*, 
-               (SELECT COUNT(*) FROM murid WHERE id_kelas = k.id AND status = 'aktif') as total_murid,
+               (SELECT COUNT(*) FROM pelajar WHERE id_kelas = k.id AND status = 'aktif') as total_murid,
                (SELECT AVG(markah) FROM penilaian p 
-                JOIN murid m ON p.murid_id = m.id 
-                WHERE m.id_kelas = k.id) as average_performance
+                JOIN pelajar pl ON p.murid_id = pl.id  -- Perbaikan: pelajar bukan murid
+                WHERE pl.id_kelas = k.id) as average_performance
         FROM kelas k
         WHERE k.guru_id = ? 
         ORDER BY k.nama";
@@ -44,7 +44,7 @@ if ($stmt) {
         $classes[] = [
             'id' => $row['id'],
             'nama' => $row['nama'],
-            'tahun' => $row['tahun'],
+            'tahun' => $row['tahun'] ?? '',  // Tambah default value
             'total_murid' => $row['total_murid'] ?? 0,
             'average_performance' => $row['average_performance'] ?? 0
         ];
@@ -61,10 +61,10 @@ $totalStudents = array_sum(array_column($classes, 'total_murid'));
 $totalPerformance = array_sum(array_column($classes, 'average_performance'));
 $avgPerformance = $totalClasses > 0 ? $totalPerformance / $totalClasses : 0;
 
-// Get total active students
+// Get total active students - DIPERBAIKI
 $total_students = 0;
 try {
-    $sql_students = "SELECT COUNT(*) as total FROM murid WHERE status = 'aktif'";
+    $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";  // Perbaikan: pelajar bukan murid
     $stmt_students = $database->prepare($sql_students);
     $stmt_students->execute();
     $student_count_result = $stmt_students->get_result();

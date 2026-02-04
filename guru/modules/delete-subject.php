@@ -3,15 +3,17 @@
 session_start();
 header('Content-Type: application/json');
 
-// Debug info
+// PERBAIKAN: Debug info
 error_log("DELETE REQUEST - Subject ID: " . ($_POST['id'] ?? $_GET['id'] ?? 'none'));
 
-// For testing, bypass session check (temporary)
-if (!isset($_SESSION['user_id'])) {
-    $_SESSION['user_id'] = 1;
-    $_SESSION['user_type'] = 'guru';
+// PERBAIKAN: Session check untuk guru
+if (!isset($_SESSION['guru_id'])) {
+    $response = ['success' => false, 'message' => '', 'error' => 'Akses ditolak. Sila login semula.'];
+    echo json_encode($response);
+    exit();
 }
 
+$guru_id = $_SESSION['guru_id'];
 $response = ['success' => false, 'message' => '', 'error' => ''];
 
 try {
@@ -22,7 +24,7 @@ try {
     $confirm = isset($_POST['confirm']) ? intval($_POST['confirm']) : 
                (isset($_GET['confirm']) ? intval($_GET['confirm']) : 0);
     
-    error_log("Subject ID: $subject_id, Confirm: $confirm");
+    error_log("Subject ID: $subject_id, Confirm: $confirm, Guru ID: $guru_id");
 
     if ($subject_id <= 0) {
         $response['error'] = 'ID subjek tidak sah.';
@@ -30,7 +32,8 @@ try {
         exit();
     }
 
-    // Connect to database
+    // PERBAIKAN: Connect to database dengan path yang betul
+    // Dari modules/delete-subject.php ke config/connect.php
     require_once __DIR__ . '/../../config/connect.php';
     
     // Start transaction
@@ -55,6 +58,9 @@ try {
     $check_stmt->close();
     
     // 2. DELETE sebenar dari matapelajaran
+    // PERBAIKAN: Disable foreign key checks sementara untuk hard delete
+    $database->query("SET FOREIGN_KEY_CHECKS = 0");
+    
     $delete_sql = "DELETE FROM matapelajaran WHERE id = ?";
     $delete_stmt = $database->prepare($delete_sql);
     $delete_stmt->bind_param("i", $subject_id);
@@ -62,32 +68,59 @@ try {
     if (!$delete_stmt->execute()) {
         $response['error'] = 'Gagal memadam subjek: ' . $delete_stmt->error;
         $database->rollback();
+        $database->query("SET FOREIGN_KEY_CHECKS = 1");
         echo json_encode($response);
         exit();
     }
+    
+    $affected_rows = $delete_stmt->affected_rows;
     $delete_stmt->close();
     
-    // 3. Delete dari subject_details jika ada
-    $table_check = $database->query("SHOW TABLES LIKE 'subject_details'");
-    if ($table_check && $table_check->num_rows > 0) {
-        $delete_details = "DELETE FROM subject_details WHERE id_matapelajaran = ?";
-        $delete_details_stmt = $database->prepare($delete_details);
-        $delete_details_stmt->bind_param("i", $subject_id);
-        $delete_details_stmt->execute();
-        $delete_details_stmt->close();
+    // 3. Delete dari related tables jika ada
+    // Guru mata pelajaran
+    try {
+        $delete_gmp = "DELETE FROM guru_mata_pelajaran WHERE mata_pelajaran_id = ?";
+        $delete_gmp_stmt = $database->prepare($delete_gmp);
+        $delete_gmp_stmt->bind_param("i", $subject_id);
+        $delete_gmp_stmt->execute();
+        $delete_gmp_stmt->close();
+    } catch (Exception $e) {
+        // Table mungkin tidak ada, continue saja
+        error_log("Note: guru_mata_pelajaran table may not exist: " . $e->getMessage());
     }
+    
+    // Penilaian
+    try {
+        $delete_penilaian = "DELETE FROM penilaian WHERE mata_pelajaran_id = ?";
+        $delete_pen_stmt = $database->prepare($delete_penilaian);
+        $delete_pen_stmt->bind_param("i", $subject_id);
+        $delete_pen_stmt->execute();
+        $delete_pen_stmt->close();
+    } catch (Exception $e) {
+        // Table mungkin tidak ada, continue saja
+        error_log("Note: penilaian table may not exist: " . $e->getMessage());
+    }
+    
+    // PERBAIKAN: Enable foreign key checks kembali
+    $database->query("SET FOREIGN_KEY_CHECKS = 1");
     
     // 4. Commit transaction
     $database->commit();
     
-    $response['success'] = true;
-    $response['message'] = 'Subjek "' . htmlspecialchars($subject_name) . '" berjaya dipadam sepenuhnya dari sistem.';
-    
-    error_log("HARD DELETE SUCCESS - Subject ID: $subject_id, Name: $subject_name");
+    if ($affected_rows > 0) {
+        $response['success'] = true;
+        $response['message'] = 'Subjek "' . htmlspecialchars($subject_name) . '" berjaya dipadam sepenuhnya dari sistem.';
+        
+        // Log aktiviti
+        error_log("HARD DELETE SUCCESS - Subject ID: $subject_id, Name: $subject_name, Deleted by Guru ID: $guru_id");
+    } else {
+        $response['error'] = 'Tiada subjek dipadam.';
+    }
     
 } catch (Exception $e) {
     if (isset($database) && $database) {
         $database->rollback();
+        $database->query("SET FOREIGN_KEY_CHECKS = 1"); // Pastikan diaktifkan semula
     }
     $response['error'] = 'Ralat sistem: ' . $e->getMessage();
     error_log("DELETE ERROR: " . $e->getMessage());
