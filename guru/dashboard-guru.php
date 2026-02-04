@@ -1,6 +1,77 @@
 <?php
+session_start();
+require_once __DIR__ . '/../config/connect.php';
 
+// Check login
+if (!isset($_SESSION['guru_id'])) {
+    header('Location: login-guru.php');
+    exit();
+}
+
+$guru_id = $_SESSION['guru_id'];
 $current_page = basename($_SERVER['PHP_SELF']);
+
+// Get teacher info
+$sql_guru = "SELECT * FROM guru WHERE id_guru = ?";
+$stmt_guru = $database->prepare($sql_guru);
+$stmt_guru->bind_param("i", $guru_id);
+$stmt_guru->execute();
+$guru = $stmt_guru->get_result()->fetch_assoc();
+
+// Get classes taught (as class teacher)
+$sql_kelas = "SELECT k.* FROM kelas k 
+              WHERE k.guru_id = ? AND k.status = 1";
+$stmt_kelas = $database->prepare($sql_kelas);
+$stmt_kelas->bind_param("i", $guru_id);
+$stmt_kelas->execute();
+$kelas_result = $stmt_kelas->get_result();
+$kelas_count = $kelas_result->num_rows;
+
+// Get subjects taught
+$sql_subjek = "SELECT DISTINCT mp.* 
+               FROM guru_mata_pelajaran gmp
+               JOIN mata_pelajaran mp ON gmp.mata_pelajaran_id = mp.id
+               WHERE gmp.guru_id = ? 
+               AND gmp.status = 1
+               AND mp.status = 1";
+$stmt_subjek = $database->prepare($sql_subjek);
+$stmt_subjek->bind_param("i", $guru_id);
+$stmt_subjek->execute();
+$subjek_result = $stmt_subjek->get_result();
+$subjek_count = $subjek_result->num_rows;
+
+// Get total students
+$sql_students = "SELECT COUNT(*) as total FROM murid m
+                 JOIN kelas k ON m.kelas_id = k.id
+                 WHERE k.guru_id = ? AND m.status = 'aktif'";
+$stmt_students = $database->prepare($sql_students);
+$stmt_students->bind_param("i", $guru_id);
+$stmt_students->execute();
+$student_count_result = $stmt_students->get_result();
+$total_students = $student_count_result->fetch_assoc()['total'];
+
+// Get unmarked exams
+$sql_unmarked = "SELECT COUNT(*) as total 
+                 FROM penilaian p
+                 JOIN guru_mata_pelajaran gmp ON p.mata_pelajaran_id = gmp.mata_pelajaran_id
+                 WHERE gmp.guru_id = ? AND (p.gred IS NULL OR p.gred = '')";
+$stmt_unmarked = $database->prepare($sql_unmarked);
+$stmt_unmarked->bind_param("i", $guru_id);
+$stmt_unmarked->execute();
+$unmarked_result = $stmt_unmarked->get_result();
+$unmarked_count = $unmarked_result->fetch_assoc()['total'] ?? 0;
+
+// Get teacher initials for avatar
+$initials = '';
+if (isset($_SESSION['guru_nama'])) {
+    $name_parts = explode(' ', $_SESSION['guru_nama']);
+    foreach ($name_parts as $part) {
+        if (!empty($part)) {
+            $initials .= strtoupper(substr($part, 0, 1));
+        }
+    }
+    $initials = substr($initials, 0, 2);
+}
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -109,6 +180,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
             transition: var(--transition);
         }
 
+        .menu-toggle:hover {
+            background: var(--primary-light);
+        }
+
         /* Sidebar */
         .sidebar {
             background: var(--white);
@@ -166,6 +241,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
             width: 20px;
             font-size: 16px;
             color: var(--medium-gray);
+        }
+
+        .sidebar-item.active i {
+            color: white;
         }
 
         .badge {
@@ -251,6 +330,46 @@ $current_page = basename($_SERVER['PHP_SELF']);
             transform: translateY(-2px);
         }
 
+        /* User Profile */
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 15px;
+            border-radius: 12px;
+            background: var(--light-gray);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .user-profile:hover {
+            background: var(--primary-light);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .user-info h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark-gray);
+        }
+
+        .user-info p {
+            font-size: 12px;
+            color: var(--medium-gray);
+        }
+
         /* Quick Stats */
         .quick-stats {
             display: grid;
@@ -304,6 +423,21 @@ $current_page = basename($_SERVER['PHP_SELF']);
             color: var(--dark-gray);
             line-height: 1;
             margin-bottom: 5px;
+        }
+
+        .stat-change {
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stat-change.positive {
+            color: var(--success);
+        }
+
+        .stat-change.negative {
+            color: var(--danger);
         }
 
         /* Quick Actions */
@@ -368,6 +502,63 @@ $current_page = basename($_SERVER['PHP_SELF']);
             margin-bottom: 20px;
         }
 
+        /* Recent Exams List */
+        .exam-list {
+            list-style-type: none;
+        }
+
+        .exam-item {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: var(--transition);
+        }
+
+        .exam-item:hover {
+            background: var(--light-gray);
+        }
+
+        .exam-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-graded {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .status-upcoming {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        /* Class Performance */
+        .class-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .class-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: var(--light-gray);
+            border-radius: 12px;
+            transition: var(--transition);
+        }
+
+        .class-item:hover {
+            background: var(--primary-light);
+        }
+
         /* Mobile Responsive */
         @media (max-width: 1024px) {
             .sidebar {
@@ -423,6 +614,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
             .stat-card {
                 padding: 20px;
             }
+            
+            .btn-sm {
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+            }
         }
     </style>
 </head>
@@ -440,15 +636,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
                 <div class="logo-text">
                     <h1>SlipKu</h1>
-                    <p>Dashboard Admin Guru</p>
+                    <p>Dashboard <?php echo isset($_SESSION['guru_role']) ? htmlspecialchars($_SESSION['guru_role']) : 'Guru'; ?></p>
                 </div>
             </a>
 
             <div class="user-profile">
-                <div class="user-avatar">GU</div>
+                <div class="user-avatar"><?php echo $initials; ?></div>
                 <div class="user-info">
-                    <h4>Cikgu Ahmad</h4>
-                    <p>Admin Guru Tahun 6</p>
+                    <h4><?php echo isset($_SESSION['guru_nama']) ? htmlspecialchars($_SESSION['guru_nama']) : 'Guru'; ?></h4>
+                    <p><?php echo isset($_SESSION['guru_role']) ? htmlspecialchars($_SESSION['guru_role']) : 'Guru'; ?></p>
                 </div>
             </div>
         </div>
@@ -465,17 +661,23 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a href="modules/kelas-saya.php" class="sidebar-item">
                 <i class="fas fa-users"></i>
                 Kelas Saya
-                <span class="badge">3</span>
+                <?php if ($kelas_count > 0): ?>
+                <span class="badge"><?php echo $kelas_count; ?></span>
+                <?php endif; ?>
             </a>
             <a href="modules/pelajar-saya.php" class="sidebar-item">
                 <i class="fas fa-user-graduate"></i>
                 Pelajar Saya
-                <span class="badge">85</span>
+                <?php if ($total_students > 0): ?>
+                <span class="badge"><?php echo $total_students; ?></span>
+                <?php endif; ?>
             </a>
             <a href="modules/subjek-saya.php" class="sidebar-item">
                 <i class="fas fa-book"></i>
                 Subjek Saya
-                <span class="badge">4</span>
+                <?php if ($subjek_count > 0): ?>
+                <span class="badge"><?php echo $subjek_count; ?></span>
+                <?php endif; ?>
             </a>
         </div>
 
@@ -512,7 +714,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <main class="main-content" id="mainContent">
         <div class="page-header">
             <div class="page-title">
-                <h2>Selamat Datang, Cikgu Ahmad! 👨‍🏫</h2>
+                <h2>Selamat Datang, <?php echo isset($_SESSION['guru_nama']) ? htmlspecialchars($_SESSION['guru_nama']) : 'Guru'; ?>! 👨‍🏫</h2>
                 <p>Dashboard pentadbir untuk urusan akademik dan pentadbiran guru</p>
             </div>
             <div class="page-actions">
@@ -525,7 +727,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
         </div>
 
-        <!-- Quick Stats -->
+        <!-- Quick Stats with REAL DATA -->
         <div class="quick-stats">
             <div class="stat-card">
                 <div class="stat-icon students">
@@ -533,10 +735,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
                 <div class="stat-info">
                     <h3>JUMLAH PELAJAR</h3>
-                    <div class="stat-value">85</div>
+                    <div class="stat-value"><?php echo $total_students; ?></div>
+                    <?php if ($total_students > 0): ?>
                     <div class="stat-change positive">
-                        <i class="fas fa-arrow-up"></i> 5 pelajar baru
+                        <i class="fas fa-arrow-up"></i> <?php echo $total_students; ?> pelajar aktif
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -546,10 +750,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
                 <div class="stat-info">
                     <h3>UJIAN BELUM DINILAI</h3>
-                    <div class="stat-value">3</div>
+                    <div class="stat-value"><?php echo $unmarked_count; ?></div>
+                    <?php if ($unmarked_count > 0): ?>
                     <div class="stat-change negative">
-                        <i class="fas fa-exclamation-circle"></i> Deadline: 2 hari
+                        <i class="fas fa-exclamation-circle"></i> Perlu dinilai
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -559,8 +765,19 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
                 <div class="stat-info">
                     <h3>SUBJEK DIAJAR</h3>
-                    <div class="stat-value">4</div>
-                    <div class="stat-change">Matematik, Sains, BM, PJ</div>
+                    <div class="stat-value"><?php echo $subjek_count; ?></div>
+                    <div class="stat-change">
+                        <?php 
+                        // Get subject names
+                        $subject_names = [];
+                        $subjek_result->data_seek(0); // Reset pointer
+                        while ($subject = $subjek_result->fetch_assoc()) {
+                            $subject_names[] = $subject['nama'];
+                        }
+                        echo implode(', ', array_slice($subject_names, 0, 3));
+                        if (count($subject_names) > 3) echo '...';
+                        ?>
+                    </div>
                 </div>
             </div>
 
@@ -570,8 +787,18 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
                 <div class="stat-info">
                     <h3>KELAS DIKENDALIKAN</h3>
-                    <div class="stat-value">3</div>
-                    <div class="stat-change">6A, 6B, 5A</div>
+                    <div class="stat-value"><?php echo $kelas_count; ?></div>
+                    <div class="stat-change">
+                        <?php 
+                        // Get class names
+                        $class_names = [];
+                        $kelas_result->data_seek(0); // Reset pointer
+                        while ($kelas = $kelas_result->fetch_assoc()) {
+                            $class_names[] = $kelas['nama'];
+                        }
+                        echo implode(', ', $class_names);
+                        ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -619,20 +846,46 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <button class="btn btn-secondary btn-sm">Lihat Semua</button>
                 </div>
                 <div class="exam-list">
-                    <div class="exam-item">
-                        <div class="exam-info">
-                            <h4>Matematik - 6A</h4>
-                            <p>Ujian Akhir Tahun • 15 Dis 2023</p>
-                        </div>
-                        <span class="exam-status status-graded">Telah Dinilai</span>
-                    </div>
-                    <div class="exam-item">
-                        <div class="exam-info">
-                            <h4>Sains - 6B</h4>
-                            <p>Ujian Akhir Tahun • 16 Dis 2023</p>
-                        </div>
-                        <span class="exam-status status-upcoming">Belum Dinilai</span>
-                    </div>
+                    <?php
+                    // Get recent exams
+                    $sql_exams = "SELECT p.*, mp.nama as mata_pelajaran_nama, k.nama as kelas_nama
+                                 FROM penilaian p
+                                 JOIN mata_pelajaran mp ON p.mata_pelajaran_id = mp.id
+                                 JOIN murid m ON p.murid_id = m.id
+                                 JOIN kelas k ON m.kelas_id = k.id
+                                 JOIN guru_mata_pelajaran gmp ON (gmp.mata_pelajaran_id = mp.id AND gmp.kelas_id = k.id)
+                                 WHERE gmp.guru_id = ?
+                                 ORDER BY p.tarikh DESC
+                                 LIMIT 5";
+                    
+                    $stmt_exams = $database->prepare($sql_exams);
+                    $stmt_exams->bind_param("i", $guru_id);
+                    $stmt_exams->execute();
+                    $exams_result = $stmt_exams->get_result();
+                    
+                    if ($exams_result->num_rows > 0) {
+                        while ($exam = $exams_result->fetch_assoc()) {
+                            $status_class = (!empty($exam['gred'])) ? 'status-graded' : 'status-upcoming';
+                            $status_text = (!empty($exam['gred'])) ? 'Telah Dinilai' : 'Belum Dinilai';
+                            
+                            echo '
+                            <div class="exam-item">
+                                <div class="exam-info">
+                                    <h4>' . htmlspecialchars($exam['mata_pelajaran_nama']) . ' - ' . htmlspecialchars($exam['kelas_nama']) . '</h4>
+                                    <p>' . htmlspecialchars($exam['jenis_penilaian']) . ' • ' . date('d M Y', strtotime($exam['tarikh'])) . '</p>
+                                </div>
+                                <span class="exam-status ' . $status_class . '">' . $status_text . '</span>
+                            </div>';
+                        }
+                    } else {
+                        echo '<div class="exam-item">
+                                <div class="exam-info">
+                                    <h4>Tiada ujian terkini</h4>
+                                    <p>Belum ada rekod ujian</p>
+                                </div>
+                              </div>';
+                    }
+                    ?>
                 </div>
             </div>
 
@@ -642,18 +895,32 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <button class="btn btn-secondary btn-sm">Analisis</button>
                 </div>
                 <div class="class-list">
-                    <div class="class-item">
-                        <div class="class-name">Kelas 6A</div>
-                        <div class="class-average">82.5%</div>
-                    </div>
-                    <div class="class-item">
-                        <div class="class-name">Kelas 6B</div>
-                        <div class="class-average">78.3%</div>
-                    </div>
-                    <div class="class-item">
-                        <div class="class-name">Kelas 5A</div>
-                        <div class="class-average">75.6%</div>
-                    </div>
+                    <?php
+                    // Get class performance
+                    $kelas_result->data_seek(0); // Reset pointer
+                    while ($kelas = $kelas_result->fetch_assoc()) {
+                        // Get average performance for this class
+                        $sql_performance = "SELECT AVG(p.markah) as avg_performance 
+                                           FROM penilaian p
+                                           JOIN murid m ON p.murid_id = m.id
+                                           JOIN guru_mata_pelajaran gmp ON p.mata_pelajaran_id = gmp.mata_pelajaran_id
+                                           WHERE m.kelas_id = ? 
+                                           AND gmp.guru_id = ?";
+                        
+                        $stmt_perf = $database->prepare($sql_performance);
+                        $stmt_perf->bind_param("ii", $kelas['id'], $guru_id);
+                        $stmt_perf->execute();
+                        $perf_result = $stmt_perf->get_result();
+                        $performance = $perf_result->fetch_assoc();
+                        $avg_performance = $performance['avg_performance'] ?? 0;
+                        
+                        echo '
+                        <div class="class-item">
+                            <div class="class-name">' . htmlspecialchars($kelas['nama']) . '</div>
+                            <div class="class-average">' . number_format($avg_performance, 1) . '%</div>
+                        </div>';
+                    }
+                    ?>
                 </div>
             </div>
         </div>
@@ -663,7 +930,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <h3 style="color: var(--primary); margin-bottom: 10px;">
                 <i class="fas fa-file-alt"></i> PEPERIKSAAN & PENILAIAN
             </h3>
-            <p style="color: var(--medium-gray);">Sistem Pengurusan Sekolah 2024</p>
+            <p style="color: var(--medium-gray);">Sistem Pengurusan Sekolah <?php echo date('Y'); ?></p>
         </div>
     </main>
 
@@ -719,103 +986,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function tambahTugasan() {
             alert('Membuka halaman tambah tugasan baru');
         }
-
-        // Add CSS classes for exam status
-        const style = document.createElement('style');
-        style.textContent = `
-            .exam-list {
-                list-style-type: none;
-            }
-            .exam-item {
-                padding: 15px;
-                border-bottom: 1px solid #f0f0f0;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                transition: var(--transition);
-            }
-            .exam-item:hover {
-                background: var(--light-gray);
-            }
-            .exam-status {
-                padding: 6px 12px;
-                border-radius: 20px;
-                font-size: 11px;
-                font-weight: 600;
-                text-transform: uppercase;
-            }
-            .status-graded {
-                background: rgba(16, 185, 129, 0.1);
-                color: var(--success);
-            }
-            .status-upcoming {
-                background: rgba(245, 158, 11, 0.1);
-                color: var(--warning);
-            }
-            .class-list {
-                display: flex;
-                flex-direction: column;
-                gap: 15px;
-            }
-            .class-item {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 15px;
-                background: var(--light-gray);
-                border-radius: 12px;
-                transition: var(--transition);
-            }
-            .class-item:hover {
-                background: var(--primary-light);
-            }
-            .stat-change {
-                font-size: 13px;
-                display: flex;
-                align-items: center;
-                gap: 5px;
-            }
-            .stat-change.positive {
-                color: var(--success);
-            }
-            .stat-change.negative {
-                color: var(--danger);
-            }
-            .user-profile {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 8px 15px;
-                border-radius: 12px;
-                background: var(--light-gray);
-            }
-            .user-avatar {
-                width: 40px;
-                height: 40px;
-                background: linear-gradient(135deg, var(--primary), var(--secondary));
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-weight: 600;
-                font-size: 16px;
-            }
-            .user-info h4 {
-                font-size: 14px;
-                font-weight: 600;
-                color: var(--dark-gray);
-            }
-            .user-info p {
-                font-size: 12px;
-                color: var(--medium-gray);
-            }
-            .btn-sm {
-                padding: 8px 16px !important;
-                font-size: 13px !important;
-            }
-        `;
-        document.head.appendChild(style);
     </script>
 </body>
 </html>
+<?php
+// Close database connections
+$stmt_guru->close();
+$stmt_kelas->close();
+$stmt_subjek->close();
+$stmt_students->close();
+$stmt_unmarked->close();
+?>
