@@ -12,7 +12,7 @@ $guru_id = $_SESSION['guru_id'];
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // Get teacher info
-$sql_guru = "SELECT * FROM guru WHERE id = ?";  // Perbaikan: kolom 'id' bukan 'id_guru'
+$sql_guru = "SELECT * FROM guru WHERE id = ?";
 $stmt_guru = $database->prepare($sql_guru);
 $stmt_guru->bind_param("i", $guru_id);
 $stmt_guru->execute();
@@ -40,10 +40,10 @@ $stmt_subjek->execute();
 $subjek_result = $stmt_subjek->get_result();
 $subjek_count = $subjek_result->num_rows;
 
-// Get total students - DIPERBAIKI
-$sql_students = "SELECT COUNT(*) as total FROM pelajar p  -- Perbaikan: tabel 'pelajar' bukan 'murid'
-                 JOIN kelas k ON p.id_kelas = k.id  -- Perbaikan: 'id_kelas' bukan 'kelas_id'
-                 WHERE k.guru_id = ? AND p.status = 'aktif'";  -- Perbaikan: tabel 'pelajar' bukan 'murid'
+// Get total students
+$sql_students = "SELECT COUNT(*) as total FROM pelajar p
+                 JOIN kelas k ON p.id_kelas = k.id
+                 WHERE k.guru_id = ? AND p.status = 'aktif'";
 $stmt_students = $database->prepare($sql_students);
 $stmt_students->bind_param("i", $guru_id);
 $stmt_students->execute();
@@ -847,12 +847,12 @@ if (isset($_SESSION['guru_nama'])) {
                 </div>
                 <div class="exam-list">
                     <?php
-                    // Get recent exams - DIPERBAIKI
+                    // Get recent exams
                     $sql_exams = "SELECT p.*, mp.nama as mata_pelajaran_nama, k.nama as kelas_nama
                                  FROM penilaian p
                                  JOIN mata_pelajaran mp ON p.mata_pelajaran_id = mp.id
-                                 JOIN pelajar pl ON p.murid_id = pl.id  -- Perbaikan: 'pelajar' bukan 'murid'
-                                 JOIN kelas k ON pl.id_kelas = k.id  -- Perbaikan: 'id_kelas' bukan 'kelas_id'
+                                 JOIN pelajar pl ON p.murid_id = pl.id
+                                 JOIN kelas k ON pl.id_kelas = k.id
                                  JOIN guru_mata_pelajaran gmp ON (gmp.mata_pelajaran_id = mp.id AND gmp.kelas_id = k.id)
                                  WHERE gmp.guru_id = ?
                                  ORDER BY p.tarikh DESC
@@ -896,15 +896,15 @@ if (isset($_SESSION['guru_nama'])) {
                 </div>
                 <div class="class-list">
                     <?php
-                    // Get class performance - DIPERBAIKI
+                    // Get class performance
                     $kelas_result->data_seek(0); // Reset pointer
                     while ($kelas = $kelas_result->fetch_assoc()) {
                         // Get average performance for this class
                         $sql_performance = "SELECT AVG(p.markah) as avg_performance 
                                            FROM penilaian p
-                                           JOIN pelajar pl ON p.murid_id = pl.id  -- Perbaikan: 'pelajar' bukan 'murid'
+                                           JOIN pelajar pl ON p.murid_id = pl.id
                                            JOIN guru_mata_pelajaran gmp ON p.mata_pelajaran_id = gmp.mata_pelajaran_id
-                                           WHERE pl.id_kelas = ?  -- Perbaikan: 'id_kelas' bukan 'kelas_id'
+                                           WHERE pl.id_kelas = ?
                                            AND gmp.guru_id = ?";
                         
                         $stmt_perf = $database->prepare($sql_performance);
@@ -996,4 +996,6 @@ $stmt_kelas->close();
 $stmt_subjek->close();
 $stmt_students->close();
 $stmt_unmarked->close();
+if (isset($stmt_exams)) $stmt_exams->close();
+if (isset($stmt_perf)) $stmt_perf->close();
 ?>
