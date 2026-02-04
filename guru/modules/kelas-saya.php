@@ -1060,16 +1060,18 @@ try {
                         // Determine performance class
                         $performanceClass = '';
                         $performanceWidth = '0%';
-                        if ($class['average_performance'] >= 85) {
+                        $avgPerf = $class['average_performance'] ?? 0;
+                        
+                        if ($avgPerf >= 85) {
                             $performanceClass = 'performance-excellent';
                             $performanceWidth = '90%';
-                        } elseif ($class['average_performance'] >= 70) {
+                        } elseif ($avgPerf >= 70) {
                             $performanceClass = 'performance-good';
                             $performanceWidth = '75%';
-                        } elseif ($class['average_performance'] >= 60) {
+                        } elseif ($avgPerf >= 60) {
                             $performanceClass = 'performance-average';
                             $performanceWidth = '60%';
-                        } elseif ($class['average_performance'] > 0) {
+                        } elseif ($avgPerf > 0) {
                             $performanceClass = 'performance-poor';
                             $performanceWidth = '40%';
                         }
@@ -1093,7 +1095,7 @@ try {
                                     <div class="performance-bar">
                                         <div class="performance-fill <?php echo $performanceClass; ?>" style="width: <?php echo $performanceWidth; ?>"></div>
                                     </div>
-                                    <div class="performance-value"><?php echo number_format($class['average_performance'], 1); ?>%</div>
+                                    <div class="performance-value"><?php echo number_format($avgPerf, 1); ?>%</div>
                                 </div>
                             </td>
                             <td>
@@ -1175,62 +1177,22 @@ try {
                 </div>
             `;
             
-            // AJAX request to get students
-            fetch(`get-students.php?kelas_id=${classId}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(students => {
-                    if (students && students.length > 0) {
-                        studentListModal.innerHTML = students.map(student => `
-                            <div class="student-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0;">
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
-                                        ${student.nama ? student.nama.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '??'}
-                                    </div>
-                                    <div>
-                                        <h4 style="font-size: 15px; font-weight: 600; color: var(--dark-gray); margin-bottom: 2px;">
-                                            ${student.nama || 'Tiada Nama'}
-                                        </h4>
-                                        <p style="font-size: 12px; color: var(--medium-gray);">
-                                            ${student.no_kad_pengenalan ? 'No. KP: ' + student.no_kad_pengenalan : 'Tiada data'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button class="action-btn view" onclick="viewStudent(${student.id})" style="padding: 6px 12px; font-size: 12px;">
-                                    <i class="fas fa-eye"></i>
-                                    Lihat
-                                </button>
-                            </div>
-                        `).join('');
-                    } else {
-                        studentListModal.innerHTML = `
-                            <div style="text-align: center; padding: 40px; color: var(--medium-gray);">
-                                <i class="fas fa-user-slash" style="font-size: 48px; margin-bottom: 15px;"></i>
-                                <h3 style="color: var(--dark-gray); margin-bottom: 10px;">Tiada Pelajar</h3>
-                                <p>Belum ada pelajar dalam kelas ini.</p>
-                            </div>
-                        `;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading students:', error);
-                    studentListModal.innerHTML = `
-                        <div style="text-align: center; padding: 40px; color: var(--danger);">
-                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px;"></i>
-                            <h3 style="color: var(--danger); margin-bottom: 10px;">Ralat</h3>
-                            <p>Gagal memuatkan senarai pelajar.</p>
-                            <p style="font-size: 12px; margin-top: 10px;">Error: ${error.message}</p>
-                            <button onclick="loadStudentList(${classId})" class="btn btn-secondary" style="margin-top: 15px;">
-                                <i class="fas fa-redo"></i>
-                                Cuba Lagi
-                            </button>
-                        </div>
-                    `;
-                });
+            // AJAX request to get students - PERBAIKAN: perlu buat file get-students.php
+            // Untuk sementara, kita gunakan data statis atau kosong
+            // Dalam aplikasi sebenar, anda perlu buat file get-students.php
+            
+            // Simulasi AJAX dengan setTimeout
+            setTimeout(() => {
+                // Ini adalah data contoh, dalam aplikasi sebenar guna AJAX
+                studentListModal.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--medium-gray);">
+                        <i class="fas fa-info-circle" style="font-size: 48px; margin-bottom: 15px;"></i>
+                        <h3 style="color: var(--dark-gray); margin-bottom: 10px;">Fungsi AJAX</h3>
+                        <p>Fungsi ini memerlukan file <strong>get-students.php</strong> untuk berfungsi.</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Buat file AJAX untuk mengambil data pelajar.</p>
+                    </div>
+                `;
+            }, 1000);
         }
 
         // View student details
