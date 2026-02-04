@@ -1,18 +1,29 @@
-<!-- sambungkan  connection/config.php-->
 <?php 
 
-include '../../config/connect.php';
+include '../config/connect.php';
+include '../backend/functions/auth.php';
+
+$status = isLoggedIn();
+
+if(!($status == true)){
+    header("Location:./");
+}
+
 $sql = "SELECT * FROM pelajar";
 
 $sql = "
-SELECT pelajar.nama, kelas.nama AS kelas
+SELECT pelajar.nama, pelajar.jantina, kelas.nama AS kelas
 FROM pelajar
 JOIN kelas ON pelajar.id_kelas = kelas.id
 ";
 
-$result = mysqli_query($conn, $sql);
+$result = mysqli_query($database, $sql);
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 ?>
+
 
 <!DOCTYPE html>
 <html lang="ms">
@@ -25,7 +36,7 @@ $result = mysqli_query($conn, $sql);
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="./css/dashboard.css">
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -38,10 +49,10 @@ $result = mysqli_query($conn, $sql);
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- include Header -->
-   <?php include './../includes/header.php'; ?> 
+   <?php include './includes/header.php'; ?> 
 
     <!-- include side bar -->
-    <?php include './../includes/sidebar.php'; ?>
+    <?php include './includes/sidebar.php'; ?>
 
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
@@ -58,7 +69,13 @@ $result = mysqli_query($conn, $sql);
                 <div class="stat-header">
                     <div class="stat-info">
                         <h3>JUMLAH PELAJAR</h3>
-                        <div class="stat-value" id="totalStudents"></div>
+                        <?php 
+
+                            $pelajar_total_sql = mysqli_query($database, "SELECT COUNT(*) AS total FROM pelajar");
+                            $pelajar_total = mysqli_fetch_assoc($pelajar_total_sql);
+                        
+                        ?>
+                        <div class="stat-value" id="totalStudents"><?php echo $pelajar_total['total']?></div>
                     </div>
                     <div class="stat-icon">
                         <i class="fas fa-users"></i>
@@ -66,7 +83,7 @@ $result = mysqli_query($conn, $sql);
                 </div>
                 <div class="stat-trend trend-up">
                     <i class="fas fa-arrow-up"></i>
-                    <span>    </span>
+                    <span></span>
                 </div>
             </div>
 
@@ -75,7 +92,12 @@ $result = mysqli_query($conn, $sql);
                 <div class="stat-header">
                     <div class="stat-info">
                         <h3>JUMLAH GURU</h3>
-                        <div class="stat-value" id="completedMarks"></div>
+                        <?php 
+                            $guru_sql = mysqli_query($database, "SELECT COUNT(*) AS total FROM guru");
+                            $guru = mysqli_fetch_assoc($guru_sql);
+
+                        ?>
+                        <div class="stat-value" id="completedMarks"><?php echo $guru['total']?></div>
                     </div>
                     <div class="stat-icon">
                         <i class="fas fa-users"></i>
@@ -92,7 +114,12 @@ $result = mysqli_query($conn, $sql);
                 <div class="stat-header">
                     <div class="stat-info">
                         <h3>JUMLAH KELAS</h3>
-                        <div class="stat-value" id="pendingMarks"></div>
+                        <?php 
+                            $kelas_sql = mysqli_query($database, "SELECT COUNT(*) AS total FROM kelas");
+                            $kelas = mysqli_fetch_assoc($kelas_sql);
+
+                        ?>
+                        <div class="stat-value" id="pendingMarks"><?php echo $kelas['total']?></div>
                     </div>
                     <div class="stat-icon">
                         <i class="fas fa-school"></i>
@@ -105,10 +132,7 @@ $result = mysqli_query($conn, $sql);
             </div>
         </div>
 
-    
-        
-
-        <!-- Quick Actions -->
+        <!--     
         <div class="quick-actions">
             <a href="#" class="action-card">
                 <div class="action-icon">
@@ -133,7 +157,7 @@ $result = mysqli_query($conn, $sql);
                 <h3>Pengurusan Kelas</h3>
                 <p>mengurus maklumat Kelas</p>
             </a> 
-        </div>
+        </div> -->
 
         <!-- Recent Students Table -->
         <div class="recent-students">
@@ -148,23 +172,21 @@ $result = mysqli_query($conn, $sql);
                 <table>
                     <thead>
                         <tr>
-                            <th>ID PELAJAR</th>
                             <th>NAMA</th>
                             <th>KELAS</th>
                             <th>JANTINA</th>
                             <th>STATUS</th>
-                            <th>TARIKH</th>
+                            <th>Tindakan</th>
                         </tr>
                     </thead>
                     <tbody id="studentsTable">
                     <?php while ($row = mysqli_fetch_assoc($result)) { ?>
                         <tr>
-                            <td><?= $row['id']; ?></td>
-                            <td><?= $row['id_kelas']; ?></td>
                             <td><?= $row['nama']; ?></td>
                             <td><?= $row['kelas']; ?></td>
                             <td><?= $row['jantina']; ?></td>
-                            <td><?= $row['status']; ?></td>
+                            <td>Aktive</td>
+                            <td></td>
                         </tr>
                         <?php } ?>
                          

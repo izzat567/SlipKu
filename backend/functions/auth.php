@@ -1,16 +1,18 @@
 <?php
 
 
-function loginUser($conn, $type, $email, $password) {
+function loginUser($database, $type, $email, $password) {
     // Escape input to prevent SQL injection
-    $email = mysqli_real_escape_string($conn, $email);
+    $email = mysqli_real_escape_string($database, $email);
     
+    echo "thinglk";
     if ($type == 'admin') {
         // Query for admin user
         $sql = "SELECT `id`, `email`, `nama`, `katalaluan`, `status` 
                 FROM `admins` 
                 WHERE `email` = '$email' AND `status` = '1'";
-        $result = mysqli_query($conn, $sql);
+        $result = mysqli_query($database, $sql);
+
         
         if ($result && mysqli_num_rows($result) > 0) {
             $user = mysqli_fetch_assoc($result);
@@ -48,7 +50,7 @@ function loginUser($conn, $type, $email, $password) {
         $sql = "SELECT `id_guru`, `nama`, `email`, `password`, `status` 
                 FROM `guru` 
                 WHERE `email` = '$email' AND `status` = 'active'";
-        $result = mysqli_query($conn, $sql);
+        $result = mysqli_query($database, $sql);
         
         if ($result && mysqli_num_rows($result) > 0) {
             $user = mysqli_fetch_assoc($result);
@@ -130,11 +132,11 @@ function logout() {
     setcookie('user_login', '', time() - 3600, "/");
     
     // Redirect to login page
-    header("Location: login.php");
+    header("Location:../");
     exit();
 }
 
-// mysqli_close($conn);
+// mysqli_close($database);
 
 
 ?>

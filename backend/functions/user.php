@@ -59,6 +59,39 @@ function createAdmin($conn, $nama, $email, $katalaluan, $status = '1') {
     }
 }
 
+function createPelajar($conn, $id_kelas, $nama, $no_kp, $jantina){
+    // Escape inputs (basic protection)
+    $id_kelas = mysqli_real_escape_string($conn, $id_kelas);
+    $nama = mysqli_real_escape_string($conn, $nama);
+    $no_kp = mysqli_real_escape_string($conn, $no_kp);
+    $jantina = mysqli_real_escape_string($conn, $jantina);
+    
+    $sql = "INSERT INTO pelajar (id_kelas, nama, no_kp, jantina, status) 
+            VALUES ('$id_kelas', '$nama', '$no_kp', '$jantina', 'aktif')";
+    
+    $result = mysqli_query($conn, $sql);
+    
+    if (!$result) {
+        // Get the error
+        $error = mysqli_error($conn);
+        error_log("SQL Error: " . $error);
+        
+        return [
+            'success' => false, 
+            'message' => 'Ralat sistem: Gagal mencipta pelajar',
+            'sql_error' => $error // For debugging only
+        ];
+    }
+    
+    $inserted_id = mysqli_insert_id($conn);
+    
+    return [
+        'success' => true, 
+        'message' => 'Pelajar berjaya dicipta',
+        'id' => $inserted_id
+    ];
+}
+
 // Test function to debug the issue:
 function testCreateAdmin($conn) {
     

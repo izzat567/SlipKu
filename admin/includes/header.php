@@ -1,5 +1,9 @@
 <?php
 // includes/header.php
+
+session_start();
+
+
 ?>
 <!-- Header -->
 <header class="header">
