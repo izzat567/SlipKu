@@ -18,7 +18,7 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
     <!-- untuk paparan dashboard -->
     <div class="sidebar-section">
         <div class="sidebar-title">MENU UTAMA</div>
-        <a href="./../dashboard.php" class="sidebar-item <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>">
+        <a href="./dashboard.php" class="sidebar-item <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>">
             <i class="fas fa-tachometer-alt"></i>
             Papan Pemuka
         </a>
@@ -27,20 +27,20 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
     <!-- untuk bahagian crud pelajar -->
     <div class="sidebar-section">
         <div class="sidebar-title">PELAJAR</div>
-        <a href="./../modules/pengurusan-pelajar.php" class="sidebar-item <?php echo $current_page == 'pengurusan-pelajar.php' ? 'active' : ''; ?>">
+        <a href="./pengurusan-pelajar.php" class="sidebar-item <?php echo $current_page == 'pengurusan-pelajar.php' ? 'active' : ''; ?>">
             <i class="fas fa-user-graduate"></i>
             Pengurusan Pelajar
             <span class="badge"><?php echo $total_students; ?></span>
         </a>
-        <a href="./../modules/tambah-pelajar.php" class="sidebar-item <?php echo $current_page == 'tambah-pelajar.php' ? 'active' : ''; ?>">
+        <a href="./tambah-pelajar.php" class="sidebar-item <?php echo $current_page == 'tambah-pelajar.php' ? 'active' : ''; ?>">
             <i class="fas fa-list"></i>
             Tambah Pelajar
             <span class="badge"><?php echo $total_subjects; ?></span>
         </a>
-        <a href="./../modules/kemasini-pelajar.php" class="sidebar-item <?php echo $current_page == 'kemaskini-pelajar.php' ? 'active' : ''; ?>">
+        <!-- <a href="./../modules/kemasini-pelajar.php" class="sidebar-item <?php echo $current_page == 'kemaskini-pelajar.php' ? 'active' : ''; ?>">
             <i class="fas fa-edit"></i>
             Kemaskini Pelajar
-        </a>
+        </a> -->
        
     </div>
 
@@ -48,7 +48,7 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
 
     <div class="sidebar-section">
     <div class="sidebar-title">GURU</div>
-        <a href="./../modules/pengurusan-pelajar.php" class="sidebar-item <?php echo $current_page == 'pengurusan-pelajar.php' ? 'active' : ''; ?>">
+        <a href="./../modules/pengurusan-guru.php" class="sidebar-item <?php echo $current_page == 'pengurusan-guru.php' ? 'active' : ''; ?>">
             <i class="fas fa-user-graduate"></i>
             Pengurusan Guru
             <span class="badge"><?php echo $total_students; ?></span>
@@ -64,11 +64,15 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
         </a>
 
 
-       
-        <a href="logout.php" class="sidebar-item" style="color: var(--danger);">
-            <i class="fas fa-sign-out-alt"></i>
-            Log Keluar
-        </a>
+        <form action="../backend/admin.php" method="post">
+            <br>
+            <button type="submit" name="logout" class="sidebar-item" style="color: var(--danger);width:100%">
+                <i class="fas fa-sign-out-alt"></i>
+                Log Keluar
+            </button>
+            <a href="logout.php" >
+            </a>
+        </form>
 
     </div>
 
