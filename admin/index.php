@@ -1,6 +1,6 @@
 <?php
 // session_start(); // Pastikan session dimulakan
-include './config/connect.php';
+include '../config/connect.php';
 
 ?>
 <!DOCTYPE html>
@@ -208,12 +208,6 @@ include './config/connect.php';
                 <p>Sistem Pengurusan Peperiksaan Sekolah</p>
             </div>
             
-            <?php if ($error): ?>
-                <div class="error-message">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <?php echo $error; ?>
-                </div>
-            <?php endif; ?>
             
             <?php if (isset($_SESSION['message'])): ?>
                 <div class="error-message" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">

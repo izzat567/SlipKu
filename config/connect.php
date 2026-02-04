@@ -3,7 +3,7 @@
 
 $host = 'localhost';
 $user = 'root';
-$password = 'danialdev';
+$password = '';
 $dbname = 'slipku_db'; // Tukar nama variable
 
 // Create connection

@@ -48,12 +48,12 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
 
     <div class="sidebar-section">
     <div class="sidebar-title">GURU</div>
-        <a href="./../modules/pengurusan-guru.php" class="sidebar-item <?php echo $current_page == 'pengurusan-guru.php' ? 'active' : ''; ?>">
+        <a href="./pengurusan-guru.php" class="sidebar-item <?php echo $current_page == 'pengurusan-guru.php' ? 'active' : ''; ?>">
             <i class="fas fa-user-graduate"></i>
             Pengurusan Guru
             <span class="badge"><?php echo $total_students; ?></span>
         </a>
-        <a href="./../modules/mata-pelajaran.php" class="sidebar-item <?php echo $current_page == 'mata-pelajaran.php' ? 'active' : ''; ?>">
+        <a href="./tambah-guru.php" class="sidebar-item <?php echo $current_page == 'mata-pelajaran.php' ? 'active' : ''; ?>">
             <i class="fas fa-book"></i>
             Tambah Guru
             <span class="badge"><?php echo $total_subjects; ?></span>
