@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $guru = $result->fetch_assoc();
             
             // Verify password
-            if ($password === $guru['password']) {
+            if (password_verify($password, $guru['password'])) {
                 // Set session variables
                 $_SESSION['guru_id'] = $guru['id'];
                 $_SESSION['guru_nama'] = $guru['nama'];
