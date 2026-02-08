@@ -3,26 +3,26 @@ session_start();
 require_once __DIR__ . '/../config/connect.php';
 
 // Check login
-if (!isset($_SESSION['guru_id'])) {
+if (!isset($_SESSION['id_guru'])) {
     header('Location: login-guru.php');
     exit();
 }
 
-$guru_id = $_SESSION['guru_id'];
+$id_guru = $_SESSION['id_guru'];
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // Get teacher info
 $sql_guru = "SELECT * FROM guru WHERE id = ?";
 $stmt_guru = $database->prepare($sql_guru);
-$stmt_guru->bind_param("i", $guru_id);
+$stmt_guru->bind_param("i", $id_guru);
 $stmt_guru->execute();
 $guru = $stmt_guru->get_result()->fetch_assoc();
 
 // Get classes taught (as class teacher)
 $sql_kelas = "SELECT k.* FROM kelas k 
-              WHERE k.guru_id = ? AND k.status = 1";
+              WHERE k.id_guru = ? AND k.status = 'aktif'";
 $stmt_kelas = $database->prepare($sql_kelas);
-$stmt_kelas->bind_param("i", $guru_id);
+$stmt_kelas->bind_param("i", $id_guru);
 $stmt_kelas->execute();
 $kelas_result = $stmt_kelas->get_result();
 $kelas_count = $kelas_result->num_rows;
@@ -31,11 +31,11 @@ $kelas_count = $kelas_result->num_rows;
 $sql_subjek = "SELECT DISTINCT mp.* 
                FROM guru_mata_pelajaran gmp
                JOIN mata_pelajaran mp ON gmp.mata_pelajaran_id = mp.id
-               WHERE gmp.guru_id = ? 
+               WHERE gmp.id_guru = ? 
                AND gmp.status = 1
                AND mp.status = 1";
 $stmt_subjek = $database->prepare($sql_subjek);
-$stmt_subjek->bind_param("i", $guru_id);
+$stmt_subjek->bind_param("i", $id_guru);
 $stmt_subjek->execute();
 $subjek_result = $stmt_subjek->get_result();
 $subjek_count = $subjek_result->num_rows;
@@ -43,9 +43,9 @@ $subjek_count = $subjek_result->num_rows;
 // Get total students
 $sql_students = "SELECT COUNT(*) as total FROM pelajar p
                  JOIN kelas k ON p.id_kelas = k.id
-                 WHERE k.guru_id = ? AND p.status = 'aktif'";
+                 WHERE k.id_guru = ? AND p.status = 'aktif'";
 $stmt_students = $database->prepare($sql_students);
-$stmt_students->bind_param("i", $guru_id);
+$stmt_students->bind_param("i", $id_guru);
 $stmt_students->execute();
 $student_count_result = $stmt_students->get_result();
 $total_students = $student_count_result->fetch_assoc()['total'];
@@ -54,9 +54,9 @@ $total_students = $student_count_result->fetch_assoc()['total'];
 $sql_unmarked = "SELECT COUNT(*) as total 
                  FROM penilaian p
                  JOIN guru_mata_pelajaran gmp ON p.mata_pelajaran_id = gmp.mata_pelajaran_id
-                 WHERE gmp.guru_id = ? AND (p.gred IS NULL OR p.gred = '')";
+                 WHERE gmp.id_guru = ? AND (p.gred IS NULL OR p.gred = '')";
 $stmt_unmarked = $database->prepare($sql_unmarked);
-$stmt_unmarked->bind_param("i", $guru_id);
+$stmt_unmarked->bind_param("i", $id_guru);
 $stmt_unmarked->execute();
 $unmarked_result = $stmt_unmarked->get_result();
 $unmarked_count = $unmarked_result->fetch_assoc()['total'] ?? 0;
@@ -854,12 +854,12 @@ if (isset($_SESSION['guru_nama'])) {
                                  JOIN pelajar pl ON p.murid_id = pl.id
                                  JOIN kelas k ON pl.id_kelas = k.id
                                  JOIN guru_mata_pelajaran gmp ON (gmp.mata_pelajaran_id = mp.id AND gmp.kelas_id = k.id)
-                                 WHERE gmp.guru_id = ?
+                                 WHERE gmp.id_guru = ?
                                  ORDER BY p.tarikh DESC
                                  LIMIT 5";
                     
                     $stmt_exams = $database->prepare($sql_exams);
-                    $stmt_exams->bind_param("i", $guru_id);
+                    $stmt_exams->bind_param("i", $id_guru);
                     $stmt_exams->execute();
                     $exams_result = $stmt_exams->get_result();
                     
@@ -905,10 +905,10 @@ if (isset($_SESSION['guru_nama'])) {
                                            JOIN pelajar pl ON p.murid_id = pl.id
                                            JOIN guru_mata_pelajaran gmp ON p.mata_pelajaran_id = gmp.mata_pelajaran_id
                                            WHERE pl.id_kelas = ?
-                                           AND gmp.guru_id = ?";
+                                           AND gmp.id_guru = ?";
                         
                         $stmt_perf = $database->prepare($sql_performance);
-                        $stmt_perf->bind_param("ii", $kelas['id'], $guru_id);
+                        $stmt_perf->bind_param("ii", $kelas['id'], $id_guru);
                         $stmt_perf->execute();
                         $perf_result = $stmt_perf->get_result();
                         $performance = $perf_result->fetch_assoc();
