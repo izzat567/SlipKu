@@ -30,34 +30,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
         $result = $stmt->get_result();
         
-        if ($result->num_rows === 1) {
-            $guru = $result->fetch_assoc();
-            
-            // Verify password
-            if (password_verify($password, $guru['password'])) {
-                // Set session variables
-                $_SESSION['guru_id'] = $guru['id'];
-                $_SESSION['guru_nama'] = $guru['nama'];
-                $_SESSION['guru_email'] = $guru['email'];
-                $_SESSION['guru_role'] = 'guru';  // <-- SET DEFAULT VALUE
-                $_SESSION['guru_login_time'] = time();
-                
-                // Update last login
-                // $update_sql = "UPDATE guru SET last_login = NOW() WHERE id = ?";
-                // $update_stmt = $database->prepare($update_sql);
-                // $update_stmt->bind_param("i", $guru['id']);
-                // $update_stmt->execute();
-                // $update_stmt->close();
-                
-                // Redirect to dashboard
-                header('Location: dashboard-guru.php');
-                exit();
-            } else {
-                $error_message = 'Kata laluan tidak sah.';
-            }
-        } else {
-            $error_message = 'Email tidak ditemui atau akaun tidak aktif.';
-        }
+      if ($result->num_rows === 1) {
+    $guru = $result->fetch_assoc();
+    
+    // DEBUG: Show what we have
+    error_log("Email: " . $email);
+    error_log("Input password: " . $password);
+    error_log("DB password: " . $guru['password']);
+    
+    // **UBAH DI SINI** - Ganti password_verify dengan direct comparison
+    // if (password_verify($password, $guru['password'])) {
+    if ($password === $guru['password']) {
+        // Set session variables
+        $_SESSION['guru_id'] = $guru['id'];
+        $_SESSION['guru_nama'] = $guru['nama'];
+        $_SESSION['guru_email'] = $guru['email'];
+        $_SESSION['guru_role'] = 'guru';
+        $_SESSION['guru_login_time'] = time();
+        
+        // DEBUG: Session set
+        error_log("Session set for guru_id: " . $guru['id']);
+        
+        // Redirect to dashboard
+        header('Location: dashboard-guru.php');
+        exit();
+    } else {
+        $error_message = 'Kata laluan tidak sah.';
+        error_log("Password mismatch for email: " . $email);
+    }
+} else {
+    $error_message = 'Email tidak ditemui atau akaun tidak aktif.';
+    error_log("No user found or inactive for email: " . $email);
+}
         
         $stmt->close();
     }
@@ -320,14 +324,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <form method="POST" action="">
             <div class="form-group">
                 <label class="form-label">Alamat Email</label>
-                <input type="email" class="form-input" name="email" required 
-                       placeholder="cth: guru@sekolah.edu.my" value="guru@demo.com">
+               <input type="email" class="form-input" name="email" required 
+       placeholder="cth: guru@sekolah.edu.my" value="aminah@skrp.edu.my">
             </div>
 
             <div class="form-group">
                 <label class="form-label">Kata Laluan</label>
-                <input type="password" class="form-input" name="password" required 
-                       placeholder="Masukkan kata laluan anda" value="demo123">
+               <input type="password" class="form-input" name="password" required 
+       placeholder="Masukkan kata laluan anda" value="aminah123">
             </div>
 
             <div class="form-group">

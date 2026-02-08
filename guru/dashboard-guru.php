@@ -1,14 +1,26 @@
 <?php
 session_start();
-require_once __DIR__ . '/../config/connect.php';
+// Debug session
+error_log("Session contents: " . print_r($_SESSION, true));
 
-// Check login
+// Check login - PASTIKAN nama session betul
 if (!isset($_SESSION['guru_id'])) {
+    error_log("No guru_id in session, redirecting to login");
     header('Location: login-guru.php');
     exit();
 }
 
 $id_guru = $_SESSION['guru_id'];
+error_log("guru_id from session: " . $id_guru);
+
+// Include database connection
+require_once __DIR__ . '/../config/connect.php';
+
+// Debug database connection
+if (!$database) {
+    die("Database connection failed: " . mysqli_connect_error());
+}
+
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // Get teacher info
