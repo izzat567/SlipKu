@@ -3,12 +3,12 @@ session_start();
 require_once __DIR__ . '/../config/connect.php';
 
 // Check login
-if (!isset($_SESSION['id_guru'])) {
+if (!isset($_SESSION['guru_id'])) {
     header('Location: login-guru.php');
     exit();
 }
 
-$id_guru = $_SESSION['id_guru'];
+$id_guru = $_SESSION['guru_id'];
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // Get teacher info
