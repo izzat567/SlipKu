@@ -24,14 +24,28 @@ if (isset($_SESSION['guru_nama'])) {
 }
 
 // PERBAIKAN: Update query untuk guna tabel pelajar bukan murid
-$sql = "SELECT k.*, 
-               (SELECT COUNT(*) FROM pelajar WHERE id_kelas = k.id AND status = 'aktif') as total_murid,
-               (SELECT AVG(markah) FROM penilaian p 
-                JOIN pelajar pl ON p.murid_id = pl.id  -- Perbaikan: pelajar bukan murid
-                WHERE pl.id_kelas = k.id) as average_performance
-        FROM kelas k
-        WHERE k.guru_id = ? 
-        ORDER BY k.nama";
+$sql = $stmt = $database->prepare($sql);
+if ($stmt) {
+    $stmt->bind_param("i", $guru_id);
+    $stmt->execute();
+    $classes_result = $stmt->get_result();
+    $classes = [];
+
+    while ($row = $classes_result->fetch_assoc()) {
+        $classes[] = [
+            'id' => $row['id'],
+            'nama' => $row['nama'],
+            'tahun' => $row['tahun'] ?? '2026',
+            'id_guru' => $row['id_guru'],
+            'total_murid' => $row['total_murid'] ?? 0,
+            'average_performance' => $row['average_performance'] ?? 0
+        ];
+    }
+    $stmt->close();
+} else {
+    $classes = [];
+    error_log("Error preparing query: " . $database->error);
+}
 
 $stmt = $database->prepare($sql);
 if ($stmt) {

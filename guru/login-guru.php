@@ -1,8 +1,6 @@
 <?php
 session_start();
-
-// Include database connection
-require_once __DIR__ . '/../config/connect.php';
+require_once __DIR__ . '/../includes/db_functions.php';
 
 // Redirect if already logged in
 if (isset($_SESSION['guru_id'])) {
@@ -15,55 +13,27 @@ $error_message = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = trim($_POST['password'] ?? '');
-    
-    // Validate inputs
+
     if (empty($email) || empty($password)) {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        // Check in database - GUNA 'nama' BUKAN 'nama_guru'
-        $sql = "SELECT id, nama, email, password, status 
-        FROM guru 
-        WHERE email = ? AND status = 'aktif'";
+        // Use authenticateGuru function
+        $guru = authenticateGuru($email, $password);
         
-        $stmt = $database->prepare($sql);
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-      if ($result->num_rows === 1) {
-    $guru = $result->fetch_assoc();
-    
-    // DEBUG: Show what we have
-    error_log("Email: " . $email);
-    error_log("Input password: " . $password);
-    error_log("DB password: " . $guru['password']);
-    
-    // **UBAH DI SINI** - Ganti password_verify dengan direct comparison
-    // if (password_verify($password, $guru['password'])) {
-    if ($password === $guru['password']) {
-        // Set session variables
-        $_SESSION['guru_id'] = $guru['id'];
-        $_SESSION['guru_nama'] = $guru['nama'];
-        $_SESSION['guru_email'] = $guru['email'];
-        $_SESSION['guru_role'] = 'guru';
-        $_SESSION['guru_login_time'] = time();
-        
-        // DEBUG: Session set
-        error_log("Session set for guru_id: " . $guru['id']);
-        
-        // Redirect to dashboard
-        header('Location: dashboard-guru.php');
-        exit();
-    } else {
-        $error_message = 'Kata laluan tidak sah.';
-        error_log("Password mismatch for email: " . $email);
-    }
-} else {
-    $error_message = 'Email tidak ditemui atau akaun tidak aktif.';
-    error_log("No user found or inactive for email: " . $email);
-}
-        
-        $stmt->close();
+        if ($guru !== false) {
+            // Set session variables
+            $_SESSION['guru_id'] = $guru['guru_id'];
+            $_SESSION['guru_nama'] = $guru['guru_nama'];
+            $_SESSION['guru_email'] = $guru['guru_email'];
+            $_SESSION['guru_role'] = $guru['guru_role'];
+            $_SESSION['guru_login_time'] = time();
+            
+            // Redirect to dashboard
+            header('Location: dashboard-guru.php');
+            exit();
+        } else {
+            $error_message = 'Email atau kata laluan tidak sah.';
+        }
     }
 }
 ?>
@@ -324,14 +294,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <form method="POST" action="">
             <div class="form-group">
                 <label class="form-label">Alamat Email</label>
-               <input type="email" class="form-input" name="email" required 
-       placeholder="cth: guru@sekolah.edu.my" value="aminah@skrp.edu.my">
+                <input type="email" class="form-input" name="email" required 
+                       placeholder="cth: guru@sekolah.edu.my" value="guru@demo.com">
             </div>
 
             <div class="form-group">
                 <label class="form-label">Kata Laluan</label>
-               <input type="password" class="form-input" name="password" required 
-       placeholder="Masukkan kata laluan anda" value="aminah123">
+                <input type="password" class="form-input" name="password" required 
+                       placeholder="Masukkan kata laluan anda" value="demo123">
             </div>
 
             <div class="form-group">
@@ -351,7 +321,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script>
-        // Auto-fill demo credentials
         document.addEventListener('DOMContentLoaded', function() {
             const emailInput = document.querySelector('input[name="email"]');
             const passwordInput = document.querySelector('input[name="password"]');

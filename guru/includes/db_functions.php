@@ -1,7 +1,9 @@
 <?php
 // includes/db_functions.php
 
-// Database connection
+// ============================================
+// DATABASE CONNECTION
+// ============================================
 function connectDB() {
     $host = 'localhost';
     $username = 'root';
@@ -20,28 +22,34 @@ function connectDB() {
 
 $conn = connectDB();
 
-// Authentication function for guru - updated for actual table structure
+// ============================================
+// GURU AUTHENTICATION & FUNCTIONS
+// ============================================
+
+/**
+ * Authenticate guru login
+ */
 function authenticateGuru($email, $password) {
     global $conn;
     
     $email = mysqli_real_escape_string($conn, $email);
-    
-    // Check in guru table - updated column names
+
     $sql = "SELECT * FROM guru WHERE email = '$email' AND status = 1 LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
     if ($result && mysqli_num_rows($result) > 0) {
         $guru = mysqli_fetch_assoc($result);
-        
-        // Check password (assuming plain text for demo)
+    
         if ($password === $guru['password']) {
-            // Return with correct column names
+            // Determine ID field
+            $guru_id = isset($guru['id_guru']) ? $guru['id_guru'] : $guru['id'];
+            
             return [
-                'id' => $guru['id_guru'],
-                'nama' => $guru['nama'],
-                'email' => $guru['email'],
-                'no_telefon' => $guru['no_telefon'],
-                'role' => 'teacher'
+                'guru_id' => $guru_id,
+                'guru_nama' => $guru['nama'],
+                'guru_email' => $guru['email'],
+                'guru_no_telefon' => $guru['no_telefon'] ?? '',
+                'guru_role' => 'guru'
             ];
         }
     }
@@ -49,7 +57,9 @@ function authenticateGuru($email, $password) {
     return false;
 }
 
-// Check if guru is logged in
+/**
+ * Check if guru is logged in
+ */
 function checkGuruLogin() {
     if (!isset($_SESSION['guru_id'])) {
         header('Location: login-guru.php');
@@ -57,28 +67,40 @@ function checkGuruLogin() {
     }
 }
 
-// Get guru by ID - updated for actual table structure
+/**
+ * Get guru by ID
+ */
 function getGuruById($guru_id) {
     global $conn;
     
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
-    $sql = "SELECT * FROM guru WHERE id_guru = '$guru_id' AND status = 1 LIMIT 1";
+    
+    $sql = "SELECT * FROM guru WHERE (id = '$guru_id' OR id_guru = '$guru_id') AND status = 1 LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
     if ($result && mysqli_num_rows($result) > 0) {
         $guru = mysqli_fetch_assoc($result);
+        
+        $id_field = isset($guru['id_guru']) ? 'id_guru' : 'id';
+        
         return [
-            'id' => $guru['id_guru'],
-            'nama' => $guru['nama'],
-            'email' => $guru['email'],
-            'no_telefon' => $guru['no_telefon']
+            'guru_id' => $guru[$id_field],
+            'guru_nama' => $guru['nama'],
+            'guru_email' => $guru['email'],
+            'guru_no_telefon' => $guru['no_telefon'] ?? ''
         ];
     }
     
     return false;
 }
 
-// Get students by guru
+// ============================================
+// PELAJAR (STUDENT) FUNCTIONS
+// ============================================
+
+/**
+ * Get students by guru with filters
+ */
 function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $status = '', $prestasi = '') {
     global $conn;
     
@@ -89,26 +111,22 @@ function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $sta
             FROM pelajar p
             LEFT JOIN kelas k ON p.id_kelas = k.id
             WHERE 1=1";
-    
-    // Add search filter
+
     if (!empty($search)) {
         $search = mysqli_real_escape_string($conn, $search);
         $sql .= " AND (p.nama LIKE '%$search%' OR p.no_kp LIKE '%$search%')";
     }
-    
-    // Add kelas filter
+
     if (!empty($kelas)) {
         $kelas = mysqli_real_escape_string($conn, $kelas);
         $sql .= " AND k.nama = '$kelas'";
     }
-    
-    // Add tahun filter
+
     if (!empty($tahun)) {
         $tahun = mysqli_real_escape_string($conn, $tahun);
         $sql .= " AND k.tahun = '$tahun'";
     }
-    
-    // Add status filter
+
     if (!empty($status)) {
         if ($status === 'active') $status_value = 1;
         elseif ($status === 'inactive') $status_value = 0;
@@ -132,7 +150,9 @@ function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $sta
     return $students;
 }
 
-// Function to check if student exists by IC
+/**
+ * Check if student exists by IC number
+ */
 function checkStudentExists($no_ic, $exclude_id = null) {
     global $conn;
     
@@ -148,7 +168,9 @@ function checkStudentExists($no_ic, $exclude_id = null) {
     return ($result && mysqli_num_rows($result) > 0);
 }
 
-// Function to add student
+/**
+ * Add new student
+ */
 function tambahPelajar($data) {
     global $conn;
     
@@ -156,12 +178,11 @@ function tambahPelajar($data) {
     $no_ic = mysqli_real_escape_string($conn, $data['no_ic']);
     $jantina = mysqli_real_escape_string($conn, $data['jantina']);
     $status = isset($data['status']) ? $data['status'] : 'active';
-    
-    // Convert status
+
     $status_value = ($status === 'active') ? 1 : 
                    (($status === 'inactive') ? 0 : 2);
     
-    // Generate student ID based on latest ID
+    // Generate student ID
     $last_id_sql = "SELECT MAX(id) as max_id FROM pelajar";
     $last_id_result = mysqli_query($conn, $last_id_sql);
     $last_id = 1;
@@ -179,7 +200,9 @@ function tambahPelajar($data) {
     return mysqli_query($conn, $sql);
 }
 
-// Function to update student
+/**
+ * Update student
+ */
 function kemaskiniPelajar($id, $data) {
     global $conn;
     
@@ -188,8 +211,7 @@ function kemaskiniPelajar($id, $data) {
     $no_ic = mysqli_real_escape_string($conn, $data['no_ic']);
     $jantina = mysqli_real_escape_string($conn, $data['jantina']);
     $status = isset($data['status']) ? $data['status'] : 'active';
-    
-    // Convert status
+
     $status_value = ($status === 'active') ? 1 : 
                    (($status === 'inactive') ? 0 : 2);
     
@@ -203,7 +225,9 @@ function kemaskiniPelajar($id, $data) {
     return mysqli_query($conn, $sql);
 }
 
-// Function to delete student
+/**
+ * Delete student
+ */
 function padamPelajar($id) {
     global $conn;
     
@@ -213,7 +237,30 @@ function padamPelajar($id) {
     return mysqli_query($conn, $sql);
 }
 
-// Get all classes
+/**
+ * Get student by ID
+ */
+function getPelajarById($id) {
+    global $conn;
+    
+    $id = mysqli_real_escape_string($conn, $id);
+    $sql = "SELECT * FROM pelajar WHERE id = '$id' LIMIT 1";
+    $result = mysqli_query($conn, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        return mysqli_fetch_assoc($result);
+    }
+    
+    return false;
+}
+
+// ============================================
+// KELAS (CLASS) FUNCTIONS
+// ============================================
+
+/**
+ * Get all classes
+ */
 function getAllKelas() {
     global $conn;
     
@@ -230,11 +277,12 @@ function getAllKelas() {
     return $classes;
 }
 
-// Get classes by guru
+/**
+ * Get classes by guru
+ */
 function getKelasByGuru($guru_id) {
     global $conn;
-    
-    // Since there's no direct link, get all active classes
+
     $sql = "SELECT * FROM kelas WHERE status = 1 ORDER BY tahun DESC, nama ASC";
     $result = mysqli_query($conn, $sql);
     $classes = [];
@@ -248,12 +296,14 @@ function getKelasByGuru($guru_id) {
     return $classes;
 }
 
-// Get student by ID
-function getPelajarById($id) {
+/**
+ * Get class by ID
+ */
+function getKelasById($id) {
     global $conn;
     
     $id = mysqli_real_escape_string($conn, $id);
-    $sql = "SELECT * FROM pelajar WHERE id = '$id' LIMIT 1";
+    $sql = "SELECT * FROM kelas WHERE id = '$id' LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
     if ($result && mysqli_num_rows($result) > 0) {
@@ -263,11 +313,17 @@ function getPelajarById($id) {
     return false;
 }
 
-// Get student statistics
+// ============================================
+// STATISTICS & REPORTS
+// ============================================
+
+/**
+ * Get student statistics
+ */
 function getStatistikPelajar($guru_id) {
     global $conn;
     
-    // Get total students
+    // Total students
     $sql_total = "SELECT COUNT(*) as total FROM pelajar";
     $result_total = mysqli_query($conn, $sql_total);
     $total = 0;
@@ -277,7 +333,7 @@ function getStatistikPelajar($guru_id) {
         $total = $row['total'];
     }
     
-    // Get active students
+    // Active students
     $sql_active = "SELECT COUNT(*) as active FROM pelajar WHERE status = 1";
     $result_active = mysqli_query($conn, $sql_active);
     $active = 0;
@@ -295,7 +351,9 @@ function getStatistikPelajar($guru_id) {
     ];
 }
 
-// Bulk update students
+/**
+ * Bulk update students
+ */
 function bulkUpdateStudents($student_ids, $data) {
     global $conn;
     
@@ -306,8 +364,7 @@ function bulkUpdateStudents($student_ids, $data) {
     }, $student_ids);
     
     $ids_str = "'" . implode("','", $ids) . "'";
-    
-    // Build update query
+
     $updates = [];
     foreach ($data as $key => $value) {
         $key = mysqli_real_escape_string($conn, $key);
@@ -329,12 +386,11 @@ function bulkUpdateStudents($student_ids, $data) {
     return mysqli_query($conn, $sql);
 }
 
-// Get student performance
+/**
+ * Get student performance (demo data)
+ */
 function getStudentPerformance($student_id) {
-    global $conn;
-    
-    // Dummy data for demo
-    return [
+return [
         'average' => rand(60, 95),
         'subject_scores' => [
             ['subject' => 'Matematik', 'score' => rand(60, 95)],
@@ -344,10 +400,11 @@ function getStudentPerformance($student_id) {
     ];
 }
 
-// Get student attendance
+/**
+ * Get student attendance (demo data)
+ */
 function getStudentAttendance($student_id) {
-    // Dummy data for demo
-    return [
+return [
         'percentage' => rand(85, 100),
         'present' => rand(15, 20),
         'absent' => rand(0, 5),
@@ -355,27 +412,20 @@ function getStudentAttendance($student_id) {
     ];
 }
 
-// Get kelas by ID
-function getKelasById($id) {
-    global $conn;
-    
-    $id = mysqli_real_escape_string($conn, $id);
-    $sql = "SELECT * FROM kelas WHERE id = '$id' LIMIT 1";
-    $result = mysqli_query($conn, $sql);
-    
-    if ($result && mysqli_num_rows($result) > 0) {
-        return mysqli_fetch_assoc($result);
-    }
-    
-    return false;
-}
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
 
-// Close database connection
+/**
+ * Close database connection
+ */
 function closeDB($conn) {
     mysqli_close($conn);
 }
 
-// Add default guru if not exists (for demo)
+/**
+ * Ensure demo guru exists (for demo purposes)
+ */
 function ensureDemoGuruExists() {
     global $conn;
     
@@ -389,6 +439,7 @@ function ensureDemoGuruExists() {
     }
 }
 
-// Call this function to ensure demo guru exists
+// Ensure demo guru exists when this file is loaded
 ensureDemoGuruExists();
+
 ?>
