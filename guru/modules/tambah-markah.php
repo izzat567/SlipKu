@@ -10,7 +10,7 @@ global $database; // $database dari connect.php
 
 // Check jika $database wujud, jika tak buat connection baru
 if (!isset($database) || !$database) {
-    $database = new mysqli('localhost', 'root', '', 'slipku_db');
+    $database = new mysqli('localhost', 'root', 'danialdev', 'slipku_db');
     if ($database->connect_error) {
         die("Connection failed: " . $database->connect_error);
     }
