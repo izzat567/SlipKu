@@ -7,7 +7,7 @@
 function connectDB() {
     $host = 'localhost';
     $username = 'root';
-    $password = '';
+    $password = 'danialdev';
     $database = 'slipku_db';
     
     $conn = mysqli_connect($host, $username, $password, $database);
