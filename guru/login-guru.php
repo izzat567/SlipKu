@@ -1,51 +1,361 @@
 <?php
-// check_guru_data.php
-$conn = new mysqli("localhost", "root", "danialdev", "slipku_db");
+session_start();
 
-echo "<h2>Semak Data Guru dalam Database</h2>";
+// Sambungan database
+$host = "localhost";
+$username = "root";
+$password = "";
+$database = "slipku_db";
 
-// 1. Semak jadual guru
-$result = $conn->query("DESCRIBE guru");
-echo "<h3>Struktur jadual 'guru':</h3>";
-echo "<table border='1'><tr><th>Field</th><th>Type</th></tr>";
-while ($row = $result->fetch_assoc()) {
-    echo "<tr><td>" . $row['Field'] . "</td><td>" . $row['Type'] . "</td></tr>";
+$conn = new mysqli($host, $username, $password, $database);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
 }
-echo "</table>";
 
-// 2. Semak data guru
-echo "<h3>Data guru dalam database:</h3>";
-$data = $conn->query("SELECT * FROM guru ORDER BY id");
-echo "<table border='1'><tr><th>ID</th><th>Nama</th><th>Email</th><th>Password</th><th>Status</th></tr>";
-
-while ($row = $data->fetch_assoc()) {
-    echo "<tr>";
-    echo "<td>" . $row['id'] . "</td>";
-    echo "<td>" . htmlspecialchars($row['nama']) . "</td>";
-    echo "<td>" . htmlspecialchars($row['email']) . "</td>";
-    echo "<td>" . htmlspecialchars($row['password']) . "</td>";
-    echo "<td>" . $row['status'] . "</td>";
-    echo "</tr>";
+// Redirect jika sudah login
+if (isset($_SESSION['guru_id'])) {
+    header('Location: dashboard-guru.php');
+    exit();
 }
-echo "</table>";
 
-// 3. Semak guru dengan email 'guru@demo.com'
-echo "<h3>Semak guru@demo.com:</h3>";
-$demo = $conn->query("SELECT * FROM guru WHERE email = 'guru@demo.com'");
-if ($demo->num_rows > 0) {
-    $row = $demo->fetch_assoc();
-    echo "<p>Ditemui: " . $row['nama'] . " (Status: " . $row['status'] . ")</p>";
-    echo "<p>Password dalam database: '" . $row['password'] . "'</p>";
-    echo "<p>Password yang dijangka: 'demo123'</p>";
-    
-    if ($row['password'] === 'demo123') {
-        echo "<p style='color: green;'>✅ Password TEPAT!</p>";
+$error_message = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $email = trim($_POST['email'] ?? '');
+    $password = trim($_POST['password'] ?? '');
+
+    if (empty($email) || empty($password)) {
+        $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        echo "<p style='color: red;'>❌ Password TIDAK TEPAT! Password dalam DB: '" . $row['password'] . "'</p>";
+        // Query langsung ke database
+        $stmt = $conn->prepare("SELECT id, nama, email, password, status FROM guru WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($row = $result->fetch_assoc()) {
+            // Password check (plain text - ikut data)
+            if ($password === $row['password']) {
+                // Check status
+                if ($row['status'] == 'aktif') {
+                    // Set session variables
+                    $_SESSION['guru_id'] = $row['id'];
+                    $_SESSION['guru_nama'] = $row['nama'];
+                    $_SESSION['guru_email'] = $row['email'];
+                    $_SESSION['guru_role'] = 'guru';
+                    $_SESSION['guru_login_time'] = time();
+                    
+                    // Redirect ke dashboard
+                    header('Location: dashboard-guru.php');
+                    exit();
+                } else {
+                    $error_message = 'Akaun anda tidak aktif. Sila hubungi pentadbir.';
+                }
+            } else {
+                $error_message = 'Email atau kata laluan tidak sah.';
+            }
+        } else {
+            $error_message = 'Email atau kata laluan tidak sah.';
+        }
     }
-} else {
-    echo "<p style='color: red;'>❌ Email 'guru@demo.com' TIDAK DITEMUI dalam database!</p>";
 }
-
-$conn->close();
 ?>
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Masuk Guru - SlipKu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --primary-light: #eef2ff;
+            --secondary: #7c3aed;
+            --success: #10b981;
+            --danger: #ef4444;
+            --dark-gray: #1f2937;
+            --medium-gray: #6b7280;
+            --light-gray: #f9fafb;
+            --white: #ffffff;
+            --border-radius: 12px;
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 450px;
+            background: var(--white);
+            border-radius: var(--border-radius);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-size: 24px;
+        }
+
+        .logo-text h1 {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 2px;
+        }
+
+        .logo-text p {
+            font-size: 13px;
+            color: var(--medium-gray);
+            font-weight: 500;
+        }
+
+        .login-header h2 {
+            font-size: 22px;
+            color: var(--dark-gray);
+            margin-bottom: 8px;
+        }
+
+        .login-header p {
+            color: var(--medium-gray);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark-gray);
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 14px;
+            background: var(--white);
+            transition: var(--transition);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: var(--white);
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(79, 70, 229, 0.4);
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border-left: 4px solid var(--danger);
+        }
+
+        .alert-info {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+            border-left: 4px solid var(--primary);
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: var(--medium-gray);
+            font-size: 13px;
+        }
+
+        .demo-credentials {
+            background: var(--light-gray);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .demo-credentials h4 {
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 576px) {
+            .login-container {
+                padding: 30px 25px;
+            }
+            
+            .logo {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+            
+            .logo-text h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>SlipKu</h1>
+                    <p>Sistem Pengurusan Sekolah</p>
+                </div>
+            </div>
+            <h2>Log Masuk Guru</h2>
+            <p>Akses sistem pengurusan akademik sekolah</p>
+        </div>
+
+        <?php if ($error_message): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i>
+                <?= htmlspecialchars($error_message) ?>
+            </div>
+        <?php endif; ?>
+
+        <div class="demo-credentials">
+            <h4><i class="fas fa-info-circle"></i> CREDENSI DEMO</h4>
+            <p>Email: guru@demo.com</p>
+            <p>Kata Laluan: demo123</p>
+            <p style="font-size: 11px; margin-top: 5px; color: var(--medium-gray);">
+                <i class="fas fa-database"></i> Menggunakan database slipku_db
+            </p>
+        </div>
+
+        <form method="POST" action="">
+            <div class="form-group">
+                <label class="form-label">Alamat Email</label>
+                <input type="email" class="form-input" name="email" required 
+                       placeholder="cth: guru@sekolah.edu.my" value="guru@demo.com">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Kata Laluan</label>
+                <input type="password" class="form-input" name="password" required 
+                       placeholder="Masukkan kata laluan anda" value="demo123">
+            </div>
+
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Log Masuk
+                </button>
+            </div>
+        </form>
+
+        <div class="login-footer">
+            <p>&copy; <?= date('Y') ?> SlipKu. Hak Cipta Terpelihara.</p>
+            <p style="margin-top: 5px; font-size: 12px;">
+                <i class="fas fa-shield-alt"></i> Sistem dilindungi dengan enkripsi SSL
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const emailInput = document.querySelector('input[name="email"]');
+            const passwordInput = document.querySelector('input[name="password"]');
+            
+            if (emailInput && !emailInput.value) {
+                emailInput.value = 'guru@demo.com';
+            }
+            
+            if (passwordInput && !passwordInput.value) {
+                passwordInput.value = 'demo123';
+            }
+        });
+    </script>
+</body>
+</html>
