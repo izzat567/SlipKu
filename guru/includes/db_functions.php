@@ -32,25 +32,49 @@ $conn = connectDB();
 function authenticateGuru($email, $password) {
     global $conn;
     
-    $stmt = $conn->prepare("SELECT id, name, email, password, status FROM guru WHERE email = ?");
+    // Gunakan backticks untuk nama kolum
+    $stmt = $conn->prepare("SELECT `id`, `name`, `email`, `password`, `status` FROM `guru` WHERE `email` = ?");
+    
+    if (!$stmt) {
+        error_log("MySQL Prepare Error: " . $conn->error);
+        return false;
+    }
+    
     $stmt->bind_param("s", $email);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("MySQL Execute Error: " . $stmt->error);
+        return false;
+    }
+    
     $result = $stmt->get_result();
     
     if ($row = $result->fetch_assoc()) {
-        // Semak kata laluan (tanpa hash)
+        // Debug: semak data yang diterima
+        error_log("User found: " . print_r($row, true));
+        
+        // Semak kata laluan (tanpa hash - berdasarkan data anda)
         if ($password === $row['password']) {
-            // Return array dengan format yang dijangka oleh login-guru.php
-            return [
-                'guru_id' => $row['id'],
-                'guru_nama' => $row['name'],
-                'guru_email' => $row['email'],
-                'guru_role' => 'guru', // Tetapkan nilai default
-                'status' => $row['status']
-            ];
+            // Semak status
+            if ($row['status'] == 'aktif' || $row['status'] == '1') {
+                return [
+                    'guru_id' => $row['id'],
+                    'guru_nama' => $row['name'],
+                    'guru_email' => $row['email'],
+                    'guru_role' => 'guru',
+                    'status' => $row['status']
+                ];
+            } else {
+                error_log("User status not active: " . $row['status']);
+            }
+        } else {
+            error_log("Password mismatch for: " . $email);
         }
+    } else {
+        error_log("No user found with email: " . $email);
     }
- return false;
+    
+    return false;
 }
 
 /**
