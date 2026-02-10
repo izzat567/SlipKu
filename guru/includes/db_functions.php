@@ -32,29 +32,25 @@ $conn = connectDB();
 function authenticateGuru($email, $password) {
     global $conn;
     
-    $email = mysqli_real_escape_string($conn, $email);
-
-    $sql = "SELECT * FROM guru WHERE email = '$email' AND status = 1 LIMIT 1";
-    $result = mysqli_query($conn, $sql);
+    $stmt = $conn->prepare("SELECT id, name, email, password, status FROM guru WHERE email = ?");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
     
-    if ($result && mysqli_num_rows($result) > 0) {
-        $guru = mysqli_fetch_assoc($result);
-    
-        if ($password === $guru['password']) {
-            // Determine ID field
-            $guru_id = isset($guru['id_guru']) ? $guru['id_guru'] : $guru['id'];
-            
+    if ($row = $result->fetch_assoc()) {
+        // Semak kata laluan (tanpa hash)
+        if ($password === $row['password']) {
+            // Return array dengan format yang dijangka oleh login-guru.php
             return [
-                'guru_id' => $guru_id,
-                'guru_nama' => $guru['nama'],
-                'guru_email' => $guru['email'],
-                'guru_no_telefon' => $guru['no_telefon'] ?? '',
-                'guru_role' => 'guru'
+                'guru_id' => $row['id'],
+                'guru_nama' => $row['name'],
+                'guru_email' => $row['email'],
+                'guru_role' => 'guru', // Tetapkan nilai default
+                'status' => $row['status']
             ];
         }
     }
-    
-    return false;
+ return false;
 }
 
 /**
