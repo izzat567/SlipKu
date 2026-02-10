@@ -4,7 +4,7 @@ session_start();
 // Sambungan database
 $host = "localhost";
 $username = "root";
-$password = "";
+$password = "danialdev";
 $database = "slipku_db";
 
 $conn = new mysqli($host, $username, $password, $database);
