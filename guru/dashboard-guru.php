@@ -101,6 +101,8 @@ if (isset($_SESSION['guru_nama'])) {
     }
     $initials = substr($initials, 0, 2);
 }
+
+
 ?>
 <!DOCTYPE html>
 <html lang="ms">
