@@ -8,10 +8,10 @@ error_reporting(E_ALL);
 
 $host = 'localhost';
 $user = 'root';
-$password = 'danialdev'; // Pastikan ini kata laluan yang betul
+$password = 'danialdev';
 $dbname = 'slipku_db';
 
-// Create connection - GUNA NAMA VARIABLE YANG SAMA
+// Create connection - GUNA $conn bukan $database
 $conn = new mysqli($host, $user, $password, $dbname);
 
 // Check connection
@@ -24,6 +24,4 @@ $conn->set_charset("utf8mb4");
 
 // Set timezone
 date_default_timezone_set('Asia/Kuala_Lumpur');
-
-
 ?>

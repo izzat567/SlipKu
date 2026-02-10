@@ -1,16 +1,8 @@
 <?php
 session_start();
 
-// Sambungan database
-$host = "localhost";
-$username = "root";
-$password = "danialdev";
-$database = "slipku_db";
-
-$conn = new mysqli($host, $username, $password, $database);
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+// Guna config file bukan buat connection sendiri
+require_once __DIR__ . '/../config/connect.php';
 
 // Redirect jika sudah login
 if (isset($_SESSION['guru_id'])) {

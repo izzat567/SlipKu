@@ -1,14 +1,23 @@
 <?php
 session_start();
 
+// Debug: Check session
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 // Check login
 if (!isset($_SESSION['guru_id'])) {
     header('Location: login-guru.php');
     exit();
 }
 
-// Database connection - GUNA config/connect.php yang betul
-require_once __DIR__ . '/../config/connect.php'; // Pastikan fail ini wujud
+// Database connection
+require_once __DIR__ . '/../config/connect.php';
+
+// Debug: Check connection
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    die("ERROR: Database connection not established.");
+}
 
 $id_guru = $_SESSION['guru_id'];
 $current_page = basename($_SERVER['PHP_SELF']);
@@ -26,35 +35,7 @@ $subjek_count = 0;
 $total_students = 0;
 $unmarked_count = 0;
 
-try {
-    $sql_kelas = "SELECT COUNT(*) as jumlah 
-                  FROM kelas 
-                  WHERE id_guru = ? AND status = 'aktif'";
-    $stmt_kelas = $conn->prepare($sql_kelas);
-    $stmt_kelas->bind_param("i", $id_guru);
-    $stmt_kelas->execute();
-    $result_kelas = $stmt_kelas->get_result();
-    $row_kelas = $result_kelas->fetch_assoc();
-    $kelas_count = $row_kelas['jumlah'] ?? 0;
-} catch (Exception $e) {
-    $kelas_count = 0;
-}
 
-// Get subjects taught - GUNA jadual PENG AJAR
-try {
-    $sql_subjek = "SELECT COUNT(DISTINCT p.id_matapelajaran) as jumlah 
-                   FROM pengajar p 
-                   JOIN matapelajaran m ON p.id_matapelajaran = m.id
-                   WHERE p.id_guru = ? AND p.status = 'aktif' AND m.status = 'aktif'";
-    $stmt_subjek = $conn->prepare($sql_subjek);
-    $stmt_subjek->bind_param("i", $id_guru);
-    $stmt_subjek->execute();
-    $result_subjek = $stmt_subjek->get_result();
-    $row_subjek = $result_subjek->fetch_assoc();
-    $subjek_count = $row_subjek['jumlah'] ?? 0;
-} catch (Exception $e) {
-    $subjek_count = 0;
-}
 // 1. Get classes taught - GUNA jadual PENG AJAR
 try {
     $sql_kelas = "SELECT COUNT(DISTINCT p.id_kelas) as jumlah 
@@ -133,6 +114,7 @@ if (isset($_SESSION['guru_nama'])) {
 
 
 ?>
+
 <!DOCTYPE html>
 <html lang="ms">
 <head>
