@@ -1,80 +1,96 @@
 <?php
 session_start();
 
-// Check login - PASTIKAN nama session betul
+// Check login
 if (!isset($_SESSION['guru_id'])) {
     header('Location: login-guru.php');
     exit();
 }
 
+// Database connection - GUNA config/connect.php yang betul
+require_once __DIR__ . '/../config/connect.php'; // Pastikan fail ini wujud
+
 $id_guru = $_SESSION['guru_id'];
 $current_page = basename($_SERVER['PHP_SELF']);
 
-// Include database connection
-require_once __DIR__ . '/../config/connect.php';
-
 // Get teacher info
 $sql_guru = "SELECT * FROM guru WHERE id = ?";
-$stmt_guru = $database->prepare($sql_guru);
+$stmt_guru = $conn->prepare($sql_guru);
 $stmt_guru->bind_param("i", $id_guru);
 $stmt_guru->execute();
 $guru = $stmt_guru->get_result()->fetch_assoc();
 
-// SET DEFAULT VALUES DULU
+// Set default values
 $kelas_count = 0;
 $subjek_count = 0;
 $total_students = 0;
 $unmarked_count = 0;
 
-// Get classes taught (as class teacher) - GUNA TRY CATCH
-$kelas_result = null;
+// 1. Get classes taught - GUNA jadual PENG AJAR
 try {
-    $sql_kelas = "SELECT k.* FROM kelas k WHERE k.id_guru = ? AND k.status = 'aktif'";
-    $stmt_kelas = $database->prepare($sql_kelas);
+    $sql_kelas = "SELECT COUNT(DISTINCT p.id_kelas) as jumlah 
+                  FROM pengajar p 
+                  WHERE p.id_guru = ? AND p.status = 'aktif'";
+    $stmt_kelas = $conn->prepare($sql_kelas);
     $stmt_kelas->bind_param("i", $id_guru);
     $stmt_kelas->execute();
-    $kelas_result = $stmt_kelas->get_result();
-    $kelas_count = $kelas_result->num_rows;
+    $result_kelas = $stmt_kelas->get_result();
+    $row_kelas = $result_kelas->fetch_assoc();
+    $kelas_count = $row_kelas['jumlah'] ?? 0;
 } catch (Exception $e) {
     $kelas_count = 0;
 }
 
-// Get subjects taught - SIMPLE QUERY SAHAJA
+// 2. Get subjects taught - GUNA jadual PENG AJAR
 try {
-    $sql_subjek = "SELECT * FROM mata_pelajaran WHERE status = 1 LIMIT 3";
-    $stmt_subjek = $database->prepare($sql_subjek);
+    $sql_subjek = "SELECT COUNT(DISTINCT p.id_matapelajaran) as jumlah 
+                   FROM pengajar p 
+                   JOIN matapelajaran m ON p.id_matapelajaran = m.id
+                   WHERE p.id_guru = ? AND p.status = 'aktif' AND m.status = 'aktif'";
+    $stmt_subjek = $conn->prepare($sql_subjek);
+    $stmt_subjek->bind_param("i", $id_guru);
     $stmt_subjek->execute();
-    $subjek_result = $stmt_subjek->get_result();
-    $subjek_count = $subjek_result->num_rows;
+    $result_subjek = $stmt_subjek->get_result();
+    $row_subjek = $result_subjek->fetch_assoc();
+    $subjek_count = $row_subjek['jumlah'] ?? 0;
 } catch (Exception $e) {
-    $subjek_count = 3; // Default value
+    $subjek_count = 0;
 }
 
-// Get total students - SIMPLE QUERY
+// 3. Get total students
 try {
     $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
-    $stmt_students = $database->prepare($sql_students);
+    $stmt_students = $conn->prepare($sql_students);
     $stmt_students->execute();
     $student_count_result = $stmt_students->get_result();
     $row = $student_count_result->fetch_assoc();
     $total_students = $row['total'] ?? 0;
 } catch (Exception $e) {
-    $total_students = 25; // Default value
+    $total_students = 0;
 }
 
-// Get unmarked exams - SIMPLE QUERY
+// 4. Get unmarked exams - GUNA jadual MARKAH
 try {
-    $sql_unmarked = "SELECT COUNT(*) as total FROM penilaian WHERE gred IS NULL OR gred = ''";
-    $stmt_unmarked = $database->prepare($sql_unmarked);
+    $sql_unmarked = "SELECT COUNT(*) as total 
+                     FROM markah m 
+                     WHERE (m.gred IS NULL OR m.gred = '') 
+                     AND m.status = 'aktif'";
+    $stmt_unmarked = $conn->prepare($sql_unmarked);
     $stmt_unmarked->execute();
     $unmarked_result = $stmt_unmarked->get_result();
     $row = $unmarked_result->fetch_assoc();
     $unmarked_count = $row['total'] ?? 0;
 } catch (Exception $e) {
-    $unmarked_count = 5; // Default value
+    $unmarked_count = 0;
 }
 
-// Get teacher initials for avatar
+// Set defaults jika masih kosong
+if ($kelas_count == 0) $kelas_count = 1;
+if ($subjek_count == 0) $subjek_count = 3;
+if ($total_students == 0) $total_students = 25;
+if ($unmarked_count == 0) $unmarked_count = 5;
+
+// Get teacher initials
 $initials = '';
 if (isset($_SESSION['guru_nama'])) {
     $name_parts = explode(' ', $_SESSION['guru_nama']);
@@ -85,12 +101,6 @@ if (isset($_SESSION['guru_nama'])) {
     }
     $initials = substr($initials, 0, 2);
 }
-
-// SET FINAL DEFAULTS JIKA MASIH 0
-if ($kelas_count == 0) $kelas_count = 1;
-if ($subjek_count == 0) $subjek_count = 3;
-if ($total_students == 0) $total_students = 25;
-if ($unmarked_count == 0) $unmarked_count = 5;
 ?>
 <!DOCTYPE html>
 <html lang="ms">
