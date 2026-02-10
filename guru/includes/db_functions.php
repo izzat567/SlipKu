@@ -33,7 +33,7 @@ function authenticateGuru($email, $password) {
     global $conn;
     
     // Gunakan backticks untuk nama kolum
-    $stmt = $conn->prepare("SELECT `id`, `name`, `email`, `password`, `status` FROM `guru` WHERE `email` = ?");
+    $stmt = $conn->prepare("SELECT `id`, `nama`, `email`, `password`, `status` FROM `guru` WHERE `email` = ?");
     
     if (!$stmt) {
         error_log("MySQL Prepare Error: " . $conn->error);
