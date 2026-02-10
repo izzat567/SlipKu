@@ -11,20 +11,19 @@ $user = 'root';
 $password = 'danialdev'; // Pastikan ini kata laluan yang betul
 $dbname = 'slipku_db';
 
-// Create connection
-$database = new mysqli($host, $user, $password, $dbname);
+// Create connection - GUNA NAMA VARIABLE YANG SAMA
+$conn = new mysqli($host, $user, $password, $dbname);
 
 // Check connection
-if ($database->connect_error) {
-    die("Connection failed: " . $database->connect_error);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
 }
 
 // Set charset
-$database->set_charset("utf8mb4");
+$conn->set_charset("utf8mb4");
 
 // Set timezone
 date_default_timezone_set('Asia/Kuala_Lumpur');
 
-// Jangan gunakan 'return' jika fail ini hanya untuk sambungan
-// Biarkan variable $database tersedia untuk fail lain
+
 ?>
