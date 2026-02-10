@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once __DIR__ . '/../includes/db_functions.php';
+require_once __DIR__ . '/includes/db_functions.php';
 
 // Redirect if already logged in
 if (isset($_SESSION['guru_id'])) {
