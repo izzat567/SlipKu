@@ -1,6 +1,6 @@
 <?php
 // check_guru_data.php
-$conn = new mysqli("localhost", "root", "", "slipku_db");
+$conn = new mysqli("localhost", "root", "danialdev", "slipku_db");
 
 echo "<h2>Semak Data Guru dalam Database</h2>";
 
