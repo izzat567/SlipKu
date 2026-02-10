@@ -1,8 +1,18 @@
 <?php
 session_start();
-require_once __DIR__ . '/includes/db_functions.php';
 
-// Redirect if already logged in
+// Sambungan database
+$host = "localhost";
+$username = "root";
+$password = "";
+$database = "slipku_db";
+
+$conn = new mysqli($host, $username, $password, $database);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// Redirect jika sudah login
 if (isset($_SESSION['guru_id'])) {
     header('Location: dashboard-guru.php');
     exit();
@@ -17,20 +27,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || empty($password)) {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        // Use authenticateGuru function
-        $guru = authenticateGuru($email, $password);
+        // Query langsung ke database
+        $stmt = $conn->prepare("SELECT id, nama, email, password, status FROM guru WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
-        if ($guru !== false) {
-            // Set session variables
-            $_SESSION['guru_id'] = $guru['guru_id'];
-            $_SESSION['guru_nama'] = $guru['guru_nama'];
-            $_SESSION['guru_email'] = $guru['guru_email'];
-            $_SESSION['guru_role'] = $guru['guru_role'];
-            $_SESSION['guru_login_time'] = time();
-            
-            // Redirect to dashboard
-            header('Location: dashboard-guru.php');
-            exit();
+        if ($row = $result->fetch_assoc()) {
+            // Password check (plain text - ikut data)
+            if ($password === $row['password']) {
+                // Check status
+                if ($row['status'] == 'aktif') {
+                    // Set session variables
+                    $_SESSION['guru_id'] = $row['id'];
+                    $_SESSION['guru_nama'] = $row['nama'];
+                    $_SESSION['guru_email'] = $row['email'];
+                    $_SESSION['guru_role'] = 'guru';
+                    $_SESSION['guru_login_time'] = time();
+                    
+                    // Redirect ke dashboard
+                    header('Location: dashboard-guru.php');
+                    exit();
+                } else {
+                    $error_message = 'Akaun anda tidak aktif. Sila hubungi pentadbir.';
+                }
+            } else {
+                $error_message = 'Email atau kata laluan tidak sah.';
+            }
         } else {
             $error_message = 'Email atau kata laluan tidak sah.';
         }

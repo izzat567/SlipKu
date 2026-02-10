@@ -26,6 +26,35 @@ $subjek_count = 0;
 $total_students = 0;
 $unmarked_count = 0;
 
+try {
+    $sql_kelas = "SELECT COUNT(*) as jumlah 
+                  FROM kelas 
+                  WHERE id_guru = ? AND status = 'aktif'";
+    $stmt_kelas = $conn->prepare($sql_kelas);
+    $stmt_kelas->bind_param("i", $id_guru);
+    $stmt_kelas->execute();
+    $result_kelas = $stmt_kelas->get_result();
+    $row_kelas = $result_kelas->fetch_assoc();
+    $kelas_count = $row_kelas['jumlah'] ?? 0;
+} catch (Exception $e) {
+    $kelas_count = 0;
+}
+
+// Get subjects taught - GUNA jadual PENG AJAR
+try {
+    $sql_subjek = "SELECT COUNT(DISTINCT p.id_matapelajaran) as jumlah 
+                   FROM pengajar p 
+                   JOIN matapelajaran m ON p.id_matapelajaran = m.id
+                   WHERE p.id_guru = ? AND p.status = 'aktif' AND m.status = 'aktif'";
+    $stmt_subjek = $conn->prepare($sql_subjek);
+    $stmt_subjek->bind_param("i", $id_guru);
+    $stmt_subjek->execute();
+    $result_subjek = $stmt_subjek->get_result();
+    $row_subjek = $result_subjek->fetch_assoc();
+    $subjek_count = $row_subjek['jumlah'] ?? 0;
+} catch (Exception $e) {
+    $subjek_count = 0;
+}
 // 1. Get classes taught - GUNA jadual PENG AJAR
 try {
     $sql_kelas = "SELECT COUNT(DISTINCT p.id_kelas) as jumlah 
