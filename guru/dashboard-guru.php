@@ -11,7 +11,7 @@ $id_guru = $_SESSION['guru_id'];
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // Include database connection
-require_once __DIR__ . '/../config/connect.php';
+require_once __DIR__ . '/config/connect.php';
 
 // Get teacher info
 $sql_guru = "SELECT * FROM guru WHERE id = ?";
