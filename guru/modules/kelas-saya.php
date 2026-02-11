@@ -4,7 +4,7 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// PATH FLEXIBLE
+// PATH FLEXIBLE - SUPPORT PELBAGAI STRUKTUR FOLDER
 $possible_paths = [
     __DIR__ . '/../config/connect.php',
     __DIR__ . '/../../config/connect.php',
@@ -28,7 +28,7 @@ if (!$connected) {
          <p>Please check the file path.</p>");
 }
 
-// Check login
+// Check login dengan lebih ketat
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header('Location: ../login-guru.php');
     exit();
@@ -52,19 +52,76 @@ if (isset($_SESSION['guru_nama'])) {
 // Database connection
 $db = isset($conn) ? $conn : (isset($database) ? $database : null);
 
+if (!$db) {
+    die("ERROR: Database connection not found.");
+}
 
+// ------------------------------------------------------------
+// HANDLE TAMBAH KELAS BARU
+// ------------------------------------------------------------
+$success_message = '';
+$error_message = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if ($_POST['action'] === 'tambah_kelas') {
+        $nama_kelas = trim($_POST['nama_kelas'] ?? '');
+        $darjah = trim($_POST['darjah'] ?? '');
+        $tahun = trim($_POST['tahun'] ?? date('Y'));
+        
+        if (empty($nama_kelas) || empty($darjah)) {
+            $error_message = 'Sila isi semua ruangan yang diperlukan.';
+        } else {
+            try {
+                // Start transaction
+                $db->begin_transaction();
+                
+                // Insert into kelas table
+                $sql_insert_kelas = "INSERT INTO kelas (nama, darjah, tahun, status) VALUES (?, ?, ?, 'aktif')";
+                $stmt_kelas = $db->prepare($sql_insert_kelas);
+                $stmt_kelas->bind_param("sss", $nama_kelas, $darjah, $tahun);
+                $stmt_kelas->execute();
+                $kelas_id = $db->insert_id;
+                $stmt_kelas->close();
+                
+                // Insert into pengajar table (assign this teacher to the class)
+                $sql_insert_pengajar = "INSERT INTO pengajar (id_guru, id_kelas, status) VALUES (?, ?, 'aktif')";
+                $stmt_pengajar = $db->prepare($sql_insert_pengajar);
+                $stmt_pengajar->bind_param("ii", $guru_id, $kelas_id);
+                $stmt_pengajar->execute();
+                $stmt_pengajar->close();
+                
+                // Commit transaction
+                $db->commit();
+                
+                $success_message = 'Kelas berjaya ditambah!';
+                header("Location: kelas-saya.php?success=1");
+                exit();
+                
+            } catch (Exception $e) {
+                $db->rollback();
+                $error_message = 'Ralat: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Check for success message from redirect
+if (isset($_GET['success'])) {
+    $success_message = 'Kelas berjaya ditambah!';
+}
+
+// ------------------------------------------------------------
 // GET KELAS - Hanya kelas yang diajar oleh guru ini
-
+// ------------------------------------------------------------
 $classes = [];
 $total_murid_keseluruhan = 0;
 $total_prestasi = 0;
 
 try {
-  
-   $sql = "SELECT 
+    $sql = "SELECT 
             k.id, 
             k.nama,
-            k.tingkatan,
+            k.darjah,
             k.tahun,
             COUNT(DISTINCT pk.id_pelajar) as total_murid,
             COALESCE(AVG(m.markah), 0) as average_performance
@@ -77,8 +134,8 @@ try {
         WHERE pj.id_guru = ? 
             AND pj.status = 'aktif' 
             AND k.status = 'aktif'
-        GROUP BY k.id, k.nama, k.tingkatan, k.tahun
-        ORDER BY k.tingkatan, k.nama";
+        GROUP BY k.id, k.nama, k.darjah, k.tahun
+        ORDER BY k.darjah, k.nama";
     
     $stmt = $db->prepare($sql);
     if ($stmt) {
@@ -93,7 +150,7 @@ try {
             $classes[] = [
                 'id' => $row['id'],
                 'nama' => $row['nama'],
-                'tingkatan' => $row['tingkatan'] ?? '',
+                'darjah' => $row['darjah'] ?? '',
                 'tahun' => $row['tahun'] ?? date('Y'),
                 'total_murid' => $total_murid,
                 'average_performance' => $avg_performance
@@ -103,10 +160,9 @@ try {
             $total_prestasi += $avg_performance;
         }
         $stmt->close();
- 
-        }
+    }
 } catch (Exception $e) {
-    error_log("Exception: " . $e->getMessage());
+    error_log("Exception in kelas-saya.php: " . $e->getMessage());
 }
 
 
@@ -114,20 +170,22 @@ $totalClasses = count($classes);
 $totalStudents = $total_murid_keseluruhan;
 $avgPerformance = $totalClasses > 0 ? round($total_prestasi / $totalClasses, 1) : 0;
 
-// Get counts for sidebar badges
+// ------------------------------------------------------------
+// GET COUNTS FOR SIDEBAR BADGES
+// ------------------------------------------------------------
 $total_students = 0;
 $unmarked_count = 0;
 $subjek_count = 0;
 
 try {
-    // Total students
+    // Total students (sekolah)
     $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
     $stmt_students = $db->prepare($sql_students);
     $stmt_students->execute();
     $total_students = $stmt_students->get_result()->fetch_assoc()['total'] ?? 0;
     $stmt_students->close();
     
-    // Unmarked exams
+    // Unmarked exams for this teacher
     $sql_unmarked = "SELECT COUNT(*) as total 
                      FROM markah m
                      JOIN peperiksaan p ON m.id_peperiksaan = p.id
@@ -142,7 +200,7 @@ try {
     $unmarked_count = $stmt_unmarked->get_result()->fetch_assoc()['total'] ?? 0;
     $stmt_unmarked->close();
     
-    // Subjects count
+    // Subjects count for this teacher
     $sql_subjek = "SELECT COUNT(DISTINCT id_matapelajaran) as total 
                    FROM pengajar 
                    WHERE id_guru = ? AND status = 'aktif'";
@@ -284,9 +342,7 @@ try {
             transition: var(--transition);
         }
 
-        .sidebar.sidebar-hidden {
-            transform: translateX(-100%);
-        }
+
 
         .sidebar-section {
             margin-bottom: 30px;
@@ -421,6 +477,17 @@ try {
             box-shadow: 0 12px 30px rgba(79, 70, 229, 0.4);
         }
 
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: var(--white);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(16, 185, 129, 0.4);
+        }
+
         .btn-secondary {
             background: var(--white);
             color: var(--dark-gray);
@@ -430,6 +497,44 @@ try {
         .btn-secondary:hover {
             background: var(--light-gray);
             transform: translateY(-2px);
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .alert-success {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
+            border-left: 4px solid var(--success);
+            color: var(--success);
+        }
+
+        .alert-error {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.1));
+            border-left: 4px solid var(--danger);
+            color: var(--danger);
+        }
+
+        .alert i {
+            font-size: 20px;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* Quick Stats */
@@ -692,7 +797,7 @@ try {
             color: var(--medium-gray);
         }
 
-        /* Modal for Class Details */
+        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -716,16 +821,17 @@ try {
             background: var(--white);
             border-radius: var(--border-radius);
             width: 100%;
-            max-width: 600px;
+            max-width: 550px;
             max-height: 90vh;
             overflow-y: auto;
             animation: modalSlideIn 0.3s ease;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
         }
 
         @keyframes modalSlideIn {
             from {
                 opacity: 0;
-                transform: translateY(-20px);
+                transform: translateY(-30px);
             }
             to {
                 opacity: 1;
@@ -734,37 +840,137 @@ try {
         }
 
         .modal-header {
-            padding: 25px;
+            padding: 25px 30px;
             border-bottom: 2px solid var(--light-gray);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: linear-gradient(135deg, var(--primary-light), var(--white));
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
         }
 
         .modal-header h3 {
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 700;
-            color: var(--dark-gray);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-header h3 i {
+            color: var(--primary);
+            font-size: 24px;
         }
 
         .modal-close {
             background: none;
             border: none;
-            font-size: 20px;
+            font-size: 22px;
             color: var(--medium-gray);
             cursor: pointer;
             transition: var(--transition);
-            padding: 5px;
-            border-radius: 8px;
+            padding: 8px;
+            border-radius: 10px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .modal-close:hover {
             background: var(--light-gray);
             color: var(--danger);
+            transform: rotate(90deg);
         }
 
         .modal-body {
-            padding: 25px;
+            padding: 30px;
+        }
+
+        .modal-footer {
+            padding: 20px 30px 30px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            border-top: 1px solid var(--light-gray);
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark-gray);
+            margin-bottom: 8px;
+        }
+
+        .form-label i {
+            color: var(--primary);
+            margin-right: 8px;
+            width: 18px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Poppins', sans-serif;
+            transition: var(--transition);
+            background: var(--white);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        }
+
+        .form-control:hover {
+            border-color: var(--primary-light);
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Poppins', sans-serif;
+            transition: var(--transition);
+            background: var(--white);
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 18px center;
+            padding-right: 50px;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        }
+
+        .form-text {
+            font-size: 12px;
+            color: var(--medium-gray);
+            margin-top: 6px;
+            margin-left: 5px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
         }
 
         /* Empty State */
@@ -840,6 +1046,15 @@ try {
             .quick-stats {
                 grid-template-columns: repeat(2, 1fr);
             }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .modal-content {
+                max-width: 95%;
+            }
         }
 
         @media (max-width: 576px) {
@@ -874,6 +1089,18 @@ try {
             .quick-stats {
                 grid-template-columns: 1fr;
             }
+            
+            .modal-header {
+                padding: 20px;
+            }
+            
+            .modal-body {
+                padding: 20px;
+            }
+            
+            .modal-footer {
+                padding: 20px;
+            }
         }
 
         /* Custom Scrollbar */
@@ -898,7 +1125,7 @@ try {
     </style>
 </head>
 <body>
-    <!-- Modal for Class Details -->
+    <!-- MODAL: Maklumat Kelas Details -->
     <div class="modal" id="classModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -908,7 +1135,7 @@ try {
                 </button>
             </div>
             <div class="modal-body">
-                <div class="class-detail-header" style="text-align: center; margin-bottom: 25px;">
+                <div style="text-align: center; margin-bottom: 25px;">
                     <div class="class-icon" style="width: 80px; height: 80px; margin: 0 auto 15px;">
                         <i class="fas fa-chalkboard-teacher"></i>
                     </div>
@@ -935,7 +1162,7 @@ try {
                     </div>
                 </div>
                 
-                <div style="margin-bottom: 20px;">
+                <div>
                     <h4 style="font-size: 16px; margin-bottom: 15px; color: var(--dark-gray);">Senarai Pelajar</h4>
                     <div id="studentListModal" style="max-height: 300px; overflow-y: auto;">
                         <div style="text-align: center; padding: 30px;">
@@ -945,6 +1172,109 @@ try {
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Tambah Kelas Baru -->
+    <div class="modal" id="addClassModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>
+                    <i class="fas fa-plus-circle"></i>
+                    Tambah Kelas Baru
+                </h3>
+                <button class="modal-close" onclick="closeAddClassModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form method="POST" action="" id="addClassForm">
+                <input type="hidden" name="action" value="tambah_kelas">
+                <div class="modal-body">
+                    <?php if ($error_message): ?>
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <?php echo htmlspecialchars($error_message); ?>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($success_message): ?>
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i>
+                        <?php echo htmlspecialchars($success_message); ?>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-school"></i>
+                            Nama Kelas
+                        </label>
+                        <input type="text" class="form-control" name="nama_kelas" 
+                               placeholder="Cth: 3 Bijak, 4 Cerdas, 5 Pintar" 
+                               value="<?php echo isset($_POST['nama_kelas']) ? htmlspecialchars($_POST['nama_kelas']) : ''; ?>"
+                               required>
+                        <div class="form-text">Nama kelas seperti yang tertera dalam jadual waktu</div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="fas fa-layer-group"></i>
+                                Darjah
+                            </label>
+                            <select class="form-select" name="darjah" required>
+                                <option value="" disabled selected>-- Pilih Darjah --</option>
+                                <option value="1">Darjah 1</option>
+                                <option value="2">Darjah 2</option>
+                                <option value="3">Darjah 3</option>
+                                <option value="4">Darjah 4</option>
+                                <option value="5">Darjah 5</option>
+                                <option value="6">Darjah 6</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="fas fa-calendar"></i>
+                                Tahun
+                            </label>
+                            <select class="form-select" name="tahun" required>
+                                <option value="" disabled selected>-- Pilih Tahun --</option>
+                                <?php for ($year = date('Y'); $year >= date('Y') - 2; $year--): ?>
+                                <option value="<?php echo $year; ?>" <?php echo ($year == date('Y')) ? 'selected' : ''; ?>>
+                                    <?php echo $year; ?>
+                                </option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="background: var(--primary-light); padding: 20px; border-radius: 12px; margin-top: 10px;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
+                                <i class="fas fa-info-circle"></i>
+                            </div>
+                            <div>
+                                <h4 style="font-size: 14px; font-weight: 600; color: var(--primary); margin-bottom: 5px;">Makluman</h4>
+                                <p style="font-size: 12px; color: var(--medium-gray);">
+                                    Anda akan ditugaskan sebagai guru untuk kelas ini. Anda boleh menguruskan pelajar dan markah selepas kelas dicipta.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddClassModal()">
+                        <i class="fas fa-times"></i>
+                        Batal
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-save"></i>
+                        Simpan Kelas
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1046,12 +1376,23 @@ try {
                 <p>Urus dan pantau semua kelas yang anda kendalikan</p>
             </div>
             <div class="page-actions">
+                <button class="btn btn-success" onclick="openAddClassModal()">
+                    <i class="fas fa-plus-circle"></i>
+                    Tambah Kelas
+                </button>
                 <button class="btn btn-secondary" onclick="location.reload()">
                     <i class="fas fa-sync-alt"></i>
                     Muat Semula
                 </button>
             </div>
         </div>
+
+        <?php if ($success_message): ?>
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i>
+            <?php echo $success_message; ?>
+        </div>
+        <?php endif; ?>
 
         <!-- Quick Stats -->
         <div class="quick-stats">
@@ -1108,12 +1449,23 @@ try {
                             <div class="empty-state">
                                 <i class="fas fa-chalkboard-teacher"></i>
                                 <h3>Tiada Kelas Ditemui</h3>
-                             <p>Anda belum ditugaskan untuk mengajar mana-mana kelas.</p>
+                                <p>Anda belum ditugaskan untuk mengajar mana-mana kelas.</p>
+                                <button class="btn btn-success" onclick="openAddClassModal()" style="margin-top: 15px;">
+                                    <i class="fas fa-plus-circle"></i>
+                                    Tambah Kelas Sekarang
+                                </button>
                             </div>
                         </td>
                     </tr>
                     <?php else: ?>
-                      <?php foreach ($classes as $class): ?>
+                        <?php foreach ($classes as $class): ?>
+                        <?php
+                        $perf = $class['average_performance'];
+                        $perf_class = 'performance-poor';
+                        if ($perf >= 80) $perf_class = 'performance-excellent';
+                        elseif ($perf >= 70) $perf_class = 'performance-good';
+                        elseif ($perf >= 60) $perf_class = 'performance-average';
+                        ?>
                         <tr>
                             <td>
                                 <div class="class-info-cell">
@@ -1122,7 +1474,7 @@ try {
                                     </div>
                                     <div class="class-details">
                                         <div class="class-name"><?php echo htmlspecialchars($class['nama']); ?></div>
-                                        <div class="class-subject">Tingkatan <?php echo htmlspecialchars($class['tingkatan']); ?></div>
+                                        <div class="class-subject">Darjah <?php echo htmlspecialchars($class['darjah']); ?></div>
                                     </div>
                                 </div>
                             </td>
@@ -1131,13 +1483,8 @@ try {
                             <td>
                                 <div class="performance-cell">
                                     <div class="performance-bar">
-                                        <div class="performance-fill <?php 
-                                            $perf = $class['average_performance'];
-                                            if ($perf >= 80) echo 'performance-excellent';
-                                            elseif ($perf >= 70) echo 'performance-good';
-                                            elseif ($perf >= 60) echo 'performance-average';
-                                            else echo 'performance-poor';
-                                        ?>" style="width: <?php echo min(100, $perf); ?>%"></div>
+                                        <div class="performance-fill <?php echo $perf_class; ?>" 
+                                             style="width: <?php echo min(100, $perf); ?>%"></div>
                                     </div>
                                     <div class="performance-value"><?php echo number_format($perf, 1); ?>%</div>
                                 </div>
@@ -1157,14 +1504,42 @@ try {
                     <?php endif; ?>
                 </tbody>
             </table>
-      </div>
-</main>
+        </div>
+        
+        <!-- Info Footer -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+            <div style="color: var(--medium-gray); font-size: 13px;">
+                <i class="fas fa-info-circle"></i> 
+                Menunjukkan <?php echo $totalClasses; ?> kelas dengan jumlah <?php echo $totalStudents; ?> pelajar.
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <span style="display: flex; align-items: center; gap: 5px; font-size: 12px;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: var(--success); border-radius: 3px;"></span>
+                    Cemerlang (80-100%)
+                </span>
+                <span style="display: flex; align-items: center; gap: 5px; font-size: 12px;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: #3b82f6; border-radius: 3px;"></span>
+                    Baik (70-79%)
+                </span>
+                <span style="display: flex; align-items: center; gap: 5px; font-size: 12px;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: var(--warning); border-radius: 3px;"></span>
+                    Sederhana (60-69%)
+                </span>
+                <span style="display: flex; align-items: center; gap: 5px; font-size: 12px;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: var(--danger); border-radius: 3px;"></span>
+                    Perlu Bimbingan (0-59%)
+                </span>
+            </div>
+        </div>
+    </main>
+
     <script>
         // DOM Elements
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
         const mainContent = document.getElementById('mainContent');
         const classModal = document.getElementById('classModal');
+        const addClassModal = document.getElementById('addClassModal');
 
         // PHP data to JavaScript
         const classesData = <?php echo json_encode($classes); ?>;
@@ -1178,7 +1553,7 @@ try {
             }
         }
 
-        // Close Sidebar
+        // Close Sidebar on Mobile
         function closeSidebar() {
             if (window.innerWidth <= 1024) {
                 sidebar.classList.remove('sidebar-active');
@@ -1186,14 +1561,26 @@ try {
             }
         }
 
+        // Open Add Class Modal
+        function openAddClassModal() {
+            addClassModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Close Add Class Modal
+        function closeAddClassModal() {
+            addClassModal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
         // View Class Details
         function viewClass(classId, className) {
             const classData = classesData.find(c => c.id == classId);
             
             if (classData) {
-              document.getElementById('modalTitle').textContent = 'Maklumat Kelas: ' + className;
+                document.getElementById('modalTitle').textContent = 'Maklumat Kelas: ' + className;
                 document.getElementById('classNameDetail').textContent = className;
-                document.getElementById('classLevelDetail').textContent = `Tingkatan ${classData.tingkatan || ''}`;
+                document.getElementById('classLevelDetail').textContent = `Darjah ${classData.darjah || ''}`;
                 document.getElementById('classTeacherDetail').textContent = teacherName;
                 document.getElementById('classYearDetail').textContent = classData.tahun || '2026';
                 document.getElementById('classPerformanceDetail').textContent = classData.average_performance ? 
@@ -1202,23 +1589,23 @@ try {
                 
                 // Load students
                 loadStudentList(classId);
-             
+                
                 classModal.classList.add('active');
                 document.body.style.overflow = 'hidden';
             }
         }
 
-        // Load Student List
+        // Load Student List via AJAX
         function loadStudentList(classId) {
             const studentListDiv = document.getElementById('studentListModal');
-          
+            
             studentListDiv.innerHTML = `
                 <div style="text-align: center; padding: 30px;">
                     <i class="fas fa-spinner fa-spin" style="font-size: 32px; color: var(--primary);"></i>
                     <p style="color: var(--medium-gray); margin-top: 15px;">Memuatkan senarai pelajar...</p>
                 </div>
             `;
-        
+            
             fetch(`ajax/get-students-by-class.php?class_id=${classId}`)
                 .then(response => response.json())
                 .then(data => {
@@ -1247,6 +1634,9 @@ try {
                             <div style="text-align: center; padding: 40px;">
                                 <i class="fas fa-user-graduate" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
                                 <p style="color: var(--medium-gray);">Tiada pelajar dalam kelas ini.</p>
+                                <button class="btn btn-primary" style="margin-top: 15px;" onclick="window.location.href='tambah-pelajar.php?class_id=${classId}'">
+                                    <i class="fas fa-user-plus"></i> Tambah Pelajar
+                                </button>
                             </div>
                         `;
                     }
@@ -1257,12 +1647,13 @@ try {
                         <div style="text-align: center; padding: 40px;">
                             <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--warning); margin-bottom: 15px;"></i>
                             <p style="color: var(--medium-gray);">Ralat memuatkan data pelajar.</p>
-                       </div>
+                            <p style="font-size: 12px; margin-top: 10px;">Sila cuba sebentar lagi.</p>
+                        </div>
                     `;
                 });
         }
 
-        // View Student
+        // View Student Details
         function viewStudent(studentId) {
             window.location.href = `pelajar-detail.php?id=${studentId}`;
         }
@@ -1280,16 +1671,16 @@ try {
 
         // Event Listeners
         document.addEventListener('DOMContentLoaded', function() {
-         if (menuToggle) {
+            if (menuToggle) {
                 menuToggle.addEventListener('click', toggleSidebar);
             }
-        
+            
             document.querySelectorAll('.sidebar-item').forEach(item => {
                 item.addEventListener('click', closeSidebar);
             });
-        
+            
             window.addEventListener('resize', closeSidebar);
-           
+            
             if (classModal) {
                 classModal.addEventListener('click', function(event) {
                     if (event.target === classModal) {
@@ -1297,10 +1688,19 @@ try {
                     }
                 });
             }
-         
+            
+            if (addClassModal) {
+                addClassModal.addEventListener('click', function(event) {
+                    if (event.target === addClassModal) {
+                        closeAddClassModal();
+                    }
+                });
+            }
+            
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape') {
                     closeModal();
+                    closeAddClassModal();
                 }
             });
         });
@@ -1308,7 +1708,7 @@ try {
 </body>
 </html>
 <?php
-// Close database connection
+// Close database connections
 if (isset($stmt)) $stmt->close();
 if (isset($stmt_students)) $stmt_students->close();
 if (isset($stmt_unmarked)) $stmt_unmarked->close();
