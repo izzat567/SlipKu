@@ -48,7 +48,7 @@ if (!isset($conn) || !($conn instanceof mysqli)) {
 $id_guru = $_SESSION['guru_id'];
 
 // VERIFY guru exists in database (security check)
-$sql_verify = "SELECT id, nama FROM guru WHERE id = ? AND status = 'aktif'";
+$sql_verify = "SELECT id, nama, email FROM guru WHERE id = ? AND status = 'aktif'";
 $stmt_verify = $conn->prepare($sql_verify);
 $stmt_verify->bind_param("i", $id_guru);
 $stmt_verify->execute();
@@ -70,73 +70,142 @@ if ($verify_result->num_rows === 0) {
 $guru = $verify_result->fetch_assoc();
 // Update session dengan data terkini dari DB
 $_SESSION['guru_nama'] = $guru['nama'];
+$_SESSION['guru_email'] = $guru['email'];
 
 $current_page = basename($_SERVER['PHP_SELF']);
 
-// Get teacher info
-$sql_guru = "SELECT * FROM guru WHERE id = ?";
-$stmt_guru = $conn->prepare($sql_guru);
-$stmt_guru->bind_param("i", $id_guru);
-$stmt_guru->execute();
-$guru = $stmt_guru->get_result()->fetch_assoc();
+// ------------------------------------------------------------
+// DATA UNTUK DASHBOARD - KHAS UNTUK GURU YANG LOGIN
+// ------------------------------------------------------------
 
-// Set default values
-$kelas_count = 0;
-$subjek_count = 0;
-$total_students = 0;
-$unmarked_count = 0;
-
-
-// 1. Get classes taught - GUNA jadual PENG AJAR
+// 1. GET KELAS - hanya kelas yang diajar oleh guru ini
 try {
-    $sql_kelas = "SELECT COUNT(DISTINCT p.id_kelas) as jumlah 
-                  FROM pengajar p 
-                  WHERE p.id_guru = ? AND p.status = 'aktif'";
+    $sql_kelas = "SELECT 
+                    k.id, 
+                    k.nama,
+                    k.tingkatan,
+                    COUNT(DISTINCT p.id_pelajar) as jumlah_pelajar
+                  FROM pengajar pj
+                  JOIN kelas k ON pj.id_kelas = k.id
+                  LEFT JOIN pendaftaran_kelas p ON k.id = p.id_kelas AND p.status = 'aktif'
+                  WHERE pj.id_guru = ? 
+                    AND pj.status = 'aktif' 
+                    AND k.status = 'aktif'
+                  GROUP BY k.id, k.nama, k.tingkatan";
+    
     $stmt_kelas = $conn->prepare($sql_kelas);
     $stmt_kelas->bind_param("i", $id_guru);
     $stmt_kelas->execute();
     $result_kelas = $stmt_kelas->get_result();
-    $row_kelas = $result_kelas->fetch_assoc();
-    $kelas_count = $row_kelas['jumlah'] ?? 0;
+    
+    $kelas_list = [];
+    $kelas_count = 0;
+    while ($row = $result_kelas->fetch_assoc()) {
+        $kelas_list[] = $row;
+        $kelas_count++;
+    }
 } catch (Exception $e) {
+    $kelas_list = [];
     $kelas_count = 0;
 }
 
-// 2. Get subjects taught - GUNA jadual PENG AJAR
+// 2. GET SUBJEK - hanya subjek yang diajar oleh guru ini
 try {
-    $sql_subjek = "SELECT COUNT(DISTINCT p.id_matapelajaran) as jumlah 
-                   FROM pengajar p 
-                   JOIN matapelajaran m ON p.id_matapelajaran = m.id
-                   WHERE p.id_guru = ? AND p.status = 'aktif' AND m.status = 'aktif'";
+    $sql_subjek = "SELECT 
+                    m.id,
+                    m.nama,
+                    m.kod,
+                    COUNT(DISTINCT pj.id_kelas) as jumlah_kelas
+                  FROM pengajar pj
+                  JOIN matapelajaran m ON pj.id_matapelajaran = m.id
+                  WHERE pj.id_guru = ? 
+                    AND pj.status = 'aktif' 
+                    AND m.status = 'aktif'
+                  GROUP BY m.id, m.nama, m.kod";
+    
     $stmt_subjek = $conn->prepare($sql_subjek);
     $stmt_subjek->bind_param("i", $id_guru);
     $stmt_subjek->execute();
     $result_subjek = $stmt_subjek->get_result();
-    $row_subjek = $result_subjek->fetch_assoc();
-    $subjek_count = $row_subjek['jumlah'] ?? 0;
+    
+    $subjek_list = [];
+    $subjek_count = 0;
+    while ($row = $result_subjek->fetch_assoc()) {
+        $subjek_list[] = $row;
+        $subjek_count++;
+    }
 } catch (Exception $e) {
+    $subjek_list = [];
     $subjek_count = 0;
 }
 
-// 3. Get total students
+// 3. GET PELAJAR - hanya pelajar dalam kelas yang diajar oleh guru ini
 try {
-    $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
-    $stmt_students = $conn->prepare($sql_students);
-    $stmt_students->execute();
-    $student_count_result = $stmt_students->get_result();
-    $row = $student_count_result->fetch_assoc();
+    $sql_pelajar = "SELECT 
+                    COUNT(DISTINCT p.id) as total
+                  FROM pelajar p
+                  JOIN pendaftaran_kelas pk ON p.id = pk.id_pelajar
+                  JOIN kelas k ON pk.id_kelas = k.id
+                  JOIN pengajar pj ON k.id = pj.id_kelas
+                  WHERE pj.id_guru = ? 
+                    AND p.status = 'aktif' 
+                    AND pk.status = 'aktif'
+                    AND k.status = 'aktif'
+                    AND pj.status = 'aktif'";
+    
+    $stmt_pelajar = $conn->prepare($sql_pelajar);
+    $stmt_pelajar->bind_param("i", $id_guru);
+    $stmt_pelajar->execute();
+    $result_pelajar = $stmt_pelajar->get_result();
+    $row = $result_pelajar->fetch_assoc();
     $total_students = $row['total'] ?? 0;
 } catch (Exception $e) {
     $total_students = 0;
 }
 
-// 4. Get unmarked exams - GUNA jadual MARKAH
+// 4. GET SENARAI PELAJAR (untuk paparan detail)
 try {
-    $sql_unmarked = "SELECT COUNT(*) as total 
-                     FROM markah m 
-                     WHERE (m.gred IS NULL OR m.gred = '') 
-                     AND m.status = 'aktif'";
+    $sql_pelajar_list = "SELECT 
+                        p.id,
+                        p.nama,
+                        p.no_kp,
+                        p.tingkatan,
+                        k.nama as kelas_nama
+                      FROM pelajar p
+                      JOIN pendaftaran_kelas pk ON p.id = pk.id_pelajar
+                      JOIN kelas k ON pk.id_kelas = k.id
+                      JOIN pengajar pj ON k.id = pj.id_kelas
+                      WHERE pj.id_guru = ? 
+                        AND p.status = 'aktif' 
+                        AND pk.status = 'aktif'
+                        AND k.status = 'aktif'
+                        AND pj.status = 'aktif'
+                      LIMIT 10";
+    
+    $stmt_pelajar_list = $conn->prepare($sql_pelajar_list);
+    $stmt_pelajar_list->bind_param("i", $id_guru);
+    $stmt_pelajar_list->execute();
+    $pelajar_list = $stmt_pelajar_list->get_result();
+} catch (Exception $e) {
+    $pelajar_list = null;
+}
+
+// 5. GET UJIAN YANG BELUM DINILAI - hanya untuk kelas/subjek guru ini
+try {
+    $sql_unmarked = "SELECT 
+                    COUNT(*) as total
+                  FROM markah m
+                  JOIN peperiksaan p ON m.id_peperiksaan = p.id
+                  JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
+                    AND p.id_kelas = pj.id_kelas
+                  WHERE pj.id_guru = ? 
+                    AND (m.gred IS NULL OR m.gred = '')
+                    AND m.status = 'aktif'
+                    AND p.status = 'aktif'
+                    AND pj.status = 'aktif'";
+    
     $stmt_unmarked = $conn->prepare($sql_unmarked);
+    $stmt_unmarked->bind_param("i", $id_guru);
     $stmt_unmarked->execute();
     $unmarked_result = $stmt_unmarked->get_result();
     $row = $unmarked_result->fetch_assoc();
@@ -145,11 +214,68 @@ try {
     $unmarked_count = 0;
 }
 
-// Set defaults jika masih kosong
-if ($kelas_count == 0) $kelas_count = 1;
-if ($subjek_count == 0) $subjek_count = 3;
-if ($total_students == 0) $total_students = 25;
-if ($unmarked_count == 0) $unmarked_count = 5;
+// 6. GET UJIAN TERKINI - untuk kelas/subjek guru ini
+try {
+    $sql_peperiksaan = "SELECT 
+                        mp.nama as mata_pelajaran,
+                        k.nama as kelas,
+                        p.jenis,
+                        p.tarikh,
+                        COUNT(m.id) as jumlah_markah,
+                        SUM(CASE WHEN m.gred IS NOT NULL AND m.gred != '' THEN 1 ELSE 0 END) as sudah_dinilai
+                      FROM peperiksaan p
+                      JOIN matapelajaran mp ON p.id_matapelajaran = mp.id
+                      JOIN kelas k ON p.id_kelas = k.id
+                      JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
+                        AND p.id_kelas = pj.id_kelas
+                      LEFT JOIN markah m ON p.id = m.id_peperiksaan
+                      WHERE pj.id_guru = ? 
+                        AND p.status = 'aktif'
+                        AND pj.status = 'aktif'
+                      GROUP BY p.id, mp.nama, k.nama, p.jenis, p.tarikh
+                      ORDER BY p.tarikh DESC
+                      LIMIT 5";
+    
+    $stmt_peperiksaan = $conn->prepare($sql_peperiksaan);
+    $stmt_peperiksaan->bind_param("i", $id_guru);
+    $stmt_peperiksaan->execute();
+    $peperiksaan_list = $stmt_peperiksaan->get_result();
+} catch (Exception $e) {
+    $peperiksaan_list = null;
+}
+
+// 7. GET PRESTASI KELAS - purata markah untuk kelas guru ini
+try {
+    $sql_prestasi = "SELECT 
+                    k.nama,
+                    AVG(m.markah) as purata_markah
+                  FROM markah m
+                  JOIN peperiksaan p ON m.id_peperiksaan = p.id
+                  JOIN kelas k ON p.id_kelas = k.id
+                  JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
+                    AND p.id_kelas = pj.id_kelas
+                  WHERE pj.id_guru = ? 
+                    AND m.markah IS NOT NULL
+                    AND m.status = 'aktif'
+                    AND p.status = 'aktif'
+                    AND pj.status = 'aktif'
+                  GROUP BY k.id, k.nama
+                  ORDER BY purata_markah DESC
+                  LIMIT 5";
+    
+    $stmt_prestasi = $conn->prepare($sql_prestasi);
+    $stmt_prestasi->bind_param("i", $id_guru);
+    $stmt_prestasi->execute();
+    $prestasi_kelas = $stmt_prestasi->get_result();
+} catch (Exception $e) {
+    $prestasi_kelas = null;
+}
+
+// Set defaults jika tiada data
+if ($kelas_count == 0) $kelas_count = 0;
+if ($subjek_count == 0) $subjek_count = 0;
+if ($total_students == 0) $total_students = 0;
+if ($unmarked_count == 0) $unmarked_count = 0;
 
 // Get teacher initials
 $initials = '';
@@ -171,7 +297,7 @@ if (isset($_SESSION['guru_nama'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Admin Guru - SlipKu</title>
+    <title>Dashboard Guru - SlipKu</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -209,7 +335,7 @@ if (isset($_SESSION['guru_nama'])) {
             overflow-x: hidden;
         }
 
-        /* Header */
+
         .header {
             background: var(--white);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
@@ -260,7 +386,7 @@ if (isset($_SESSION['guru_nama'])) {
             font-weight: 500;
         }
 
-        /* Menu Toggle */
+
         .menu-toggle {
             display: none;
             background: none;
@@ -277,7 +403,7 @@ if (isset($_SESSION['guru_nama'])) {
             background: var(--primary-light);
         }
 
-        /* Sidebar */
+
         .sidebar {
             background: var(--white);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
@@ -351,7 +477,7 @@ if (isset($_SESSION['guru_nama'])) {
             text-align: center;
         }
 
-        /* Main Content */
+
         .main-content {
             margin-left: 260px;
             margin-top: 85px;
@@ -359,7 +485,7 @@ if (isset($_SESSION['guru_nama'])) {
             transition: var(--transition);
         }
 
-        /* Page Header */
+
         .page-header {
             margin-bottom: 30px;
             display: flex;
@@ -385,7 +511,7 @@ if (isset($_SESSION['guru_nama'])) {
             font-size: 16px;
         }
 
-        /* Buttons */
+
         .btn {
             padding: 12px 24px;
             border-radius: 12px;
@@ -423,7 +549,7 @@ if (isset($_SESSION['guru_nama'])) {
             transform: translateY(-2px);
         }
 
-        /* User Profile */
+
         .user-profile {
             display: flex;
             align-items: center;
@@ -463,7 +589,7 @@ if (isset($_SESSION['guru_nama'])) {
             color: var(--medium-gray);
         }
 
-        /* Quick Stats */
+
         .quick-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -533,7 +659,7 @@ if (isset($_SESSION['guru_nama'])) {
             color: var(--danger);
         }
 
-        /* Quick Actions */
+
         .quick-actions {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -572,7 +698,7 @@ if (isset($_SESSION['guru_nama'])) {
             margin: 0 auto 15px;
         }
 
-        /* Dashboard Cards */
+
         .dashboard-sections {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -595,7 +721,7 @@ if (isset($_SESSION['guru_nama'])) {
             margin-bottom: 20px;
         }
 
-        /* Recent Exams List */
+
         .exam-list {
             list-style-type: none;
         }
@@ -631,7 +757,7 @@ if (isset($_SESSION['guru_nama'])) {
             color: var(--warning);
         }
 
-        /* Class Performance */
+
         .class-list {
             display: flex;
             flex-direction: column;
@@ -652,7 +778,7 @@ if (isset($_SESSION['guru_nama'])) {
             background: var(--primary-light);
         }
 
-        /* Mobile Responsive */
+
         @media (max-width: 1024px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -716,7 +842,7 @@ if (isset($_SESSION['guru_nama'])) {
     </style>
 </head>
 <body>
-    <!-- Header -->
+
     <header class="header">
         <div class="header-container">
             <button class="menu-toggle" id="menuToggle">
@@ -743,7 +869,7 @@ if (isset($_SESSION['guru_nama'])) {
         </div>
     </header>
 
-    <!-- Sidebar -->
+   
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-section">
             <div class="sidebar-title">Menu Utama</div>
@@ -803,12 +929,12 @@ if (isset($_SESSION['guru_nama'])) {
         </div>
     </aside>
 
-    <!-- Main Content -->
+    
     <main class="main-content" id="mainContent">
         <div class="page-header">
             <div class="page-title">
                 <h2>Selamat Datang, <?php echo isset($_SESSION['guru_nama']) ? htmlspecialchars($_SESSION['guru_nama']) : 'Guru'; ?>! 👨‍🏫</h2>
-                <p>Dashboard pentadbir untuk urusan akademik dan pentadbiran guru</p>
+                <p>Dashboard peribadi anda - hanya data kelas dan subjek yang anda ajar</p>
             </div>
             <div class="page-actions">
                 <button class="btn btn-secondary" onclick="muatSemulaData()">
@@ -820,7 +946,7 @@ if (isset($_SESSION['guru_nama'])) {
             </div>
         </div>
 
-        <!-- Quick Stats with REAL DATA -->
+        <!-- Quick Stats - DATA KHAS UNTUK GURU INI -->
         <div class="quick-stats">
             <div class="stat-card">
                 <div class="stat-icon students">
@@ -831,7 +957,11 @@ if (isset($_SESSION['guru_nama'])) {
                     <div class="stat-value"><?php echo $total_students; ?></div>
                     <?php if ($total_students > 0): ?>
                     <div class="stat-change positive">
-                        <i class="fas fa-arrow-up"></i> <?php echo $total_students; ?> pelajar aktif
+                        <i class="fas fa-users"></i> Pelajar dalam kelas anda
+                    </div>
+                    <?php else: ?>
+                    <div class="stat-change">
+                        <i class="fas fa-info-circle"></i> Tiada pelajar
                     </div>
                     <?php endif; ?>
                 </div>
@@ -848,6 +978,10 @@ if (isset($_SESSION['guru_nama'])) {
                     <div class="stat-change negative">
                         <i class="fas fa-exclamation-circle"></i> Perlu dinilai
                     </div>
+                    <?php else: ?>
+                    <div class="stat-change positive">
+                        <i class="fas fa-check-circle"></i> Semua telah dinilai
+                    </div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -861,19 +995,12 @@ if (isset($_SESSION['guru_nama'])) {
                     <div class="stat-value"><?php echo $subjek_count; ?></div>
                     <div class="stat-change">
                         <?php 
-                        // Get subject names
-                        $subject_names = [];
-                        if (isset($subjek_result)) {
-                            $subjek_result->data_seek(0); // Reset pointer
-                            while ($subject = $subjek_result->fetch_assoc()) {
-                                $subject_names[] = $subject['nama'];
-                            }
-                        }
-                        if (count($subject_names) > 0) {
-                            echo implode(', ', array_slice($subject_names, 0, 3));
-                            if (count($subject_names) > 3) echo '...';
+                        if (!empty($subjek_list)) {
+                            $subject_names = array_column($subjek_list, 'nama');
+                            echo implode(', ', array_slice($subject_names, 0, 2));
+                            if (count($subject_names) > 2) echo ' +' . (count($subject_names) - 2) . ' lagi';
                         } else {
-                            echo 'Bahasa Melayu, Matematik, Sains';
+                            echo 'Tiada subjek';
                         }
                         ?>
                     </div>
@@ -889,18 +1016,12 @@ if (isset($_SESSION['guru_nama'])) {
                     <div class="stat-value"><?php echo $kelas_count; ?></div>
                     <div class="stat-change">
                         <?php 
-                        // Get class names
-                        $class_names = [];
-                        if ($kelas_result && $kelas_result->num_rows > 0) {
-                            $kelas_result->data_seek(0); // Reset pointer
-                            while ($kelas = $kelas_result->fetch_assoc()) {
-                                $class_names[] = $kelas['nama'];
-                            }
-                        }
-                        if (count($class_names) > 0) {
-                            echo implode(', ', $class_names);
+                        if (!empty($kelas_list)) {
+                            $class_names = array_column($kelas_list, 'nama');
+                            echo implode(', ', array_slice($class_names, 0, 2));
+                            if (count($class_names) > 2) echo ' +' . (count($class_names) - 2) . ' lagi';
                         } else {
-                            echo 'Kelas Demo';
+                            echo 'Tiada kelas';
                         }
                         ?>
                     </div>
@@ -943,34 +1064,40 @@ if (isset($_SESSION['guru_nama'])) {
             </a>
         </div>
 
-        <!-- Dashboard Sections - SIMPLIFIED -->
+        <!-- Dashboard Sections - DATA SEBENAR DARI DATABASE -->
         <div class="dashboard-sections">
             <div class="dashboard-card">
                 <div class="card-header">
                     <h3>Ujian Terkini</h3>
-                    <button class="btn btn-secondary btn-sm" onclick="alert('Fitur akan datang')">Lihat Semua</button>
+                    <a href="modules/peperiksaan-saya.php" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-arrow-right"></i> Lihat Semua
+                    </a>
                 </div>
                 <div class="exam-list">
                     <?php
-                    // Simple exam list - no complex queries
-                    $exams = [
-                        ['mata_pelajaran' => 'Bahasa Melayu', 'kelas' => '3 Bijak', 'jenis' => 'Ujian Bulanan', 'status' => 'graded'],
-                        ['mata_pelajaran' => 'Matematik', 'kelas' => '3 Bijak', 'jenis' => 'Kuiz', 'status' => 'upcoming'],
-                        ['mata_pelajaran' => 'Sains', 'kelas' => '3 Bijak', 'jenis' => 'Praktikal', 'status' => 'upcoming']
-                    ];
-                    
-                    foreach ($exams as $exam) {
-                        $status_class = ($exam['status'] == 'graded') ? 'status-graded' : 'status-upcoming';
-                        $status_text = ($exam['status'] == 'graded') ? 'Telah Dinilai' : 'Belum Dinilai';
-                        
-                        echo '
-                        <div class="exam-item">
-                            <div class="exam-info">
-                                <h4>' . htmlspecialchars($exam['mata_pelajaran']) . ' - ' . htmlspecialchars($exam['kelas']) . '</h4>
-                                <p>' . htmlspecialchars($exam['jenis']) . ' • ' . date('d M Y') . '</p>
-                            </div>
-                            <span class="exam-status ' . $status_class . '">' . $status_text . '</span>
-                        </div>';
+                    if ($peperiksaan_list && $peperiksaan_list->num_rows > 0) {
+                        while ($exam = $peperiksaan_list->fetch_assoc()) {
+                            $status = ($exam['sudah_dinilai'] == $exam['jumlah_markah'] && $exam['jumlah_markah'] > 0) ? 'graded' : 'upcoming';
+                            $status_class = ($status == 'graded') ? 'status-graded' : 'status-upcoming';
+                            $status_text = ($status == 'graded') ? 'Telah Dinilai' : 'Belum Dinilai';
+                            $tarikh = date('d M Y', strtotime($exam['tarikh']));
+                            
+                            echo '
+                            <div class="exam-item">
+                                <div class="exam-info">
+                                    <h4>' . htmlspecialchars($exam['mata_pelajaran']) . ' - ' . htmlspecialchars($exam['kelas']) . '</h4>
+                                    <p>' . htmlspecialchars($exam['jenis']) . ' • ' . $tarikh . '</p>
+                                    <small style="color: var(--medium-gray);">' . $exam['sudah_dinilai'] . '/' . $exam['jumlah_markah'] . ' dinilai</small>
+                                </div>
+                                <span class="exam-status ' . $status_class . '">' . $status_text . '</span>
+                            </div>';
+                        }
+                    } else {
+                        echo '<div style="text-align: center; padding: 30px;">
+                                <i class="fas fa-file-alt" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
+                                <p style="color: #999;">Tiada ujian dijumpai</p>
+                                <p style="color: #999; font-size: 13px;">Anda belum mempunyai sebarang peperiksaan</p>
+                              </div>';
                     }
                     ?>
                 </div>
@@ -979,23 +1106,34 @@ if (isset($_SESSION['guru_nama'])) {
             <div class="dashboard-card">
                 <div class="card-header">
                     <h3>Prestasi Kelas</h3>
-                    <button class="btn btn-secondary btn-sm" onclick="alert('Fitur akan datang')">Analisis</button>
+                    <a href="modules/laporan-prestasi.php" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-chart-line"></i> Analisis
+                    </a>
                 </div>
                 <div class="class-list">
                     <?php
-                    // Simple class performance
-                    $classes = [
-                        ['nama' => '3 Bijak', 'average' => 78.5],
-                        ['nama' => '4 Cerdas', 'average' => 82.3],
-                        ['nama' => '5 Pintar', 'average' => 75.8]
-                    ];
-                    
-                    foreach ($classes as $class) {
-                        echo '
-                        <div class="class-item">
-                            <div class="class-name">' . htmlspecialchars($class['nama']) . '</div>
-                            <div class="class-average">' . number_format($class['average'], 1) . '%</div>
-                        </div>';
+                    if ($prestasi_kelas && $prestasi_kelas->num_rows > 0) {
+                        while ($class = $prestasi_kelas->fetch_assoc()) {
+                            $purata = number_format($class['purata_markah'], 1);
+                            $color = ($purata >= 75) ? 'var(--success)' : (($purata >= 50) ? 'var(--warning)' : 'var(--danger)');
+                            
+                            echo '
+                            <div class="class-item">
+                                <div>
+                                    <div class="class-name">' . htmlspecialchars($class['nama']) . '</div>
+                                    <small style="color: var(--medium-gray);">Purata Kelas</small>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 20px; font-weight: 700; color: ' . $color . ';">' . $purata . '%</div>
+                                </div>
+                            </div>';
+                        }
+                    } else {
+                        echo '<div style="text-align: center; padding: 30px;">
+                                <i class="fas fa-chart-bar" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
+                                <p style="color: #999;">Tiada data prestasi</p>
+                                <p style="color: #999; font-size: 13px;">Belum ada markah direkodkan</p>
+                              </div>';
                     }
                     ?>
                 </div>
@@ -1008,6 +1146,9 @@ if (isset($_SESSION['guru_nama'])) {
                 <i class="fas fa-file-alt"></i> PEPERIKSAAN & PENILAIAN
             </h3>
             <p style="color: var(--medium-gray);">Sistem Pengurusan Sekolah <?php echo date('Y'); ?></p>
+            <p style="color: var(--medium-gray); font-size: 12px; margin-top: 5px;">
+                <i class="fas fa-database"></i> Data dipaparkan adalah khusus untuk guru: <?php echo htmlspecialchars($_SESSION['guru_nama']); ?>
+            </p>
         </div>
     </main>
 
@@ -1020,8 +1161,7 @@ if (isset($_SESSION['guru_nama'])) {
         menuToggle.addEventListener('click', function() {
             sidebar.classList.toggle('active');
             
-            // Adjust main content margin on mobile
-            if (window.innerWidth <= 1024) {
+         if (window.innerWidth <= 1024) {
                 if (sidebar.classList.contains('active')) {
                     mainContent.style.marginLeft = '250px';
                 } else {
@@ -1030,8 +1170,7 @@ if (isset($_SESSION['guru_nama'])) {
             }
         });
 
-        // Close sidebar when clicking outside on mobile
-        document.addEventListener('click', function(event) {
+    document.addEventListener('click', function(event) {
             if (window.innerWidth <= 1024) {
                 if (!sidebar.contains(event.target) && !menuToggle.contains(event.target)) {
                     sidebar.classList.remove('active');
@@ -1040,11 +1179,8 @@ if (isset($_SESSION['guru_nama'])) {
             }
         });
 
-        
-        // Simple functions for buttons
-        function muatSemulaData() {
-            alert('Data sedang dimuat semula...');
-            location.reload();
+    function muatSemulaData() {
+        location.reload();
         }
 
         function tambahTugasan() {
@@ -1055,9 +1191,14 @@ if (isset($_SESSION['guru_nama'])) {
 </html>
 <?php
 // Close database connections
-$stmt_guru->close();
+if (isset($stmt_verify)) $stmt_verify->close();
+if (isset($stmt_guru)) $stmt_guru->close();
 if (isset($stmt_kelas)) $stmt_kelas->close();
 if (isset($stmt_subjek)) $stmt_subjek->close();
-if (isset($stmt_students)) $stmt_students->close();
+if (isset($stmt_pelajar)) $stmt_pelajar->close();
+if (isset($stmt_pelajar_list)) $stmt_pelajar_list->close();
 if (isset($stmt_unmarked)) $stmt_unmarked->close();
+if (isset($stmt_peperiksaan)) $stmt_peperiksaan->close();
+if (isset($stmt_prestasi)) $stmt_prestasi->close();
+$conn->close();
 ?>
