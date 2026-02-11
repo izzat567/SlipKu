@@ -165,13 +165,12 @@ try {
     error_log("Exception in kelas-saya.php: " . $e->getMessage());
 }
 
-
 $totalClasses = count($classes);
 $totalStudents = $total_murid_keseluruhan;
 $avgPerformance = $totalClasses > 0 ? round($total_prestasi / $totalClasses, 1) : 0;
 
 // ------------------------------------------------------------
-// GET COUNTS FOR SIDEBAR BADGES
+// GET COUNTS FOR SIDEBAR BADGES - GUNA VARIABLE BERBEZA
 // ------------------------------------------------------------
 $total_students = 0;
 $unmarked_count = 0;
@@ -181,9 +180,13 @@ try {
     // Total students (sekolah)
     $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
     $stmt_students = $db->prepare($sql_students);
-    $stmt_students->execute();
-    $total_students = $stmt_students->get_result()->fetch_assoc()['total'] ?? 0;
-    $stmt_students->close();
+    if ($stmt_students) {
+        $stmt_students->execute();
+        $result_students = $stmt_students->get_result();
+        $row_students = $result_students->fetch_assoc();
+        $total_students = $row_students['total'] ?? 0;
+        $stmt_students->close();
+    }
     
     // Unmarked exams for this teacher
     $sql_unmarked = "SELECT COUNT(*) as total 
@@ -195,26 +198,32 @@ try {
                         AND (m.gred IS NULL OR m.gred = '')
                         AND m.status = 'aktif'";
     $stmt_unmarked = $db->prepare($sql_unmarked);
-    $stmt_unmarked->bind_param("i", $guru_id);
-    $stmt_unmarked->execute();
-    $unmarked_count = $stmt_unmarked->get_result()->fetch_assoc()['total'] ?? 0;
-    $stmt_unmarked->close();
+    if ($stmt_unmarked) {
+        $stmt_unmarked->bind_param("i", $guru_id);
+        $stmt_unmarked->execute();
+        $result_unmarked = $stmt_unmarked->get_result();
+        $row_unmarked = $result_unmarked->fetch_assoc();
+        $unmarked_count = $row_unmarked['total'] ?? 0;
+        $stmt_unmarked->close();
+    }
     
     // Subjects count for this teacher
     $sql_subjek = "SELECT COUNT(DISTINCT id_matapelajaran) as total 
                    FROM pengajar 
                    WHERE id_guru = ? AND status = 'aktif'";
     $stmt_subjek = $db->prepare($sql_subjek);
-    $stmt_subjek->bind_param("i", $guru_id);
-    $stmt_subjek->execute();
-    $subjek_count = $stmt_subjek->get_result()->fetch_assoc()['total'] ?? 0;
-    $stmt_subjek->close();
+    if ($stmt_subjek) {
+        $stmt_subjek->bind_param("i", $guru_id);
+        $stmt_subjek->execute();
+        $result_subjek = $stmt_subjek->get_result();
+        $row_subjek = $result_subjek->fetch_assoc();
+        $subjek_count = $row_subjek['total'] ?? 0;
+        $stmt_subjek->close();
+    }
     
 } catch (Exception $e) {
     error_log("Error getting counts: " . $e->getMessage());
 }
-
-
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -341,8 +350,6 @@ try {
             z-index: 900;
             transition: var(--transition);
         }
-
-
 
         .sidebar-section {
             margin-bottom: 30px;
@@ -1708,10 +1715,10 @@ try {
 </body>
 </html>
 <?php
-// Close database connections
-if (isset($stmt)) $stmt->close();
-if (isset($stmt_students)) $stmt_students->close();
-if (isset($stmt_unmarked)) $stmt_unmarked->close();
-if (isset($stmt_subjek)) $stmt_subjek->close();
-if (isset($db)) $db->close();
+// Close database connections - SEMAK SAMA ADA VARIABLE WUJUD SEBELUM CLOSE
+if (isset($stmt) && $stmt instanceof mysqli_stmt) $stmt->close();
+if (isset($stmt_students) && $stmt_students instanceof mysqli_stmt) $stmt_students->close();
+if (isset($stmt_unmarked) && $stmt_unmarked instanceof mysqli_stmt) $stmt_unmarked->close();
+if (isset($stmt_subjek) && $stmt_subjek instanceof mysqli_stmt) $stmt_subjek->close();
+if (isset($db) && $db instanceof mysqli) $db->close();
 ?>
