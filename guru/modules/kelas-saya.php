@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Database connection - GUNA PATH YANG BETUL
-require_once __DIR__ . '/../config/connect.php'; // Guna $conn bukan $database
+require_once __DIR__ . '/config/connect.php'; // Guna $conn bukan $database
 
 // Check login dengan lebih ketat
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
