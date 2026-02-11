@@ -4,8 +4,31 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Database connection - GUNA PATH YANG BETUL
-require_once __DIR__ . '/config/connect.php'; // Guna $conn bukan $database
+// ------------------------------------------------------------
+// CARA 1: GUNA MULTIPLE PATH CHECKING
+// ------------------------------------------------------------
+$possible_paths = [
+    __DIR__ . '/../config/connect.php',
+    __DIR__ . '/../../config/connect.php',
+    dirname(__DIR__) . '/config/connect.php',
+    dirname(dirname(__DIR__)) . '/config/connect.php',
+    $_SERVER['DOCUMENT_ROOT'] . '/dashboard/SlipKu/config/connect.php',
+    'C:/xampp/htdocs/dashboard/SlipKu/config/connect.php'
+];
+
+$connected = false;
+foreach ($possible_paths as $path) {
+    if (file_exists($path)) {
+        require_once $path;
+        $connected = true;
+        break;
+    }
+}
+
+if (!$connected) {
+    die("<h3>ERROR: Cannot find connect.php</h3>
+         <p>Please check the file path. Run <a href='debug-path.php'>debug-path.php</a> to debug.</p>");
+}
 
 // Check login dengan lebih ketat
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -36,6 +59,13 @@ $total_murid_keseluruhan = 0;
 $total_prestasi = 0;
 
 try {
+    // GUNA $conn (dari connect.php) atau $database (bergantung pada config)
+    $db = isset($conn) ? $conn : (isset($database) ? $database : null);
+    
+    if (!$db) {
+        throw new Exception("Database connection not found");
+    }
+    
     $sql = "SELECT 
             k.id, 
             k.nama,
@@ -55,7 +85,7 @@ try {
         GROUP BY k.id, k.nama, k.tingkatan, k.tahun
         ORDER BY k.tingkatan, k.nama";
     
-    $stmt = $conn->prepare($sql);
+    $stmt = $db->prepare($sql);
     if ($stmt) {
         $stmt->bind_param("i", $guru_id);
         $stmt->execute();
@@ -79,10 +109,11 @@ try {
         }
         $stmt->close();
     } else {
-        error_log("Error preparing query: " . $conn->error);
+        error_log("Error preparing query: " . $db->error);
     }
 } catch (Exception $e) {
     error_log("Exception in kelas-saya.php: " . $e->getMessage());
+    echo "<!-- Debug Error: " . $e->getMessage() . " -->";
 }
 
 // Calculate totals for stats
@@ -90,15 +121,17 @@ $totalClasses = count($classes);
 $totalStudents = $total_murid_keseluruhan;
 $avgPerformance = $totalClasses > 0 ? round($total_prestasi / $totalClasses, 1) : 0;
 
-// Get total active students (keseluruhan sekolah - untuk sidebar badge)
+// Get total active students (untuk sidebar badge)
 $total_students = 0;
 try {
-    $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
-    $stmt_students = $conn->prepare($sql_students);
-    $stmt_students->execute();
-    $result = $stmt_students->get_result();
-    $total_students = $result->fetch_assoc()['total'] ?? 0;
-    $stmt_students->close();
+    if (isset($db)) {
+        $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
+        $stmt_students = $db->prepare($sql_students);
+        $stmt_students->execute();
+        $result = $stmt_students->get_result();
+        $total_students = $result->fetch_assoc()['total'] ?? 0;
+        $stmt_students->close();
+    }
 } catch (Exception $e) {
     $total_students = 0;
 }
@@ -106,22 +139,24 @@ try {
 // Get unmarked exams (untuk badge di sidebar)
 $unmarked_count = 0;
 try {
-    $sql_unmarked = "SELECT COUNT(*) as total 
-                     FROM markah m
-                     JOIN peperiksaan p ON m.id_peperiksaan = p.id
-                     JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
-                        AND p.id_kelas = pj.id_kelas
-                     WHERE pj.id_guru = ? 
-                        AND (m.gred IS NULL OR m.gred = '')
-                        AND m.status = 'aktif'
-                        AND p.status = 'aktif'
-                        AND pj.status = 'aktif'";
-    $stmt_unmarked = $conn->prepare($sql_unmarked);
-    $stmt_unmarked->bind_param("i", $guru_id);
-    $stmt_unmarked->execute();
-    $result = $stmt_unmarked->get_result();
-    $unmarked_count = $result->fetch_assoc()['total'] ?? 0;
-    $stmt_unmarked->close();
+    if (isset($db)) {
+        $sql_unmarked = "SELECT COUNT(*) as total 
+                         FROM markah m
+                         JOIN peperiksaan p ON m.id_peperiksaan = p.id
+                         JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
+                            AND p.id_kelas = pj.id_kelas
+                         WHERE pj.id_guru = ? 
+                            AND (m.gred IS NULL OR m.gred = '')
+                            AND m.status = 'aktif'
+                            AND p.status = 'aktif'
+                            AND pj.status = 'aktif'";
+        $stmt_unmarked = $db->prepare($sql_unmarked);
+        $stmt_unmarked->bind_param("i", $guru_id);
+        $stmt_unmarked->execute();
+        $result = $stmt_unmarked->get_result();
+        $unmarked_count = $result->fetch_assoc()['total'] ?? 0;
+        $stmt_unmarked->close();
+    }
 } catch (Exception $e) {
     $unmarked_count = 0;
 }
@@ -129,18 +164,23 @@ try {
 // Get subjects count (untuk sidebar badge)
 $subjek_count = 0;
 try {
-    $sql_subjek = "SELECT COUNT(DISTINCT id_matapelajaran) as total 
-                   FROM pengajar 
-                   WHERE id_guru = ? AND status = 'aktif'";
-    $stmt_subjek = $conn->prepare($sql_subjek);
-    $stmt_subjek->bind_param("i", $guru_id);
-    $stmt_subjek->execute();
-    $result = $stmt_subjek->get_result();
-    $subjek_count = $result->fetch_assoc()['total'] ?? 0;
-    $stmt_subjek->close();
+    if (isset($db)) {
+        $sql_subjek = "SELECT COUNT(DISTINCT id_matapelajaran) as total 
+                       FROM pengajar 
+                       WHERE id_guru = ? AND status = 'aktif'";
+        $stmt_subjek = $db->prepare($sql_subjek);
+        $stmt_subjek->bind_param("i", $guru_id);
+        $stmt_subjek->execute();
+        $result = $stmt_subjek->get_result();
+        $subjek_count = $result->fetch_assoc()['total'] ?? 0;
+        $stmt_subjek->close();
+    }
 } catch (Exception $e) {
     $subjek_count = 0;
 }
+
+// Get teacher info for display
+$teacher_name = $_SESSION['guru_nama'] ?? 'Guru';
 ?>
 <!DOCTYPE html>
 <html lang="ms">
