@@ -5,11 +5,37 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Check login
-if (!isset($_SESSION['guru_id'])) {
+// Check login dengan lebih ketat
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+    // Clear any existing session data
+    session_unset();
+    session_destroy();
+    
+    // Start fresh session for error message
+    session_start();
+    $_SESSION['login_error'] = 'Sila log masuk terlebih dahulu.';
+    
     header('Location: login-guru.php');
     exit();
 }
+
+// Check session timeout (30 minit)
+$session_timeout = 1800; // 30 minit dalam saat
+if (isset($_SESSION['guru_login_time']) && (time() - $_SESSION['guru_login_time'] > $session_timeout)) {
+    // Session expired
+    session_unset();
+    session_destroy();
+    
+    // Start fresh session for error message
+    session_start();
+    $_SESSION['login_error'] = 'Sesi anda telah tamat. Sila log masuk semula.';
+    
+    header('Location: login-guru.php');
+    exit();
+}
+
+// Renew session time
+$_SESSION['guru_login_time'] = time();
 
 // Database connection
 require_once __DIR__ . '/../config/connect.php';
@@ -20,6 +46,31 @@ if (!isset($conn) || !($conn instanceof mysqli)) {
 }
 
 $id_guru = $_SESSION['guru_id'];
+
+// VERIFY guru exists in database (security check)
+$sql_verify = "SELECT id, nama FROM guru WHERE id = ? AND status = 'aktif'";
+$stmt_verify = $conn->prepare($sql_verify);
+$stmt_verify->bind_param("i", $id_guru);
+$stmt_verify->execute();
+$verify_result = $stmt_verify->get_result();
+
+if ($verify_result->num_rows === 0) {
+    // Guru tidak wujud atau tidak aktif
+    session_unset();
+    session_destroy();
+    
+    // Start fresh session for error message
+    session_start();
+    $_SESSION['login_error'] = 'Akaun tidak sah. Sila log masuk semula.';
+    
+    header('Location: login-guru.php');
+    exit();
+}
+
+$guru = $verify_result->fetch_assoc();
+// Update session dengan data terkini dari DB
+$_SESSION['guru_nama'] = $guru['nama'];
+
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // Get teacher info

@@ -4,11 +4,8 @@ session_start();
 // Guna config file bukan buat connection sendiri
 require_once __DIR__ . '/../config/connect.php';
 
-// Redirect jika sudah login
-if (isset($_SESSION['guru_id'])) {
-    header('Location: dashboard-guru.php');
-    exit();
-}
+// JANGAN redirect jika sudah login - biar user pilih nak logout atau teruskan
+// Hanya redirect jika user secara aktif nak ke login page (bukan dari form submit)
 
 $error_message = '';
 
@@ -36,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['guru_email'] = $row['email'];
                     $_SESSION['guru_role'] = 'guru';
                     $_SESSION['guru_login_time'] = time();
+                    $_SESSION['logged_in'] = true; // ADD THIS FLAG
                     
                     // Redirect ke dashboard
                     header('Location: dashboard-guru.php');
