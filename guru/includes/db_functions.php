@@ -8,9 +8,9 @@ function connectDB() {
     $host = 'localhost';
     $username = 'root';
     $password = 'danialdev';
-    $conn = 'slipku_db';
+    $database = 'slipku_db';
     
-    $conn = mysqli_connect($host, $username, $password, $conn);
+    $conn = mysqli_connect($host, $username, $password, $database);
     
     if (!$conn) {
         die("Connection failed: " . mysqli_connect_error());
@@ -51,13 +51,11 @@ function authenticateGuru($email, $password) {
     if ($row = $result->fetch_assoc()) {
         error_log("User found: " . print_r($row, true));
         
-        // Semak kata laluan (tanpa hash - berdasarkan data anda)
         if ($password === $row['password']) {
-            // Semak status
             if ($row['status'] == 'aktif' || $row['status'] == '1') {
                 return [
                     'guru_id' => $row['id'],
-                    'guru_nama' => $row['nama'], // Betulkan dari 'name' ke 'nama'
+                    'guru_nama' => $row['nama'],
                     'guru_email' => $row['email'],
                     'guru_role' => 'guru',
                     'status' => $row['status']
@@ -86,14 +84,13 @@ function checkGuruLogin() {
 }
 
 /**
- * Get guru by ID - VERSION YANG DAH DIBETULKAN
+ * Get guru by ID
  */
 function getGuruById($guru_id) {
     global $conn;
     
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
     
-    // GUNA id SAHAJA - column yang BETUL dalam table guru
     $sql = "SELECT * FROM guru WHERE id = '$guru_id' AND status = 1 LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
@@ -116,18 +113,21 @@ function getGuruById($guru_id) {
 // ============================================
 
 /**
- * Get students by guru with filters
+ * Get students by guru with filters - VERSION DENGAN JOIN TERUS KE kelas
  */
 function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $status = '', $prestasi = '') {
     global $conn;
+    
+    $guru_id = mysqli_real_escape_string($conn, $guru_id);
     
     $sql = "SELECT 
                 p.*, 
                 k.nama as kelas_nama,
                 k.tahun
             FROM pelajar p
-            LEFT JOIN kelas k ON p.id_kelas = k.id
-            WHERE 1=1";
+            JOIN kelas k ON p.id_kelas = k.id
+            JOIN pengajar pj ON k.id = pj.id_kelas
+            WHERE pj.id_guru = '$guru_id'";
 
     if (!empty($search)) {
         $search = mysqli_real_escape_string($conn, $search);
@@ -145,10 +145,10 @@ function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $sta
     }
 
     if (!empty($status)) {
+        $status_value = 1;
         if ($status === 'active') $status_value = 1;
         elseif ($status === 'inactive') $status_value = 0;
         elseif ($status === 'graduated') $status_value = 2;
-        else $status_value = 1;
         
         $sql .= " AND p.status = '$status_value'";
     }
@@ -194,25 +194,13 @@ function tambahPelajar($data) {
     $nama = mysqli_real_escape_string($conn, $data['nama']);
     $no_ic = mysqli_real_escape_string($conn, $data['no_ic']);
     $jantina = mysqli_real_escape_string($conn, $data['jantina']);
+    $id_kelas = isset($data['id_kelas']) ? mysqli_real_escape_string($conn, $data['id_kelas']) : null;
     $status = isset($data['status']) ? $data['status'] : 'active';
 
-    $status_value = ($status === 'active') ? 1 : 
-                   (($status === 'inactive') ? 0 : 2);
+    $status_value = ($status === 'active') ? 1 : (($status === 'inactive') ? 0 : 2);
     
-    // Generate student ID
-    $last_id_sql = "SELECT MAX(id) as max_id FROM pelajar";
-    $last_id_result = mysqli_query($conn, $last_id_sql);
-    $last_id = 1;
-    
-    if ($last_id_result && mysqli_num_rows($last_id_result) > 0) {
-        $row = mysqli_fetch_assoc($last_id_result);
-        $last_id = $row['max_id'] + 1;
-    }
-    
-    $id_kelas = 'S' . str_pad($last_id, 3, '0', STR_PAD_LEFT) . date('Y');
-    
-    $sql = "INSERT INTO pelajar (nama, no_kp, jantina, status, id_kelas) 
-            VALUES ('$nama', '$no_ic', '$jantina', '$status_value', '$id_kelas')";
+    $sql = "INSERT INTO pelajar (nama, no_kp, jantina, id_kelas, status) 
+            VALUES ('$nama', '$no_ic', '$jantina', " . ($id_kelas ? "'$id_kelas'" : "NULL") . ", '$status_value')";
     
     return mysqli_query($conn, $sql);
 }
@@ -227,15 +215,16 @@ function kemaskiniPelajar($id, $data) {
     $nama = mysqli_real_escape_string($conn, $data['nama']);
     $no_ic = mysqli_real_escape_string($conn, $data['no_ic']);
     $jantina = mysqli_real_escape_string($conn, $data['jantina']);
+    $id_kelas = isset($data['id_kelas']) ? mysqli_real_escape_string($conn, $data['id_kelas']) : null;
     $status = isset($data['status']) ? $data['status'] : 'active';
 
-    $status_value = ($status === 'active') ? 1 : 
-                   (($status === 'inactive') ? 0 : 2);
+    $status_value = ($status === 'active') ? 1 : (($status === 'inactive') ? 0 : 2);
     
     $sql = "UPDATE pelajar 
             SET nama = '$nama', 
                 no_kp = '$no_ic', 
                 jantina = '$jantina', 
+                id_kelas = " . ($id_kelas ? "'$id_kelas'" : "NULL") . ",
                 status = '$status_value'
             WHERE id = '$id'";
     
@@ -295,14 +284,13 @@ function getAllKelas() {
 }
 
 /**
- * Get classes by guru - VERSION YANG DAH DIBETULKAN
+ * Get classes by guru
  */
 function getKelasByGuru($guru_id) {
     global $conn;
 
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
     
-    // Query dengan JOIN ke table pengajar
     $sql = "SELECT k.* FROM kelas k
             JOIN pengajar p ON k.id = p.id_kelas
             WHERE p.id_guru = '$guru_id' AND k.status = 1
@@ -338,11 +326,11 @@ function getKelasById($id) {
 }
 
 // ============================================
-// STATISTICS & REPORTS
+// STATISTICS & REPORTS - VERSION YANG DAH DIBETULKAN
 // ============================================
 
 /**
- * Get student statistics - VERSION YANG DAH DIBETULKAN
+ * Get student statistics - GUNA id_kelas dalam table pelajar
  */
 function getStatistikPelajar($guru_id) {
     global $conn;
@@ -352,40 +340,38 @@ function getStatistikPelajar($guru_id) {
     // Total students dalam kelas yang diajar oleh guru ini
     $sql_total = "SELECT COUNT(DISTINCT p.id) as total 
                   FROM pelajar p
-                  JOIN pendaftaran_kelas pk ON p.id = pk.id_pelajar
-                  JOIN kelas k ON pk.id_kelas = k.id
+                  JOIN kelas k ON p.id_kelas = k.id
                   JOIN pengajar pj ON k.id = pj.id_kelas
-                  WHERE pj.id_guru = '$guru_id' AND p.status = 1";
+                  WHERE pj.id_guru = '$guru_id'";
     
     $result_total = mysqli_query($conn, $sql_total);
     $total = 0;
     
-    if ($result_total && mysqli_num_rows($result_total) > 0) {
+    if ($result_total) {
         $row = mysqli_fetch_assoc($result_total);
-        $total = $row['total'];
+        $total = $row['total'] ?? 0;
     }
     
     // Active students
     $sql_active = "SELECT COUNT(DISTINCT p.id) as active 
                    FROM pelajar p
-                   JOIN pendaftaran_kelas pk ON p.id = pk.id_pelajar
-                   JOIN kelas k ON pk.id_kelas = k.id
+                   JOIN kelas k ON p.id_kelas = k.id
                    JOIN pengajar pj ON k.id = pj.id_kelas
                    WHERE pj.id_guru = '$guru_id' AND p.status = 1";
     
     $result_active = mysqli_query($conn, $sql_active);
     $active = 0;
     
-    if ($result_active && mysqli_num_rows($result_active) > 0) {
+    if ($result_active) {
         $row = mysqli_fetch_assoc($result_active);
-        $active = $row['active'];
+        $active = $row['active'] ?? 0;
     }
     
     return [
         'total_pelajar' => $total,
         'pelajar_aktif' => $active,
-        'prestasi_purata' => 78.5,
-        'kadar_kehadiran' => 92.3
+        'prestasi_purata' => 78.5, // Demo data
+        'kadar_kehadiran' => 92.3   // Demo data
     ];
 }
 
@@ -409,8 +395,7 @@ function bulkUpdateStudents($student_ids, $data) {
         $value = mysqli_real_escape_string($conn, $value);
         
         if ($key === 'status') {
-            $value = ($value === 'active') ? 1 : 
-                    (($value === 'inactive') ? 0 : 2);
+            $value = ($value === 'active') ? 1 : (($value === 'inactive') ? 0 : 2);
         }
         
         $updates[] = "$key = '$value'";
