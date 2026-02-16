@@ -5,6 +5,13 @@ include '../config/connect.php';
 // Query untuk dapatkan data guru
 $sql = "SELECT id, nama, email, no_telefon, status FROM guru WHERE 1";
 $result = mysqli_query($conn, $sql);
+
+// Dapatkan senarai status unik untuk dropdown (pilihan)
+$status_sql = mysqli_query($conn, "SELECT DISTINCT status FROM guru");
+$status_options = [];
+while ($s = mysqli_fetch_assoc($status_sql)) {
+    $status_options[] = $s['status'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -65,16 +72,17 @@ $result = mysqli_query($conn, $sql);
                 </button>
             </div>
             <div class="filter-grid">
-                <!-- Filter Status (Aktif/Tidak Aktif) -->
+                <!-- Filter Status (Aktif/Tidak Aktif) - dinamik dari DB -->
                 <div class="filter-group">
                     <label class="filter-label">Status</label>
                     <select class="filter-select" id="filterStatus" onchange="filterGuru()">
                         <option value="">Semua Status</option>
-                        <option value="aktif">Aktif</option>
-                        <option value="tidak aktif">Tidak Aktif</option>
+                        <?php foreach ($status_options as $status): ?>
+                            <option value="<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($status) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
-                <!-- Filter tambahan boleh ditambah kemudian, untuk sekarang diletakkan placeholder -->
+                <!-- Medan filter lain boleh ditambah kemudian, diabaikan buat masa ini -->
                 <div class="filter-group">
                     <label class="filter-label">Jantina</label>
                     <select class="filter-select" id="filterJantina" onchange="filterGuru()">
@@ -107,7 +115,7 @@ $result = mysqli_query($conn, $sql);
             <div class="table-header">
                 <h3>Senarai Guru</h3>
                 <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="window.open('Senarai-guru.php')">
+                    <button class="btn btn-secondary" onclick="window.open('./modules/Senarai-guru.php')">
                         <i class="fas fa-download"></i>
                         Eksport
                     </button>
@@ -126,7 +134,10 @@ $result = mysqli_query($conn, $sql);
                     </thead>
                     <tbody id="teachersTableBody">
                         <?php while ($row = mysqli_fetch_assoc($result)) { ?>
-                        <tr data-status="<?= strtolower($row['status']) ?>">
+                        <!-- Simpan data atribut untuk carian dan penapis -->
+                        <tr data-nama="<?= htmlspecialchars($row['nama']) ?>"
+                            data-email="<?= htmlspecialchars($row['email']) ?>"
+                            data-status="<?= htmlspecialchars($row['status']) ?>">
                             <td><?= htmlspecialchars($row['nama']) ?></td>
                             <td><?= htmlspecialchars($row['email']) ?></td>
                             <td><?= htmlspecialchars($row['no_telefon']) ?></td>
@@ -146,7 +157,7 @@ $result = mysqli_query($conn, $sql);
                 </table>
             </div>
 
-            <!-- Pagination -->
+            <!-- Pagination (placeholder) -->
             <div class="pagination">
                 <button class="pagination-btn" onclick="changePage('prev')">
                     <i class="fas fa-chevron-left"></i>
@@ -165,6 +176,11 @@ $result = mysqli_query($conn, $sql);
     </main>
 
     <script>
+        // Hilangkan loading overlay selepas halaman siap dimuat
+        window.addEventListener('load', function() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        });
+
         // Fungsi untuk memuat semula halaman
         function muatSemula() {
             location.reload();
@@ -172,62 +188,62 @@ $result = mysqli_query($conn, $sql);
 
         // Fungsi untuk pergi ke halaman tambah guru
         function tambahGuru() {
-            window.location.href = 'daftar-guru.php';
+            window.location.href = 'tambah-guru.php'; // atau 'daftar-guru.php' jika berbeza
         }
 
-        // Fungsi carian guru (client-side)
-        function cariGuru() {
-            const input = document.getElementById('searchInput').value.toLowerCase();
-            const rows = document.querySelectorAll('#teachersTableBody tr');
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(input) ? '' : 'none';
-            });
-        }
-
-        // Fungsi penapisan (filter) berdasarkan status, jantina, dll.
-        function filterGuru() {
-            const status = document.getElementById('filterStatus').value.toLowerCase();
-            const jantina = document.getElementById('filterJantina').value;
-            const jabatan = document.getElementById('filterJabatan').value;
-            const tahun = document.getElementById('filterTahun').value;
+        // Fungsi utama yang mengaplikasikan carian dan penapis
+        function applyFilters() {
+            const input = document.getElementById('searchInput').value.toLowerCase().trim();
+            const statusDipilih = document.getElementById('filterStatus').value;
+            // Filter lain (jantina, jabatan, tahun) tidak digunakan kerana tiada data, tapi kita boleh abaikan
+            // atau gunakan untuk penyaringan jika ada data atribut nanti.
 
             const rows = document.querySelectorAll('#teachersTableBody tr');
+
             rows.forEach(row => {
+                const nama = row.getAttribute('data-nama').toLowerCase();
+                const email = row.getAttribute('data-email').toLowerCase();
+                const statusRow = row.getAttribute('data-status');
+
                 let show = true;
 
-                // Filter status (data-status attribute)
-                if (status) {
-                    const rowStatus = row.getAttribute('data-status') || '';
-                    if (!rowStatus.includes(status)) show = false;
+                // Carian (nama atau email)
+                if (input !== '' && !nama.includes(input) && !email.includes(input)) {
+                    show = false;
                 }
 
-                // Filter jantina (anda boleh tambah data-jantina jika ada)
-                // Buat masa sekarang, jantina tidak wujud, jadi kita abaikan jika dipilih
-                if (jantina) {
-                    // Jika tiada data, sembunyikan row? Kita biarkan show = false untuk memudahkan,
-                    // tetapi untuk contoh kita anggap semua row tidak memenuhi jika jantina dipilih.
-                    // Untuk production, perlu ada data attribute jantina.
-                    // Sementara, kita hanya akan teruskan tanpa menyembunyikan.
-                    // show = false; // Jika nak uji, buka komen ini.
+                // Penapis status
+                if (statusDipilih !== '' && statusRow !== statusDipilih) {
+                    show = false;
                 }
 
-                // Filter jabatan (sama, abaikan)
-                // Filter tahun (abaikan)
+                // (Penapis lain boleh ditambah di sini jika ada data atribut)
 
                 row.style.display = show ? '' : 'none';
             });
         }
 
-        // Fungsi pagination (placeholder)
-        function changePage(page) {
-            alert('Navigasi ke halaman ' + page + ' (akan dilaksanakan)');
+        // Fungsi carian
+        function cariGuru() {
+            applyFilters();
         }
 
-        // Hilangkan loading overlay selepas page siap dimuat
-        window.addEventListener('load', function() {
-            document.getElementById('loadingOverlay').style.display = 'none';
+        // Fungsi penapisan
+        function filterGuru() {
+            applyFilters();
+        }
+
+        // Optional: tekan Enter dalam kotak carian terus mencari
+        document.getElementById('searchInput').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                applyFilters();
+            }
         });
+
+        // Fungsi pagination (placeholder)
+        function changePage(page) {
+            alert('Navigasi ke halaman ' + page + ' (akan dilaksanakan kemudian)');
+        }
     </script>
 </body>
 </html>
