@@ -24,7 +24,7 @@ $sql = "SELECT m.*,
         LEFT JOIN subject_details sd ON m.id = sd.id_matapelajaran
         WHERE m.id = ? AND m.status = 1";
 
-$stmt = $database->prepare($sql);
+$stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $subject_id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } else {
         // Check if kod sudah digunakan oleh subjek lain
         $check_sql = "SELECT id FROM matapelajaran WHERE kod = ? AND id != ?";
-        $check_stmt = $database->prepare($check_sql);
+        $check_stmt = $conn->prepare($check_sql);
         $check_stmt->bind_param("si", $kod, $subject_id);
         $check_stmt->execute();
         $check_result = $check_stmt->get_result();
@@ -64,13 +64,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             // Update matapelajaran table
             $update_sql = "UPDATE matapelajaran SET kod = ?, nama = ?, tahun = ? WHERE id = ?";
-            $update_stmt = $database->prepare($update_sql);
+            $update_stmt = $conn->prepare($update_sql);
             $update_stmt->bind_param("sssi", $kod, $nama, $tahun, $subject_id);
             
             if ($update_stmt->execute()) {
                 // Check if subject_details exists
                 $check_details = "SELECT id FROM subject_details WHERE id_matapelajaran = ?";
-                $check_details_stmt = $database->prepare($check_details);
+                $check_details_stmt = $conn->prepare($check_details);
                 $check_details_stmt->bind_param("i", $subject_id);
                 $check_details_stmt->execute();
                 $details_result = $check_details_stmt->get_result();
@@ -78,14 +78,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 if ($details_result->num_rows > 0) {
                     // Update existing record
                     $update_details = "UPDATE subject_details SET jenis = ?, penerangan = ?, buku_teks = ?, catatan = ? WHERE id_matapelajaran = ?";
-                    $update_details_stmt = $database->prepare($update_details);
+                    $update_details_stmt = $conn->prepare($update_details);
                     $update_details_stmt->bind_param("ssssi", $jenis, $penerangan, $buku_teks, $catatan, $subject_id);
                     $update_details_stmt->execute();
                     $update_details_stmt->close();
                 } else {
                     // Insert new record
                     $insert_details = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks, catatan) VALUES (?, ?, ?, ?, ?)";
-                    $insert_details_stmt = $database->prepare($insert_details);
+                    $insert_details_stmt = $conn->prepare($insert_details);
                     $insert_details_stmt->bind_param("issss", $subject_id, $jenis, $penerangan, $buku_teks, $catatan);
                     $insert_details_stmt->execute();
                     $insert_details_stmt->close();
@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $subject['catatan'] = $catatan;
                 
             } else {
-                $error_message = "Gagal mengemaskini subjek: " . $database->error;
+                $error_message = "Gagal mengemaskini subjek: " . $conn->error;
             }
             $update_stmt->close();
         }

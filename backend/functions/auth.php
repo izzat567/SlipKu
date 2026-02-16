@@ -1,9 +1,9 @@
 <?php
 
 
-function loginUser($database, $type, $email, $password) {
+function loginUser($conn, $type, $email, $password) {
     // Escape input to prevent SQL injection
-    $email = mysqli_real_escape_string($database, $email);
+    $email = mysqli_real_escape_string($conn, $email);
     
     echo "thinglk";
     if ($type == 'admin') {
@@ -11,7 +11,7 @@ function loginUser($database, $type, $email, $password) {
         $sql = "SELECT `id`, `email`, `nama`, `katalaluan`, `status` 
                 FROM `admins` 
                 WHERE `email` = '$email' AND `status` = '1'";
-        $result = mysqli_query($database, $sql);
+        $result = mysqli_query($conn, $sql);
 
         
         if ($result && mysqli_num_rows($result) > 0) {
@@ -50,7 +50,7 @@ function loginUser($database, $type, $email, $password) {
         $sql = "SELECT `id_guru`, `nama`, `email`, `password`, `status` 
                 FROM `guru` 
                 WHERE `email` = '$email' AND `status` = 'active'";
-        $result = mysqli_query($database, $sql);
+        $result = mysqli_query($conn, $sql);
         
         if ($result && mysqli_num_rows($result) > 0) {
             $user = mysqli_fetch_assoc($result);
@@ -136,7 +136,7 @@ function logout() {
     exit();
 }
 
-// mysqli_close($database);
+// mysqli_close($conn);
 
 
 ?>

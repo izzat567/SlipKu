@@ -17,7 +17,7 @@ FROM pelajar
 JOIN kelas ON pelajar.id_kelas = kelas.id
 ";
 
-$result = mysqli_query($database, $sql);
+$result = mysqli_query($conn, $sql);
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -71,7 +71,7 @@ error_reporting(E_ALL);
                         <h3>JUMLAH PELAJAR</h3>
                         <?php 
 
-                            $pelajar_total_sql = mysqli_query($database, "SELECT COUNT(*) AS total FROM pelajar");
+                            $pelajar_total_sql = mysqli_query($conn, "SELECT COUNT(*) AS total FROM pelajar");
                             $pelajar_total = mysqli_fetch_assoc($pelajar_total_sql);
                         
                         ?>
@@ -93,7 +93,7 @@ error_reporting(E_ALL);
                     <div class="stat-info">
                         <h3>JUMLAH GURU</h3>
                         <?php 
-                            $guru_sql = mysqli_query($database, "SELECT COUNT(*) AS total FROM guru");
+                            $guru_sql = mysqli_query($conn, "SELECT COUNT(*) AS total FROM guru");
                             $guru = mysqli_fetch_assoc($guru_sql);
 
                         ?>
@@ -115,7 +115,7 @@ error_reporting(E_ALL);
                     <div class="stat-info">
                         <h3>JUMLAH KELAS</h3>
                         <?php 
-                            $kelas_sql = mysqli_query($database, "SELECT COUNT(*) AS total FROM kelas");
+                            $kelas_sql = mysqli_query($conn, "SELECT COUNT(*) AS total FROM kelas");
                             $kelas = mysqli_fetch_assoc($kelas_sql);
 
                         ?>
