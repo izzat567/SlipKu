@@ -1,3 +1,94 @@
+<?php
+// result_gred.php
+session_start();
+
+// SEMAK 1: Jika tiada data keputusan
+if (!isset($_SESSION['result_data'])) {
+    // SEMAK 2: Jika ada error, redirect dengan error
+    if (isset($_SESSION['error'])) {
+        $error_msg = $_SESSION['error'];
+        unset($_SESSION['error']);
+        header("Location: form_student_gred.php?error=" . urlencode($error_msg));
+        exit();
+    }
+    // Jika tiada data langsung, redirect ke form
+    header("Location: form_student_gred.php");
+    exit();
+}
+
+// SEMAK 3: Debug - Tampilkan data session untuk memastikan ada
+error_log("Session data result_gred.php: " . print_r($_SESSION['result_data'], true));
+
+// SEMAK 4: Validasi struktur data
+$data = $_SESSION['result_data'];
+
+if (!isset($data['student']) || !isset($data['subjects'])) {
+    header("Location: form_student_gred.php?error=Data+keputusan+tidak+lengkap");
+    unset($_SESSION['result_data']);
+    exit();
+}
+
+// SEMAK 5: Pastikan ada sekurang-kurangnya 1 mata pelajaran
+if (empty($data['subjects'])) {
+    header("Location: form_student_gred.php?error=Tiada+rekod+keputusan+ditemui");
+    unset($_SESSION['result_data']);
+    exit();
+}
+
+// Dapatkan data dari session
+$student = $data['student'];
+$exam = $data['exam'];
+$subjects = $data['subjects'];
+$summary = $data['summary'] ?? [
+    'total_subjects' => count($subjects),
+    'average_grade' => 'N/A',
+    'gpa' => 0,
+    'total_points' => 0,
+    'rank' => 'N/A'
+];
+
+// Format tarikh
+$current_date = date('d F Y');
+$exam_year = 2026; // Dari database
+
+// Fungsi untuk kelas warna gred
+function getGradeColorClass($grade) {
+    $gradeColors = [
+        'A+' => 'grade-a-plus',
+        'A' => 'grade-a',
+        'A-' => 'grade-a-minus',
+        'B+' => 'grade-b-plus',
+        'B' => 'grade-b',
+        'B-' => 'grade-b-minus',
+        'C+' => 'grade-c-plus',
+        'C' => 'grade-c',
+        'C-' => 'grade-c-minus',
+        'D' => 'grade-d',
+        'E' => 'grade-e',
+        'F' => 'grade-f'
+    ];
+    return $gradeColors[$grade] ?? 'grade-default';
+}
+
+// Fungsi untuk dapatkan icon berdasarkan gred
+function getGradeIcon($grade) {
+    $icons = [
+        'A+' => 'fa-trophy',
+        'A' => 'fa-star',
+        'A-' => 'fa-star-half-alt',
+        'B+' => 'fa-award',
+        'B' => 'fa-certificate',
+        'B-' => 'fa-ribbon',
+        'C+' => 'fa-medal',
+        'C' => 'fa-shield-alt',
+        'C-' => 'fa-shield',
+        'D' => 'fa-flag',
+        'E' => 'fa-exclamation-triangle',
+        'F' => 'fa-times-circle'
+    ];
+    return $icons[$grade] ?? 'fa-question-circle';
+}
+?>
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -9,7 +100,265 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="./css/result.css">
-    
+    <style>
+        /* CSS untuk fallback jika result.css tidak ada */
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 30px;
+            margin-top: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 28px;
+        }
+        .logo-text h1 {
+            margin: 0;
+            color: #333;
+            font-size: 28px;
+        }
+        .logo-text p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: #f8f9fa;
+            color: #333;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s;
+            border: 1px solid #e0e0e0;
+        }
+        .back-button:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+        }
+        .student-info {
+            display: flex;
+            justify-content: space-between;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .student-details h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .student-details p {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .student-photo {
+            width: 120px;
+            height: 120px;
+        }
+        .subject-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+        .subject-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .subject-name {
+            font-weight: 600;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .subject-grade {
+            font-size: 24px;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: white;
+        }
+        .grade-a-plus { background: #28a745; }
+        .grade-a { background: #28a745; }
+        .grade-a-minus { background: #28a745; }
+        .grade-b-plus { background: #20c997; }
+        .grade-b { background: #20c997; }
+        .grade-b-minus { background: #20c997; }
+        .grade-c-plus { background: #ffc107; }
+        .grade-c { background: #ffc107; }
+        .grade-c-minus { background: #ffc107; }
+        .grade-d { background: #fd7e14; }
+        .grade-e { background: #dc3545; }
+        .grade-f { background: #6c757d; }
+        .subject-comment {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .summary-container {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 30px 0;
+        }
+        .summary-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .summary-item {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+        }
+        .summary-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .summary-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .actions-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+        .download-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s;
+        }
+        .download-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .share-options {
+            display: flex;
+            gap: 15px;
+        }
+        .share-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+            text-decoration: none;
+            transition: all 0.3s;
+            border: 1px solid #e0e0e0;
+        }
+        .share-button:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .result-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .result-title {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .result-subtitle {
+            color: #666;
+            font-size: 18px;
+        }
+        .subjects-title {
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .subject-count {
+            font-size: 14px;
+            color: #666;
+            font-weight: normal;
+        }
+        .subject-score {
+            font-size: 12px;
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+        .subject-code {
+            font-size: 14px;
+            color: #666;
+            font-weight: normal;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -24,9 +373,9 @@
                     <p>Sistem Keputusan Peperiksaan Digital</p>
                 </div>
             </div>
-            <a href="index.php" class="back-button">
+            <a href="form_student_gred.php" class="back-button">
                 <i class="fas fa-arrow-left"></i>
-                <span>Kembali ke Semakan</span>
+                <span>Semak Keputusan Lain</span>
             </a>
         </div>
 
@@ -35,31 +384,71 @@
             <!-- Result Header -->
             <div class="result-header">
                 <h1 class="result-title">Keputusan Peperiksaan Pelajar</h1>
-                <p class="result-subtitle">Peperiksaan Akhir Tahun 2023</p>
+                <p class="result-subtitle">
+                    <?php echo htmlspecialchars($exam['nama_peperiksaan'] ?? 'PEPERIKSAAN AKHIR TAHUN 2026'); ?> 
+                </p>
+                <p class="result-id">
+                    <small>Rujukan: STU<?php echo str_pad($student['id'] ?? '000', 3, '0', STR_PAD_LEFT); ?>-<?php echo date('Ymd'); ?></small>
+                </p>
             </div>
 
             <!-- Student Info -->
             <div class="student-info">
                 <div class="student-details">
-                    <h2 id="studentName">Syazrin Hadri Bin Shahrui Nizam</h2>
-                    <p><i class="fas fa-graduation-cap"></i> Kelas: 6 Bestari</p>
-                    <p><i class="fas fa-id-card"></i> No. KP: 030514100335</p>
-                    <p><i class="fas fa-calendar-alt"></i> Tarikh: 15 Disember 2023</p>
+                    <h2 id="studentName"><?php echo htmlspecialchars($student['nama']); ?></h2>
+                    <p><i class="fas fa-graduation-cap"></i> Kelas: <?php echo htmlspecialchars($student['nama_kelas'] ?? 'N/A'); ?></p>
+                    <p><i class="fas fa-id-card"></i> No. KP: <?php echo htmlspecialchars($student['no_kp']); ?></p>
+                    <p><i class="fas fa-calendar-alt"></i> Tarikh: <?php echo $current_date; ?></p>
+                    <p><i class="fas fa-chart-bar"></i> Jenis: <?php echo htmlspecialchars(ucfirst($exam['jenis'] ?? 'Peperiksaan')); ?></p>
                 </div>
                 <div class="student-photo">
-                    <!-- Placeholder for student photo -->
-                    <div style="width: 100%; height: 100%; background: linear-gradient(135deg, var(--primary-light), var(--primary)); display: flex; align-items: center; justify-content: center; color: white; font-size: 40px;">
-                        <i class="fas fa-user-graduate"></i>
+                    <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; border-radius: 8px;">
+                        <?php if (isset($student['jantina']) && $student['jantina'] == 'P'): ?>
+                            <i class="fas fa-female"></i>
+                        <?php else: ?>
+                            <i class="fas fa-male"></i>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
 
             <!-- Subjects Section -->
             <div class="subjects-container">
-                <h2 class="subjects-title"><i class="fas fa-book-open"></i> Keputusan Mata Pelajaran</h2>
+                <h2 class="subjects-title">
+                    <i class="fas fa-book-open"></i> 
+                    Keputusan Mata Pelajaran
+                    <span class="subject-count">(<?php echo count($subjects); ?> mata pelajaran)</span>
+                </h2>
                 
                 <div class="subject-cards" id="subjectCards">
-                    <!-- Subject cards will be populated by JavaScript -->
+                    <?php foreach ($subjects as $index => $subject): 
+                        $matapelajaran = $subject['matapelajaran'] ?? ['nama' => 'N/A', 'kod' => 'N/A'];
+                        $markah = $subject['markah'] ?? ['markah' => 0, 'gred' => 'N/A', 'catatan' => 'Tiada maklumat', 'point' => 0];
+                        $grade = $markah['gred'] ?? 'N/A';
+                        $score = $markah['markah'] ?? 0;
+                        $comment = $markah['catatan'] ?? 'Tiada maklumat.';
+                        $grade_icon = getGradeIcon($grade);
+                    ?>
+                    <div class="subject-card">
+                        <div class="subject-header">
+                            <div class="subject-name">
+                                <i class="fas <?php echo $grade_icon; ?> grade-icon"></i>
+                                <?php echo htmlspecialchars($matapelajaran['nama']); ?>
+                                <span class="subject-code">(<?php echo htmlspecialchars($matapelajaran['kod'] ?? 'N/A'); ?>)</span>
+                            </div>
+                            <div class="subject-grade <?php echo getGradeColorClass($grade); ?>">
+                                <?php echo htmlspecialchars($grade); ?>
+                                <?php if ($score > 0): ?>
+                                <div class="subject-score"><?php echo $score; ?>%</div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="subject-comment">
+                            <i class="fas fa-comment-dots"></i>
+                            <?php echo htmlspecialchars($comment); ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
 
@@ -68,19 +457,27 @@
                 <h2 class="summary-title"><i class="fas fa-chart-line"></i> Ringkasan Prestasi</h2>
                 <div class="summary-content">
                     <div class="summary-item">
-                        <div class="summary-value" id="totalSubjects">6</div>
+                        <div class="summary-value" id="totalSubjects"><?php echo $summary['total_subjects']; ?></div>
                         <div class="summary-label">Jumlah Mata Pelajaran</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value" id="averageGrade">A-</div>
+                        <div class="summary-value grade-value <?php echo getGradeColorClass($summary['average_grade']); ?>" 
+                             id="averageGrade">
+                            <?php echo $summary['average_grade']; ?>
+                        </div>
                         <div class="summary-label">Purata Gred</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value" id="gpaScore">3.67</div>
+                        <div class="summary-value" id="gpaScore"><?php echo number_format($summary['gpa'], 2); ?></div>
                         <div class="summary-label">GPA</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value" id="rankPosition">12/45</div>
+                        <div class="summary-value" id="rankPosition">
+                            <?php echo $summary['rank']; ?>
+                            <?php if ($summary['rank'] != 'N/A' && $summary['rank'] <= 3): ?>
+                                <i class="fas fa-crown rank-icon" style="color: #FFD700; margin-left: 5px;"></i>
+                            <?php endif; ?>
+                        </div>
                         <div class="summary-label">Kedudukan dalam Kelas</div>
                     </div>
                 </div>
@@ -88,18 +485,18 @@
 
             <!-- Actions Section -->
             <div class="actions-container">
-                <a href="#" class="download-button" id="downloadBtn">
+                <button class="download-button" id="downloadBtn" onclick="downloadSlip()">
                     <i class="fas fa-download"></i>
                     Muat Turun Slip Keputusan
-                </a>
+                </button>
                 <div class="share-options">
-                    <a href="#" class="share-button" title="Kongsi melalui WhatsApp">
+                    <a href="#" class="share-button" title="Kongsi melalui WhatsApp" onclick="shareViaWhatsApp()">
                         <i class="fab fa-whatsapp"></i>
                     </a>
-                    <a href="#" class="share-button" title="Kongsi melalui Email">
+                    <a href="#" class="share-button" title="Kongsi melalui Email" onclick="shareViaEmail()">
                         <i class="fas fa-envelope"></i>
                     </a>
-                    <a href="#" class="share-button" title="Cetak Slip">
+                    <a href="#" class="share-button" title="Cetak Slip" onclick="window.print()">
                         <i class="fas fa-print"></i>
                     </a>
                 </div>
@@ -108,13 +505,83 @@
 
         <!-- Footer -->
         <div class="footer">
-            <p>SlipKu &copy; 2023 - Sistem Keputusan Peperiksaan Digital. Semua hakcipta terpelihara.</p>
-            <p>Slip ini sah untuk tujuan rujukan rasmi.</p>
+            <p>SlipKu &copy; <?php echo date('Y'); ?> - Sistem Keputusan Peperiksaan Digital. Semua hakcipta terpelihara.</p>
+            <p>Slip ini sah untuk tujuan rujukan rasmi. Rujukan: STU<?php echo str_pad($student['id'] ?? '000', 3, '0', STR_PAD_LEFT); ?>-<?php echo date('Ymd'); ?></p>
         </div>
     </div>
 
-    <script src="./js/result.js">
-     
+    <script>
+    // Function untuk download slip
+    function downloadSlip() {
+        const downloadBtn = document.getElementById('downloadBtn');
+        const originalText = downloadBtn.innerHTML;
+        
+        // Show loading
+        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+        downloadBtn.disabled = true;
+        
+        // Simulate download process
+        setTimeout(() => {
+            // Create a printable version
+            const printContent = document.querySelector('.container').innerHTML;
+            const originalContent = document.body.innerHTML;
+            
+            document.body.innerHTML = printContent;
+            window.print();
+            document.body.innerHTML = originalContent;
+            
+            // Reset button
+            downloadBtn.innerHTML = originalText;
+            downloadBtn.disabled = false;
+            
+            // Show success message
+            alert('Slip keputusan siap untuk dicetak!');
+        }, 1500);
+    }
+    
+    // Function untuk share via WhatsApp
+    function shareViaWhatsApp() {
+        const studentName = document.getElementById('studentName').textContent;
+        const totalSubjects = document.getElementById('totalSubjects').textContent;
+        const averageGrade = document.getElementById('averageGrade').textContent;
+        const gpaScore = document.getElementById('gpaScore').textContent;
+        const rankPosition = document.getElementById('rankPosition').textContent;
+        
+        const text = `📊 KEPUTUSAN PEPERIKSAAN\n\n` +
+                     `Nama: ${studentName}\n` +
+                     `Jumlah Mata Pelajaran: ${totalSubjects}\n` +
+                     `Purata Gred: ${averageGrade}\n` +
+                     `GPA: ${gpaScore}\n` +
+                     `Kedudukan: ${rankPosition}\n\n` +
+                     `Lihat slip penuh di: ${window.location.href}`;
+        
+        const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
+    }
+    
+    // Function untuk share via Email
+    function shareViaEmail() {
+        const studentName = document.getElementById('studentName').textContent;
+        const totalSubjects = document.getElementById('totalSubjects').textContent;
+        const averageGrade = document.getElementById('averageGrade').textContent;
+        const gpaScore = document.getElementById('gpaScore').textContent;
+        
+        const subject = `Slip Keputusan Peperiksaan - ${studentName}`;
+        const body = `Berikut adalah slip keputusan peperiksaan:\n\n` +
+                     `NAMA: ${studentName}\n` +
+                     `JUMLAH MATA PELAJARAN: ${totalSubjects}\n` +
+                     `PURATA GRED: ${averageGrade}\n` +
+                     `GPA: ${gpaScore}\n\n` +
+                     `Lihat slip keputusan penuh di: ${window.location.href}\n\n` +
+                     `*Slip ini sah untuk tujuan rujukan rasmi*`;
+        
+        const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.location.href = url;
+    }
     </script>
 </body>
 </html>
+<?php
+// Clear session data setelah dipaparkan (optional)
+// unset($_SESSION['result_data']);
+?>
