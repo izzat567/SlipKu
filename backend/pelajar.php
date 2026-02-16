@@ -15,7 +15,7 @@ if(isset($_POST['create'])) {
     $jantina = $_POST['jantina'];
     
     // Validate inputs
-    $result = createPelajar($database, $id_kelas, $nama, $no_kp, $jantina);
+    $result = createPelajar($conn, $id_kelas, $nama, $no_kp, $jantina);
     
     if ($result['success']) {
         // Redirect to dashboard

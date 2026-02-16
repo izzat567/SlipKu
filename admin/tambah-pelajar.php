@@ -88,7 +88,7 @@ include '../config/connect.php';
                         <select name="id_kelas" id="studentClass" class="form-select" required>
                             <?php 
 
-                                $kelas_sql = mysqli_query($database, "SELECT * FROM kelas ORDER BY tahun ASC");
+                                $kelas_sql = mysqli_query($conn, "SELECT * FROM kelas ORDER BY tahun ASC");
                                 $kelas = mysqli_fetch_all($kelas_sql, MYSQLI_ASSOC);
                                 foreach($kelas as $kls){
                                     echo '<option value="'.$kls['id'].'">'.$kls['nama'].'</option>';

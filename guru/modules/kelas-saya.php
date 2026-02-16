@@ -50,7 +50,7 @@ if (isset($_SESSION['guru_nama'])) {
 }
 
 // Database connection
-$db = isset($conn) ? $conn : (isset($database) ? $database : null);
+$db = isset($conn) ? $conn : (isset($conn) ? $conn : null);
 
 if (!$db) {
     die("ERROR: Database connection not found.");

@@ -37,18 +37,18 @@ try {
     require_once __DIR__ . '/../../config/connect.php';
     
     // Start transaction
-    $database->begin_transaction();
+    $conn->begin_transaction();
     
     // 1. Dapatkan nama subjek untuk message
     $check_sql = "SELECT nama FROM matapelajaran WHERE id = ?";
-    $check_stmt = $database->prepare($check_sql);
+    $check_stmt = $conn->prepare($check_sql);
     $check_stmt->bind_param("i", $subject_id);
     $check_stmt->execute();
     $check_result = $check_stmt->get_result();
     
     if ($check_result->num_rows === 0) {
         $response['error'] = 'Subjek tidak ditemukan.';
-        $database->rollback();
+        $conn->rollback();
         echo json_encode($response);
         exit();
     }
@@ -59,16 +59,16 @@ try {
     
     // 2. DELETE sebenar dari matapelajaran
     // PERBAIKAN: Disable foreign key checks sementara untuk hard delete
-    $database->query("SET FOREIGN_KEY_CHECKS = 0");
+    $conn->query("SET FOREIGN_KEY_CHECKS = 0");
     
     $delete_sql = "DELETE FROM matapelajaran WHERE id = ?";
-    $delete_stmt = $database->prepare($delete_sql);
+    $delete_stmt = $conn->prepare($delete_sql);
     $delete_stmt->bind_param("i", $subject_id);
     
     if (!$delete_stmt->execute()) {
         $response['error'] = 'Gagal memadam subjek: ' . $delete_stmt->error;
-        $database->rollback();
-        $database->query("SET FOREIGN_KEY_CHECKS = 1");
+        $conn->rollback();
+        $conn->query("SET FOREIGN_KEY_CHECKS = 1");
         echo json_encode($response);
         exit();
     }
@@ -80,7 +80,7 @@ try {
     // Guru mata pelajaran
     try {
         $delete_gmp = "DELETE FROM guru_mata_pelajaran WHERE mata_pelajaran_id = ?";
-        $delete_gmp_stmt = $database->prepare($delete_gmp);
+        $delete_gmp_stmt = $conn->prepare($delete_gmp);
         $delete_gmp_stmt->bind_param("i", $subject_id);
         $delete_gmp_stmt->execute();
         $delete_gmp_stmt->close();
@@ -92,7 +92,7 @@ try {
     // Penilaian
     try {
         $delete_penilaian = "DELETE FROM penilaian WHERE mata_pelajaran_id = ?";
-        $delete_pen_stmt = $database->prepare($delete_penilaian);
+        $delete_pen_stmt = $conn->prepare($delete_penilaian);
         $delete_pen_stmt->bind_param("i", $subject_id);
         $delete_pen_stmt->execute();
         $delete_pen_stmt->close();
@@ -102,10 +102,10 @@ try {
     }
     
     // PERBAIKAN: Enable foreign key checks kembali
-    $database->query("SET FOREIGN_KEY_CHECKS = 1");
+    $conn->query("SET FOREIGN_KEY_CHECKS = 1");
     
     // 4. Commit transaction
-    $database->commit();
+    $conn->commit();
     
     if ($affected_rows > 0) {
         $response['success'] = true;
@@ -118,9 +118,9 @@ try {
     }
     
 } catch (Exception $e) {
-    if (isset($database) && $database) {
-        $database->rollback();
-        $database->query("SET FOREIGN_KEY_CHECKS = 1"); // Pastikan diaktifkan semula
+    if (isset($conn) && $conn) {
+        $conn->rollback();
+        $conn->query("SET FOREIGN_KEY_CHECKS = 1"); // Pastikan diaktifkan semula
     }
     $response['error'] = 'Ralat sistem: ' . $e->getMessage();
     error_log("DELETE ERROR: " . $e->getMessage());

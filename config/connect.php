@@ -11,7 +11,7 @@ $user = 'root';
 $password = 'danialdev';
 $dbname = 'slipku_db';
 
-// Create connection - GUNA $conn bukan $database
+// Create connection - GUNA $conn bukan $conn
 $conn = new mysqli($host, $user, $password, $dbname);
 
 // Check connection

@@ -5,8 +5,8 @@ class Auth {
     private $db;
     
     public function __construct() {
-        global $database;
-        $this->db = $database;
+        global $conn;
+        $this->db = $conn;
     }
     
     // Login guru
