@@ -58,10 +58,6 @@ $active_exams = isset($stats['active_exams']) ? $stats['active_exams'] : 0;
             Tambah Guru
             <span class="badge"><?php echo $total_subjects; ?></span>
         </a>
-        <a href="./../modules/analisis-prestasi.php" class="sidebar-item <?php echo $current_page == 'analisis-prestasi.php' ? 'active' : ''; ?>">
-            <i class="fas fa-chart-line"></i>
-            Kemaskini Guru
-        </a>
 
 
         <form action="../backend/admin.php" method="post">

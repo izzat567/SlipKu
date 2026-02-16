@@ -58,7 +58,7 @@
                             id="nama"
                             name="nama"
                             class="form-input"
-                            placeholder="Masukkan nama penuh (contoh: AHMAD BIN ALI)"
+                            placeholder="Masukkan nama penuh (contoh: ALI BIN AHMAD)"
                             required
                         >
                         <div class="focus-border"></div>
@@ -73,7 +73,7 @@
                         <div class="info-tooltip">
                             <i class="fas fa-info-circle"></i>
                             <div class="tooltip-text">
-                                Masukkan 12 digit nombor kad pengenalan (contoh: 010203045678 atau 010203-04-5678)
+                                Masukkan 12 digit nombor kad pengenalan (contoh: 170101-01-1234)
                             </div>
                         </div>
                     </label>
@@ -83,14 +83,14 @@
                             id="no_kp"
                             name="no_kp"
                             class="form-input"
-                            placeholder="Contoh: 010203045678 atau 010203-04-5678"
+                            placeholder="Contoh: 170101-01-1234"
                             required
-                            pattern="(\d{6}-\d{2}-\d{4}|\d{12})"
-                            title="Format: 010203045678 atau 010203-04-5678"
+                            pattern="\d{6}-\d{2}-\d{4}"
+                            title="Format: 170101-01-1234"
                         >
                         <div class="focus-border"></div>
                         <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
-                            Format: 12 digit tanpa '-' atau dengan '-' (contoh: 010203045678 atau 010203-04-5678)
+                            Format: 170101-01-1234
                         </small>
                     </div>
                 </div>
@@ -104,18 +104,24 @@
                     <div class="input-container">
                         <select id="kelas" name="kelas" class="form-input" required>
                             <option value="">Pilih Kelas</option>
-                            <option value="1A">1 ALPHA (1A)</option>
-                            <option value="1B">1 BETA (1B)</option>
-                            <option value="2A">2 ALPHA (2A)</option>
-                            <option value="2B">2 BETA (2B)</option>
-                            <option value="3A">3 ALPHA (3A)</option>
-                            <option value="3B">3 BETA (3B)</option>
-                            <option value="4A">4 ALPHA (4A)</option>
-                            <option value="4B">4 BETA (4B)</option>
-                            <option value="5A">5 ALPHA (5A)</option>
-                            <option value="5B">5 BETA (5B)</option>
-                            <option value="6A">6 ALPHA (6A)</option>
-                            <option value="6B">6 BETA (6B)</option>
+                            <option value="1 ALPHA">1 ALPHA</option>
+                            <option value="1 BETA">1 BETA</option>
+                            <option value="1 GAMMA">1 GAMMA</option>
+                            <option value="2 ALPHA">2 ALPHA</option>
+                            <option value="2 BETA">2 BETA</option>
+                            <option value="2 GAMMA">2 GAMMA</option>
+                            <option value="3 ALPHA">3 ALPHA</option>
+                            <option value="3 BETA">3 BETA</option>
+                            <option value="3 GAMMA">3 GAMMA</option>
+                            <option value="4 ALPHA">4 ALPHA</option>
+                            <option value="4 BETA">4 BETA</option>
+                            <option value="4 GAMMA">4 GAMMA</option>
+                            <option value="5 ALPHA">5 ALPHA</option>
+                            <option value="5 BETA">5 BETA</option>
+                            <option value="5 GAMMA">5 GAMMA</option>
+                            <option value="6 ALPHA">6 ALPHA</option>
+                            <option value="6 BETA">6 BETA</option>
+                            <option value="6 GAMMA">6 GAMMA</option>
                         </select>
                         <div class="focus-border"></div>
                     </div>
@@ -129,16 +135,9 @@
                             Tahun Pelajar
                         </label>
                         <div class="input-container">
-                            <select id="id_kelas" name="id_kelas" class="form-input" required>
-                                <option value="">Pilih Tahun</option>
-                                <option value="1">Tahun 1</option>
-                                <option value="2">Tahun 2</option>
-                                <option value="3">Tahun 3</option>
-                                <option value="4">Tahun 4</option>
-                                <option value="5">Tahun 5</option>
-                                <option value="6">Tahun 6</option>
-                            </select>
+                            <input type="text" id="id_kelas" name="id_kelas" class="form-input" value="2026" readonly>
                             <div class="focus-border"></div>
+                            <small style="color: #666; font-size: 12px;">Tahun akademik 2026</small>
                         </div>
                     </div>
 
@@ -151,9 +150,7 @@
                         <div class="input-container">
                             <select id="examType" name="examType" class="form-input" required>
                                 <option value="">Pilih Peperiksaan</option>
-                                <option value="percubaan">Peperiksaan Percubaan</option>
-                                <option value="pertengahan">Peperiksaan Pertengahan Tahun</option>
-                                <option value="akhir">Peperiksaan Akhir Tahun</option>
+                                <option value="bertulis" selected>Peperiksaan Akhir Tahun 2026</option>
                             </select>
                             <div class="focus-border"></div>
                         </div>
@@ -193,8 +190,6 @@
         const form = document.getElementById('studentResultForm');
         const loadingOverlay = document.getElementById('loadingOverlay');
         const successMessage = document.getElementById('successMessage');
-        const kelasSelect = document.getElementById('kelas');
-        const tahunSelect = document.getElementById('id_kelas');
         const noKpInput = document.getElementById('no_kp');
 
         // Format IC number input automatically
@@ -205,44 +200,15 @@
                 value = value.substring(0, 12);
             }
             
-            // Auto-format with dashes: 010203-04-5678
-            if (value.length >= 7) {
+            // Auto-format with dashes: 170101-01-1234
+            if (value.length >= 6) {
                 value = value.substring(0, 6) + '-' + value.substring(6);
             }
-            if (value.length >= 10) {
+            if (value.length >= 9) {
                 value = value.substring(0, 9) + '-' + value.substring(9);
             }
             
             e.target.value = value;
-        });
-
-        // Sync kelas and tahun selection
-        kelasSelect.addEventListener('change', function() {
-            const selectedOption = this.options[this.selectedIndex];
-            if (selectedOption.value) {
-                // Extract year from class name (e.g., "1A" -> "1")
-                const yearMatch = selectedOption.value.match(/^(\d+)/);
-                if (yearMatch) {
-                    tahunSelect.value = yearMatch[1];
-                }
-            }
-        });
-
-        tahunSelect.addEventListener('change', function() {
-            const year = this.value;
-            if (year) {
-                // Filter and highlight matching classes
-                for (let option of kelasSelect.options) {
-                    if (option.value) {
-                        const yearMatch = option.value.match(/^(\d+)/);
-                        if (yearMatch && yearMatch[1] === year) {
-                            option.style.fontWeight = 'bold';
-                        } else {
-                            option.style.fontWeight = 'normal';
-                        }
-                    }
-                }
-            }
         });
 
         // Handle form submission
@@ -262,9 +228,9 @@
             }
             
             // Validate IC number format
-            const icPattern = /^\d{6}-\d{2}-\d{4}$|^\d{12}$/;
+            const icPattern = /^\d{6}-\d{2}-\d{4}$/;
             if (!icPattern.test(no_kp)) {
-                alert('Sila masukkan nombor kad pengenalan yang sah.\nFormat: 010203045678 atau 010203-04-5678');
+                alert('Sila masukkan nombor kad pengenalan yang sah.\nFormat: 170101-01-1234');
                 return;
             }
             
@@ -286,10 +252,6 @@
         // Reset form button
         form.querySelector('button[type="reset"]').addEventListener('click', function() {
             successMessage.style.display = 'none';
-            // Reset class highlighting
-            for (let option of kelasSelect.options) {
-                option.style.fontWeight = 'normal';
-            }
         });
     });
     </script>

@@ -5,8 +5,8 @@ class GuruFunctions {
     private $db;
     
     public function __construct() {
-        global $database;
-        $this->db = $database;
+        global $conn;
+        $this->db = $conn;
     }
     
     // Dapatkan statistik guru

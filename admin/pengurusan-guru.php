@@ -1,3 +1,15 @@
+<<<<<<< HEAD
+=======
+<!-- sambungkan connection/config.php -->
+<?php
+include '../config/connect.php';
+
+// Query untuk dapatkan data guru
+$sql = "SELECT id, nama, email, no_telefon, status FROM guru WHERE 1";
+$result = mysqli_query($conn, $sql);
+?>
+
+>>>>>>> 43ff998a8910218b439c6f6ffc9faea894d37abd
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -8,13 +20,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<<<<<<< HEAD
     <link rel="stylesheet" href="./css/pengurusan-guru.css">
     
+=======
+    <link rel="stylesheet" href="./css/pengurusan-pelajar.css">
+>>>>>>> 43ff998a8910218b439c6f6ffc9faea894d37abd
 </head>
 <body>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
+<<<<<<< HEAD
         <div style="color: var(--dark-gray); font-size: 18px; font-weight: 600;">Memuatkan data...</div>
     </div>
 
@@ -273,6 +290,16 @@
 
    <!-- side bar -->
    <?php include './includes/header.php'; ?> 
+=======
+        <div style="color: var(--dark-gray); font-size: 18px; font-weight: 600;">Memuatkan papan pemuka...</div>
+    </div>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- include Header -->
+    <?php include './includes/header.php'; ?>
+>>>>>>> 43ff998a8910218b439c6f6ffc9faea894d37abd
 
     <!-- include side bar -->
     <?php include './includes/sidebar.php'; ?>
@@ -282,6 +309,7 @@
         <!-- Page Header -->
         <div class="page-header">
             <div class="page-title">
+<<<<<<< HEAD
                 <h2><i class="fas fa-user-tie"></i> Pengurusan Guru</h2>
                 <p>Urus maklumat guru di institusi anda</p>
             </div>
@@ -293,10 +321,24 @@
                     <i class="fas fa-user-plus">
                         <a href="tambah-guru.php"></a>
                     </i> Tambah Guru
+=======
+                <h2>Pengurusan Guru</h2>
+                <p>Urus dan kelola maklumat guru</p>
+            </div>
+            <div class="page-actions">
+                <button class="btn btn-primary" onclick="tambahGuru()">
+                    <i class="fas fa-user-plus"></i>
+                    Tambah Guru Baru
+                </button>
+                <button class="btn btn-secondary" onclick="muatSemula()">
+                    <i class="fas fa-sync-alt"></i>
+                    Muat Semula
+>>>>>>> 43ff998a8910218b439c6f6ffc9faea894d37abd
                 </button>
             </div>
         </div>
 
+<<<<<<< HEAD
         <!-- Search and Filter Bar -->
         <div class="search-filter-bar">
             <div class="search-box">
@@ -966,5 +1008,181 @@
             document.getElementById('editTarikhLahir').max = today;
         });
     </script> -->
+=======
+        <!-- Search and Filter -->
+        <div class="search-filter">
+            <div class="search-box">
+                <input type="text" class="search-input" placeholder="Cari guru dengan nama atau emel..." id="searchInput">
+                <button class="btn btn-primary" onclick="cariGuru()">
+                    <i class="fas fa-search"></i>
+                    Cari
+                </button>
+            </div>
+            <div class="filter-grid">
+                <!-- Filter Status (Aktif/Tidak Aktif) -->
+                <div class="filter-group">
+                    <label class="filter-label">Status</label>
+                    <select class="filter-select" id="filterStatus" onchange="filterGuru()">
+                        <option value="">Semua Status</option>
+                        <option value="aktif">Aktif</option>
+                        <option value="tidak aktif">Tidak Aktif</option>
+                    </select>
+                </div>
+                <!-- Filter tambahan boleh ditambah kemudian, untuk sekarang diletakkan placeholder -->
+                <div class="filter-group">
+                    <label class="filter-label">Jantina</label>
+                    <select class="filter-select" id="filterJantina" onchange="filterGuru()">
+                        <option value="">Semua Jantina</option>
+                        <option value="L">Lelaki</option>
+                        <option value="P">Perempuan</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Jabatan</label>
+                    <select class="filter-select" id="filterJabatan" onchange="filterGuru()">
+                        <option value="">Semua Jabatan</option>
+                        <option value="akademik">Akademik</option>
+                        <option value="kokurikulum">Kokurikulum</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Tahun</label>
+                    <select class="filter-select" id="filterTahun" onchange="filterGuru()">
+                        <option value="">Semua Tahun</option>
+                        <option value="1">Tahun 1</option>
+                        <option value="2">Tahun 2</option>
+                    </select>
+                </div>
+            </div>  
+        </div>
+
+        <!-- Teachers Table -->
+        <div class="students-table-container">
+            <div class="table-header">
+                <h3>Senarai Guru</h3>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="window.open('Senarai-guru.php')">
+                        <i class="fas fa-download"></i>
+                        Eksport
+                    </button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>NAMA GURU</th>
+                            <th>EMAIL</th>
+                            <th>NO. TELEFON</th>
+                            <th>STATUS</th>
+                            <th>TINDAKAN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="teachersTableBody">
+                        <?php while ($row = mysqli_fetch_assoc($result)) { ?>
+                        <tr data-status="<?= strtolower($row['status']) ?>">
+                            <td><?= htmlspecialchars($row['nama']) ?></td>
+                            <td><?= htmlspecialchars($row['email']) ?></td>
+                            <td><?= htmlspecialchars($row['no_telefon']) ?></td>
+                            <td><?= htmlspecialchars($row['status']) ?></td>
+                            <td>
+                                <form action="./kemaskini-guru.php" method="get">
+                                    <input type="hidden" name="id" value="<?= $row['id'] ?>">
+                                    <button type="submit" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-edit"></i>
+                                        Kemaskini
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination">
+                <button class="pagination-btn" onclick="changePage('prev')">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="pagination-btn active">1</button>
+                <button class="pagination-btn" onclick="changePage(2)">2</button>
+                <button class="pagination-btn" onclick="changePage(3)">3</button>
+                <button class="pagination-btn" onclick="changePage(4)">4</button>
+                <button class="pagination-btn" onclick="changePage(5)">5</button>
+                <span class="pagination-info">Muka surat 1 daripada 8</span>
+                <button class="pagination-btn" onclick="changePage('next')">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Fungsi untuk memuat semula halaman
+        function muatSemula() {
+            location.reload();
+        }
+
+        // Fungsi untuk pergi ke halaman tambah guru
+        function tambahGuru() {
+            window.location.href = 'daftar-guru.php';
+        }
+
+        // Fungsi carian guru (client-side)
+        function cariGuru() {
+            const input = document.getElementById('searchInput').value.toLowerCase();
+            const rows = document.querySelectorAll('#teachersTableBody tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(input) ? '' : 'none';
+            });
+        }
+
+        // Fungsi penapisan (filter) berdasarkan status, jantina, dll.
+        function filterGuru() {
+            const status = document.getElementById('filterStatus').value.toLowerCase();
+            const jantina = document.getElementById('filterJantina').value;
+            const jabatan = document.getElementById('filterJabatan').value;
+            const tahun = document.getElementById('filterTahun').value;
+
+            const rows = document.querySelectorAll('#teachersTableBody tr');
+            rows.forEach(row => {
+                let show = true;
+
+                // Filter status (data-status attribute)
+                if (status) {
+                    const rowStatus = row.getAttribute('data-status') || '';
+                    if (!rowStatus.includes(status)) show = false;
+                }
+
+                // Filter jantina (anda boleh tambah data-jantina jika ada)
+                // Buat masa sekarang, jantina tidak wujud, jadi kita abaikan jika dipilih
+                if (jantina) {
+                    // Jika tiada data, sembunyikan row? Kita biarkan show = false untuk memudahkan,
+                    // tetapi untuk contoh kita anggap semua row tidak memenuhi jika jantina dipilih.
+                    // Untuk production, perlu ada data attribute jantina.
+                    // Sementara, kita hanya akan teruskan tanpa menyembunyikan.
+                    // show = false; // Jika nak uji, buka komen ini.
+                }
+
+                // Filter jabatan (sama, abaikan)
+                // Filter tahun (abaikan)
+
+                row.style.display = show ? '' : 'none';
+            });
+        }
+
+        // Fungsi pagination (placeholder)
+        function changePage(page) {
+            alert('Navigasi ke halaman ' + page + ' (akan dilaksanakan)');
+        }
+
+        // Hilangkan loading overlay selepas page siap dimuat
+        window.addEventListener('load', function() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        });
+    </script>
+>>>>>>> 43ff998a8910218b439c6f6ffc9faea894d37abd
 </body>
 </html>

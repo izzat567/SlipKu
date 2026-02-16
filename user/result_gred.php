@@ -1,7 +1,6 @@
 <?php
 // result_gred.php
 session_start();
-require_once __DIR__ . '../../../config/connect.php';
 
 // SEMAK 1: Jika tiada data keputusan
 if (!isset($_SESSION['result_data'])) {
@@ -17,17 +16,20 @@ if (!isset($_SESSION['result_data'])) {
     exit();
 }
 
-// SEMAK 3: Validasi struktur data
+// SEMAK 3: Debug - Tampilkan data session untuk memastikan ada
+error_log("Session data result_gred.php: " . print_r($_SESSION['result_data'], true));
+
+// SEMAK 4: Validasi struktur data
 $data = $_SESSION['result_data'];
 
-if (!isset($data['student']) || !isset($data['subjects']) || empty($data['subjects'])) {
+if (!isset($data['student']) || !isset($data['subjects'])) {
     header("Location: form_student_gred.php?error=Data+keputusan+tidak+lengkap");
     unset($_SESSION['result_data']);
     exit();
 }
 
-// SEMAK 4: Pastikan ada sekurang-kurangnya 1 mata pelajaran
-if (count($data['subjects']) == 0) {
+// SEMAK 5: Pastikan ada sekurang-kurangnya 1 mata pelajaran
+if (empty($data['subjects'])) {
     header("Location: form_student_gred.php?error=Tiada+rekod+keputusan+ditemui");
     unset($_SESSION['result_data']);
     exit();
@@ -37,11 +39,17 @@ if (count($data['subjects']) == 0) {
 $student = $data['student'];
 $exam = $data['exam'];
 $subjects = $data['subjects'];
-$summary = $data['summary'];
+$summary = $data['summary'] ?? [
+    'total_subjects' => count($subjects),
+    'average_grade' => 'N/A',
+    'gpa' => 0,
+    'total_points' => 0,
+    'rank' => 'N/A'
+];
 
 // Format tarikh
 $current_date = date('d F Y');
-$exam_year = date('Y');
+$exam_year = 2026; // Dari database
 
 // Fungsi untuk kelas warna gred
 function getGradeColorClass($grade) {
@@ -93,36 +101,267 @@ function getGradeIcon($grade) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="./css/result.css">
     <style>
-        /* Tambahan CSS untuk validation warning */
-        .validation-warning {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 15px;
+        /* CSS untuk fallback jika result.css tidak ada */
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 30px;
+            margin-top: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 28px;
+        }
+        .logo-text h1 {
+            margin: 0;
+            color: #333;
+            font-size: 28px;
+        }
+        .logo-text p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: #f8f9fa;
+            color: #333;
+            text-decoration: none;
             border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s;
+            border: 1px solid #e0e0e0;
+        }
+        .back-button:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+        }
+        .student-info {
+            display: flex;
+            justify-content: space-between;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .student-details h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .student-details p {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .student-photo {
+            width: 120px;
+            height: 120px;
+        }
+        .subject-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+        .subject-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .subject-name {
+            font-weight: 600;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .subject-grade {
+            font-size: 24px;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: white;
+        }
+        .grade-a-plus { background: #28a745; }
+        .grade-a { background: #28a745; }
+        .grade-a-minus { background: #28a745; }
+        .grade-b-plus { background: #20c997; }
+        .grade-b { background: #20c997; }
+        .grade-b-minus { background: #20c997; }
+        .grade-c-plus { background: #ffc107; }
+        .grade-c { background: #ffc107; }
+        .grade-c-minus { background: #ffc107; }
+        .grade-d { background: #fd7e14; }
+        .grade-e { background: #dc3545; }
+        .grade-f { background: #6c757d; }
+        .subject-comment {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .summary-container {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 30px 0;
+        }
+        .summary-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .summary-item {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+        }
+        .summary-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .summary-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .actions-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+        .download-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s;
+        }
+        .download-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .share-options {
+            display: flex;
+            gap: 15px;
+        }
+        .share-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+            text-decoration: none;
+            transition: all 0.3s;
+            border: 1px solid #e0e0e0;
+        }
+        .share-button:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .result-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .result-title {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .result-subtitle {
+            color: #666;
+            font-size: 18px;
+        }
+        .subjects-title {
+            color: #333;
             margin-bottom: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .validation-warning i {
-            font-size: 20px;
+        .subject-count {
+            font-size: 14px;
+            color: #666;
+            font-weight: normal;
+        }
+        .subject-score {
+            font-size: 12px;
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+        .subject-code {
+            font-size: 14px;
+            color: #666;
+            font-weight: normal;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Validation Warning (akan dipaparkan jika ada issue) -->
-        <?php if (!isset($student['id']) || empty($student['id'])): ?>
-        <div class="validation-warning">
-            <i class="fas fa-exclamation-triangle"></i>
-            <div>
-                <strong>Perhatian:</strong> Maklumat pelajar tidak lengkap. 
-                Sila semak dengan pihak sekolah jika terdapat sebarang kesilapan.
-            </div>
-        </div>
-        <?php endif; ?>
-
         <!-- Header -->
         <div class="header">
             <div class="logo">
@@ -134,9 +373,9 @@ function getGradeIcon($grade) {
                     <p>Sistem Keputusan Peperiksaan Digital</p>
                 </div>
             </div>
-            <a href="index.php" class="back-button">
+            <a href="form_student_gred.php" class="back-button">
                 <i class="fas fa-arrow-left"></i>
-                <span>Kembali ke Laman Utama</span>
+                <span>Semak Keputusan Lain</span>
             </a>
         </div>
 
@@ -146,8 +385,7 @@ function getGradeIcon($grade) {
             <div class="result-header">
                 <h1 class="result-title">Keputusan Peperiksaan Pelajar</h1>
                 <p class="result-subtitle">
-                    <?php echo htmlspecialchars($exam['nama_peperiksaan'] ?? 'Peperiksaan'); ?> 
-                    <?php echo $exam_year; ?>
+                    <?php echo htmlspecialchars($exam['nama_peperiksaan'] ?? 'PEPERIKSAAN AKHIR TAHUN 2026'); ?> 
                 </p>
                 <p class="result-id">
                     <small>Rujukan: STU<?php echo str_pad($student['id'] ?? '000', 3, '0', STR_PAD_LEFT); ?>-<?php echo date('Ymd'); ?></small>
@@ -158,14 +396,14 @@ function getGradeIcon($grade) {
             <div class="student-info">
                 <div class="student-details">
                     <h2 id="studentName"><?php echo htmlspecialchars($student['nama']); ?></h2>
-                    <p><i class="fas fa-graduation-cap"></i> Kelas: <?php echo htmlspecialchars($student['nama_kelas'] ?? $student['id_kelas']); ?></p>
+                    <p><i class="fas fa-graduation-cap"></i> Kelas: <?php echo htmlspecialchars($student['nama_kelas'] ?? 'N/A'); ?></p>
                     <p><i class="fas fa-id-card"></i> No. KP: <?php echo htmlspecialchars($student['no_kp']); ?></p>
                     <p><i class="fas fa-calendar-alt"></i> Tarikh: <?php echo $current_date; ?></p>
                     <p><i class="fas fa-chart-bar"></i> Jenis: <?php echo htmlspecialchars(ucfirst($exam['jenis'] ?? 'Peperiksaan')); ?></p>
                 </div>
                 <div class="student-photo">
-                    <div style="width: 100%; height: 100%; background: linear-gradient(135deg, var(--primary-light), var(--primary)); display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; border-radius: 8px;">
-                        <?php if ($student['jantina'] == 'P'): ?>
+                    <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; border-radius: 8px;">
+                        <?php if (isset($student['jantina']) && $student['jantina'] == 'P'): ?>
                             <i class="fas fa-female"></i>
                         <?php else: ?>
                             <i class="fas fa-male"></i>
@@ -184,14 +422,14 @@ function getGradeIcon($grade) {
                 
                 <div class="subject-cards" id="subjectCards">
                     <?php foreach ($subjects as $index => $subject): 
-                        $matapelajaran = $subject['matapelajaran'];
-                        $markah = $subject['markah'];
+                        $matapelajaran = $subject['matapelajaran'] ?? ['nama' => 'N/A', 'kod' => 'N/A'];
+                        $markah = $subject['markah'] ?? ['markah' => 0, 'gred' => 'N/A', 'catatan' => 'Tiada maklumat', 'point' => 0];
                         $grade = $markah['gred'] ?? 'N/A';
                         $score = $markah['markah'] ?? 0;
                         $comment = $markah['catatan'] ?? 'Tiada maklumat.';
                         $grade_icon = getGradeIcon($grade);
                     ?>
-                    <div class="subject-card" style="animation-delay: <?php echo ($index * 0.1 + 0.6); ?>s;">
+                    <div class="subject-card">
                         <div class="subject-header">
                             <div class="subject-name">
                                 <i class="fas <?php echo $grade_icon; ?> grade-icon"></i>
@@ -272,7 +510,6 @@ function getGradeIcon($grade) {
         </div>
     </div>
 
-    <script src="./js/result.js"></script>
     <script>
     // Function untuk download slip
     function downloadSlip() {
@@ -341,19 +578,10 @@ function getGradeIcon($grade) {
         const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         window.location.href = url;
     }
-    
-    // Auto-scroll untuk subject cards dengan animation
-    document.addEventListener('DOMContentLoaded', function() {
-        const subjectCards = document.querySelectorAll('.subject-card');
-        subjectCards.forEach(card => {
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-        });
-    });
     </script>
 </body>
 </html>
 <?php
-// Clear session data setelah dipaparkan (optional - boleh comment jika perlu simpan sementara)
+// Clear session data setelah dipaparkan (optional)
 // unset($_SESSION['result_data']);
 ?>

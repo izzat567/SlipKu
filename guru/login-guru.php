@@ -1,65 +1,52 @@
 <?php
 session_start();
 
-// Include database connection
+// Guna config file bukan buat connection sendiri
 require_once __DIR__ . '/../config/connect.php';
 
-// Redirect if already logged in
-if (isset($_SESSION['guru_id'])) {
-    header('Location: dashboard-guru.php');
-    exit();
-}
+// JANGAN redirect jika sudah login - biar user pilih nak logout atau teruskan
+// Hanya redirect jika user secara aktif nak ke login page (bukan dari form submit)
 
 $error_message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = trim($_POST['password'] ?? '');
-    
-    // Validate inputs
+
     if (empty($email) || empty($password)) {
         $error_message = 'Sila isi semua ruangan yang diperlukan.';
     } else {
-        // Check in database - GUNA 'nama' BUKAN 'nama_guru'
-        $sql = "SELECT id_guru, nama, email, password, role, status 
-                FROM guru 
-                WHERE email = ? AND status = 1";
-        
-        $stmt = $database->prepare($sql);
+        // Query langsung ke database
+        $stmt = $conn->prepare("SELECT id, nama, email, password, status FROM guru WHERE email = ?");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
         
-        if ($result->num_rows === 1) {
-            $guru = $result->fetch_assoc();
-            
-            // Verify password
-            if ($password === $guru['password']) {
-                // Set session variables
-                $_SESSION['guru_id'] = $guru['id_guru'];
-                $_SESSION['guru_nama'] = $guru['nama'];  // <-- INI YANG BETUL
-                $_SESSION['guru_email'] = $guru['email'];
-                $_SESSION['guru_role'] = $guru['role'];
-                $_SESSION['guru_login_time'] = time();
-                
-                // Update last login
-                $update_sql = "UPDATE guru SET last_login = NOW() WHERE id_guru = ?";
-                $update_stmt = $database->prepare($update_sql);
-                $update_stmt->bind_param("i", $guru['id_guru']);
-                $update_stmt->execute();
-                $update_stmt->close();
-                
-                // Redirect to dashboard
-                header('Location: dashboard-guru.php');
-                exit();
+        if ($row = $result->fetch_assoc()) {
+            // Password check (plain text - ikut data)
+            if ($password === $row['password']) {
+                // Check status
+                if ($row['status'] == 'aktif') {
+                    // Set session variables
+                    $_SESSION['guru_id'] = $row['id'];
+                    $_SESSION['guru_nama'] = $row['nama'];
+                    $_SESSION['guru_email'] = $row['email'];
+                    $_SESSION['guru_role'] = 'guru';
+                    $_SESSION['guru_login_time'] = time();
+                    $_SESSION['logged_in'] = true; // ADD THIS FLAG
+                    
+                    // Redirect ke dashboard
+                    header('Location: dashboard-guru.php');
+                    exit();
+                } else {
+                    $error_message = 'Akaun anda tidak aktif. Sila hubungi pentadbir.';
+                }
             } else {
-                $error_message = 'Kata laluan tidak sah.';
+                $error_message = 'Email atau kata laluan tidak sah.';
             }
         } else {
-            $error_message = 'Email tidak ditemui atau akaun tidak aktif.';
+            $error_message = 'Email atau kata laluan tidak sah.';
         }
-        
-        $stmt->close();
     }
 }
 ?>
@@ -347,7 +334,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script>
-        // Auto-fill demo credentials
         document.addEventListener('DOMContentLoaded', function() {
             const emailInput = document.querySelector('input[name="email"]');
             const passwordInput = document.querySelector('input[name="password"]');

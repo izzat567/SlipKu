@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } else {
         // Check if kod already exists
         $check_sql = "SELECT id FROM matapelajaran WHERE kod = ?";
-        $check_stmt = $database->prepare($check_sql);
+        $check_stmt = $conn->prepare($check_sql);
         $check_stmt->bind_param("s", $kod);
         $check_stmt->execute();
         $check_result = $check_stmt->get_result();
@@ -45,11 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             // Insert into matapelajaran
             $sql1 = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, 1)";
-            $stmt1 = $database->prepare($sql1);
+            $stmt1 = $conn->prepare($sql1);
             $stmt1->bind_param("sss", $kod, $nama, $tahun);
             
             if ($stmt1->execute()) {
-                $subject_id = $database->insert_id;
+                $subject_id = $conn->insert_id;
                 
                 // Check if subject_details table exists - PERBAIKAN: mungkin tidak ada
                 // Untuk sementara, kita skip jika table tidak ada
@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 header("Location: subjek-saya.php?success=1&name=" . urlencode($nama));
                 exit();
             } else {
-                $error_message = "Gagal tambah subjek: " . $database->error;
+                $error_message = "Gagal tambah subjek: " . $conn->error;
             }
             $stmt1->close();
         }
@@ -75,7 +75,7 @@ if (isset($_GET['success']) && $_GET['success'] == '1') {
 // 3. AMBIL DATA DARI DATABASE - DENGAN ERROR HANDLING
 try {
     // Debug: Check database connection
-    if (!$database) {
+    if (!$conn) {
         throw new Exception("Database connection failed");
     }
     
@@ -88,10 +88,10 @@ try {
     
     error_log("SQL Query: " . $sql); // Debug log
     
-    $result = $database->query($sql);
+    $result = $conn->query($sql);
     
     if ($result === false) {
-        throw new Exception("Query failed: " . $database->error);
+        throw new Exception("Query failed: " . $conn->error);
     }
     
     if ($result && $result->num_rows > 0) {
@@ -167,7 +167,7 @@ $kelas_count = 0;
 try {
     // Get total students count
     $sql_students = "SELECT COUNT(*) as total FROM pelajar WHERE status = 'aktif'";
-    $stmt_students = $database->prepare($sql_students);
+    $stmt_students = $conn->prepare($sql_students);
     $stmt_students->execute();
     $student_count_result = $stmt_students->get_result();
     $total_students = $student_count_result->fetch_assoc()['total'] ?? 0;
@@ -175,7 +175,7 @@ try {
     
     // Get classes count
     $sql_kelas = "SELECT COUNT(*) as total FROM kelas WHERE guru_id = ? AND status = 1";
-    $stmt_kelas = $database->prepare($sql_kelas);
+    $stmt_kelas = $conn->prepare($sql_kelas);
     $stmt_kelas->bind_param("i", $guru_id);
     $stmt_kelas->execute();
     $kelas_result = $stmt_kelas->get_result();

@@ -10,7 +10,7 @@ FROM pelajar
 JOIN kelas ON pelajar.id_kelas = kelas.id
 ";
 
-$result = mysqli_query($database, $sql);
+$result = mysqli_query($conn, $sql);
 
 ?>
 
