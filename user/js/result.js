@@ -1,5 +1,4 @@
-   // Subject data based on the image provided
-   const subjects = [
+const subjects = [
     {
         name: "Bahasa Melayu",
         grade: "A",

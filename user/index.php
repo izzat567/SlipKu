@@ -64,7 +64,7 @@
                         <a href="form_student_gred.php" class="btn btn-primary">
                             <i class="fas fa-rocket"></i> Semak Keputusan
                         </a>
-                        <a href="#learn-more" class="btn btn-secondary">
+                        <a href="error404.php" class="btn btn-secondary">
                             <i class="fas fa-play-circle"></i> Panduan SlipKu
                         </a>
                     </div>
