@@ -9,7 +9,7 @@ error_reporting(E_ALL);
 
 $host = 'localhost';
 $user = 'root';
-$password = '';
+$password = 'danialdev';
 $dbname = 'slipku_db';
 
 // Create connection - GUNA $conn bukan $conn
