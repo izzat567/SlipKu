@@ -1416,7 +1416,9 @@ No_Kad_Pengenalan,Nama,Markah
         </div>
     </header>
 
-    <!-- Sidebar -->
+    <!-- Sidebar - Include dari includes/sidebar.php -->
+    <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+
        <?php
     require_once '../includes/session.php';
     require_once '../includes/functions.php';

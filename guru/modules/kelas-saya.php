@@ -1200,67 +1200,8 @@ try {
         </div>
     </header>
 
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-section">
-            <div class="sidebar-title">Menu Utama</div>
-            <a href="../dashboard-guru.php" class="sidebar-item">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="kelas-saya.php" class="sidebar-item active">
-                <i class="fas fa-users"></i>
-                Kelas Saya
-               
-                <span class="badge"><?php echo $totalClasses; ?></span>
-           
-            </a>
-            <a href="pelajar-saya.php" class="sidebar-item">
-                <i class="fas fa-user-graduate"></i>
-                Pelajar Saya
-                <span class="badge"><?php echo $total_students; ?></span>
-            </a>
-            <a href="subjek-saya.php" class="sidebar-item">
-                <i class="fas fa-book"></i>
-            
-                Subjek Saya
-
-                <span class="badge"><?php echo $subjek_count; ?></span>
-           
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Peperiksaan</div>
-            <a href="tambah-markah.php" class="sidebar-item">
-                <i class="fas fa-plus-circle"></i>
-                Tambah Markah
-            </a>
-            <a href="semak-markah.php" class="sidebar-item">
-                <i class="fas fa-search"></i>
-                Semak Markah
-          
-                <span class="badge"><?php echo $unmarked_count; ?></span>
-           
-            </a>
-            <a href="laporan-prestasi.php" class="sidebar-item">
-                <i class="fas fa-chart-bar"></i>
-                Laporan Prestasi
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Sistem</div>
-            <a href="profil-saya.php" class="sidebar-item">
-                <i class="fas fa-user-cog"></i>
-                Profil Saya
-            </a>
-            <a href="../logout.php" class="sidebar-item" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                Log Keluar
-            </a>
-        </div>
-    </aside>
+    <!-- Sidebar - Include dari includes/sidebar.php -->
+    <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
     <!-- Main Content -->
     <main class="main-content" id="mainContent">

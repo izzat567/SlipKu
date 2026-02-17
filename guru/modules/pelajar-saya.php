@@ -1637,58 +1637,8 @@ if (isset($_GET['ajax'])) {
             </div>
         </div>
     </header>
-        <aside class="sidebar" id="sidebar">
-        <div class="sidebar-section">
-            <div class="sidebar-title">Menu Utama</div>
-            <a href="dashboard-guru.php" class="sidebar-item <?php echo ($current_page == 'dashboard-guru.php') ? 'active' : ''; ?>">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="kelas-saya.php" class="sidebar-item">
-                <i class="fas fa-users"></i>
-                Kelas Saya
-                <span class="badge">3</span>
-            </a>
-            <a href="pelajar-saya.php" class="sidebar-item">
-                <i class="fas fa-user-graduate"></i>
-                Pelajar Saya
-                <span class="badge">85</span>
-            </a>
-            <a href="subjek-saya.php" class="sidebar-item">
-                <i class="fas fa-book"></i>
-                Subjek Saya
-                <span class="badge">4</span>
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.php" class="sidebar-item">
-                <i class="fas fa-plus-circle"></i>
-                Tambah Markah
-            </a>
-            <a href="semak-markah.php" class="sidebar-item">
-                <i class="fas fa-search"></i>
-                Semak Markah
-            </a>
-            <a href="laporan-prestasi.php" class="sidebar-item">
-                <i class="fas fa-chart-bar"></i>
-                Laporan Prestasi
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Sistem</div>
-            <a href="profil-saya.php" class="sidebar-item">
-                <i class="fas fa-user-cog"></i>
-                Profil Saya
-            </a>
-            <a href="logout.php" class="sidebar-item" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                Log Keluar
-            </a>
-        </div>
-    </aside>
+            <!-- Sidebar - Include dari includes/sidebar.php -->
+    <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
         <!-- Page Header -->

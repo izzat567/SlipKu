@@ -567,26 +567,8 @@ if (isset($_SESSION['guru_nama'])) {
     </div>
 </header>
 
-<aside class="sidebar" id="sidebar">
-    <div class="sidebar-section">
-        <div class="sidebar-title">Menu Utama</div>
-        <a href="../dashboard-guru.php" class="sidebar-item <?php echo ($current_page == 'dashboard-guru.php') ? 'active' : ''; ?>"><i class="fas fa-tachometer-alt"></i>Dashboard</a>
-        <a href="../modules/kelas-saya.php" class="sidebar-item"><i class="fas fa-users"></i>Kelas Saya</a>
-        <a href="../modules/pelajar-saya.php" class="sidebar-item"><i class="fas fa-user-graduate"></i>Pelajar Saya</a>
-        <a href="../modules/subjek-saya.php" class="sidebar-item active"><i class="fas fa-book"></i>Subjek Saya</a>
-    </div>
-    <div class="sidebar-section">
-        <div class="sidebar-title">Peperiksaan & Penilaian</div>
-        <a href="modules/tambah-markah.php" class="sidebar-item"><i class="fas fa-plus-circle"></i>Tambah Markah</a>
-        <a href="modules/semak-markah.php" class="sidebar-item"><i class="fas fa-search"></i>Semak Markah</a>
-        <a href="modules/laporan-prestasi.php" class="sidebar-item"><i class="fas fa-chart-bar"></i>Laporan Prestasi</a>
-    </div>
-    <div class="sidebar-section">
-        <div class="sidebar-title">Sistem</div>
-        <a href="profil-saya.php" class="sidebar-item"><i class="fas fa-user-cog"></i>Profil Saya</a>
-        <a href="logout.php" class="sidebar-item" style="color: var(--danger);"><i class="fas fa-sign-out-alt"></i>Log Keluar</a>
-    </div>
-</aside>
+    <!-- Sidebar - Include dari includes/sidebar.php -->
+    <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
 <main class="main-content" id="mainContent">
     <div class="page-header">
