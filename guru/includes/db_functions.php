@@ -210,19 +210,22 @@ function getAllExams() {
 }
 
 /**
- * Get exams by guru
+ * Get exams by guru - VERSION YANG BETUL (GUNA ALIAS)
  */
 function getExamsByGuru($guru_id) {
     global $conn;
     
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
     
-    $sql = "SELECT p.*, m.nama as nama_matapelajaran, k.nama as nama_kelas 
+    $sql = "SELECT p.*, 
+                   m.nama as nama_matapelajaran, 
+                   k.nama as nama_kelas 
             FROM peperiksaan p
             JOIN matapelajaran m ON p.id_matapelajaran = m.id
             JOIN kelas k ON p.id_kelas = k.id
             JOIN pengajar pj ON k.id = pj.id_kelas AND m.id = pj.id_matapelajaran
-            WHERE pj.id_guru = '$guru_id' AND p.status = 1
+            WHERE pj.id_guru = '$guru_id' 
+                AND p.status = 1
             ORDER BY p.tarikh_mula DESC";
     
     $result = mysqli_query($conn, $sql);
