@@ -130,8 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     }
 
     try {
-        // Ambil data subjek
-        $subjek_sql = "SELECT id, nod, nama, tahun FROM matapelajaran WHERE id = ? AND status = 'aktif'";
+        // Ambil data subjek - GUNA KOLUM 'kod'
+        $subjek_sql = "SELECT id, kod, nama, tahun FROM matapelajaran WHERE id = ? AND status = 'aktif'";
         $stmt = $conn->prepare($subjek_sql);
         if (!$stmt) throw new Exception("SQL error: " . $conn->error);
         $stmt->bind_param("i", $subject_id);
@@ -155,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 
         echo json_encode([
             'id' => $subjek['id'],
-            'code' => $subjek['nod'],
+            'code' => $subjek['kod'], // TUKAR 'nod' KEPADA 'kod'
             'name' => $subjek['nama'],
             'year' => $subjek['tahun'],
             'kelas_id' => $kelas_id
@@ -178,8 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (empty($subject_id) || empty($nama) || empty($kod) || empty($tahun) || $id_kelas == 0) {
         $error_message = "Sila isi semua medan dan pilih kelas!";
     } else {
-        // Cek duplikasi kod (nod) kecuali subjek ini sendiri
-        $check = $conn->prepare("SELECT id FROM matapelajaran WHERE nod = ? AND id != ?");
+        // Cek duplikasi kod - GUNA KOLUM 'kod'
+        $check = $conn->prepare("SELECT id FROM matapelajaran WHERE kod = ? AND id != ?");
         $check->bind_param("si", $kod, $subject_id);
         $check->execute();
         if ($check->get_result()->num_rows > 0) {
@@ -187,8 +187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             $conn->begin_transaction();
             try {
-                // Update matapelajaran
-                $update = $conn->prepare("UPDATE matapelajaran SET nod = ?, nama = ?, tahun = ? WHERE id = ?");
+                // Update matapelajaran - GUNA KOLUM 'kod'
+                $update = $conn->prepare("UPDATE matapelajaran SET kod = ?, nama = ?, tahun = ? WHERE id = ?");
                 $update->bind_param("sssi", $kod, $nama, $tahun, $subject_id);
                 $update->execute();
                 $update->close();
@@ -242,8 +242,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (empty($nama) || empty($kod) || empty($tahun) || $id_kelas == 0) {
         $error_message = "Sila isi semua medan dan pilih kelas!";
     } else {
-        // Cek duplikasi kod (nod)
-        $check = $conn->prepare("SELECT id FROM matapelajaran WHERE nod = ?");
+        // Cek duplikasi kod - GUNA KOLUM 'kod'
+        $check = $conn->prepare("SELECT id FROM matapelajaran WHERE kod = ?");
         $check->bind_param("s", $kod);
         $check->execute();
         if ($check->get_result()->num_rows > 0) {
@@ -251,10 +251,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             $conn->begin_transaction();
             try {
-                // Dapatkan senarai kolum dalam matapelajaran untuk memastikan kita hantar semua required field
+                // Dapatkan senarai kolum dalam matapelajaran
                 $columns_query = "SHOW COLUMNS FROM matapelajaran";
                 $columns_result = $conn->query($columns_query);
-                $insert_fields = ['nod', 'nama', 'tahun', 'status'];
+                
+                // GUNA KOLUM 'kod' BUKAN 'nod'
+                $insert_fields = ['kod', 'nama', 'tahun', 'status'];
                 $insert_values = [$kod, $nama, $tahun, 'aktif'];
                 
                 while ($col = $columns_result->fetch_assoc()) {
@@ -404,19 +406,21 @@ try {
                                   INNER JOIN pengajar p ON k.id = p.id_kelas
                                   WHERE p.id_matapelajaran = ? AND p.status = 'aktif'";
             $stmt_kelas = $conn->prepare($sql_kelas_subjek);
-            $stmt_kelas->bind_param("i", $row['id']);
-            $stmt_kelas->execute();
-            $res_kelas = $stmt_kelas->get_result();
-            while ($k = $res_kelas->fetch_assoc()) {
-                $kelas_list[] = $k['id'];
+            if ($stmt_kelas) {
+                $stmt_kelas->bind_param("i", $row['id']);
+                $stmt_kelas->execute();
+                $res_kelas = $stmt_kelas->get_result();
+                while ($k = $res_kelas->fetch_assoc()) {
+                    $kelas_list[] = $k['id'];
+                }
+                $stmt_kelas->close();
             }
-            $stmt_kelas->close();
 
             $subjects[] = [
                 'id' => 'SUB' . str_pad($row['id'], 3, '0', STR_PAD_LEFT),
                 'db_id' => $row['id'],
                 'name' => $row['nama'],
-                'code' => $row['kod'],
+                'code' => $row['kod'], // GUNA 'kod' - INI SUDAH BETUL
                 'year' => $row['tahun'],
                 'type' => 'core',
                 'description' => '',
