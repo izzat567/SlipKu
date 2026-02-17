@@ -416,7 +416,7 @@ try {
                 'id' => 'SUB' . str_pad($row['id'], 3, '0', STR_PAD_LEFT),
                 'db_id' => $row['id'],
                 'name' => $row['nama'],
-                'code' => $row['nod'],
+                'code' => $row['kod'],
                 'year' => $row['tahun'],
                 'type' => 'core',
                 'description' => '',
