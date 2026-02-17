@@ -1,31 +1,49 @@
 <?php
 // Start session and check login
+session_start();
 ob_start();
 
-// Include database functions
-require_once('../../config/connect.php');
-require_once '../includes/db_functions.php';
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-global $conn; // $conn dari connect.php
+// Path ke config
+$possible_paths = [
+    __DIR__ . '/../config/connect.php',
+    __DIR__ . '/../../config/connect.php',
+    dirname(__DIR__) . '/config/connect.php'
+];
 
-// Check jika $conn wujud, jika tak buat connection baru
-if (!isset($conn) || !$conn) {
-    $conn = new mysqli('localhost', 'root', 'danialdev', 'slipku_db');
-    if ($conn->connect_error) {
-        die("Connection failed: " . $conn->connect_error);
+$connected = false;
+foreach ($possible_paths as $path) {
+    if (file_exists($path)) {
+        require_once $path;
+        $connected = true;
+        break;
     }
 }
 
-// Initialize DBFunctions class jika menggunakan class approach
-$db = new DBFunctions($conn);
+if (!$connected) {
+    die("ERROR: Cannot find connect.php");
+}
+
+// Check login
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+    header('Location: ../login-guru.php');
+    exit();
+}
+
+$guru_id = $_SESSION['guru_id'];
+
+// Include database functions
+require_once __DIR__ . '/../includes/db_functions.php';
 
 // Get guru info
-$guru_info = $db->getGuruInfo();  // Pastikan method ini wujud dalam class
+$guru_info = getGuruById($guru_id);
 
 // Get data for dropdowns
-$subjects = $db->getSubjects();
-$classes = $db->getClasses();
-$exams = $db->getExams();
+$subjects = getSubjectsByGuru($guru_id);
+$classes = getKelasByGuru($guru_id);
+$exams = getExamsByGuru($guru_id);
 
 // Initialize variables
 $students = [];
@@ -43,11 +61,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             'id_pelajar' => $_POST['id_pelajar'],
             'id_peperiksaan' => $_POST['id_peperiksaan'],
             'markah' => $_POST['markah'],
-            'gred' => $_POST['gred'],
+            'gred' => $_POST['gred'] ?? '',
             'catatan' => $_POST['catatan'] ?? ''
         ];
         
-        $result = $db->addMarks($data);
+        $result = addMark($data);
         
         if ($result['success']) {
             $success_message = $result['message'];
@@ -59,10 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         // Add multiple marks
         $marksData = json_decode($_POST['marks_data'], true);
         if ($marksData) {
-            $result = $db->addMultipleMarks($marksData);
+            $result = addMultipleMarks($marksData);
             
             if ($result['success']) {
-                $success_message = "Semua markah berjaya disimpan!";
+                $success_message = $result['message'];
             } else {
                 $error_message = $result['message'];
                 if (!empty($result['errors'])) {
@@ -82,7 +100,7 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_students') {
         $class = $_GET['class'] ?? '';
-        $students = $db->getStudentsByClass($class);
+        $students = getStudentsByClass($class);
         
         echo json_encode([
             'success' => true,
@@ -94,7 +112,7 @@ if (isset($_GET['ajax'])) {
     if ($_GET['ajax'] === 'calculate_grade') {
         $markah = $_GET['markah'] ?? 0;
         $markah_penuh = $_GET['markah_penuh'] ?? 100;
-        $grade = $db->calculateGrade($markah, $markah_penuh);
+        $grade = calculateGrade($markah, $markah_penuh);
         
         echo json_encode([
             'success' => true,
@@ -113,7 +131,7 @@ if (isset($_GET['markah_lulus'])) $markah_lulus = $_GET['markah_lulus'];
 
 // If class is selected, get students
 if ($selected_class) {
-    $students = $db->getStudentsByClass($selected_class);
+    $students = getStudentsByClass($selected_class);
 }
 ?>
 <!DOCTYPE html>
@@ -127,6 +145,7 @@ if ($selected_class) {
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* [PASTE ALL CSS FROM YOUR CODE HERE - SAMA SEPERTI DI ATAS] */
         * {
             margin: 0;
             padding: 0;
@@ -1254,7 +1273,8 @@ if ($selected_class) {
     </style>
 </head>
 <body>
-  <div class="modal" id="bulkUploadModal">
+    <!-- Modals -->
+    <div class="modal" id="bulkUploadModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Muat Naik Markah Secara Pukal</h3>
@@ -1320,14 +1340,15 @@ No_Kad_Pengenalan,Nama,Markah
                         <button type="button" class="btn btn-primary" onclick="processBulkUpload()" id="processBtn">
                             <i class="fas fa-upload"></i>
                             Mula Muat Naik
-                    </button>
-                </div>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
     <!-- Modal for Confirmation -->
-      <div class="modal" id="confirmationModal">
+    <div class="modal" id="confirmationModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="confirmationTitle">Simpan Markah</h3>
@@ -1391,7 +1412,7 @@ No_Kad_Pengenalan,Nama,Markah
             </button>
 
             <!-- Logo -->
-             <a href="dashboard-guru.php" class="logo">
+            <a href="../dashboard-guru.php" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1401,14 +1422,13 @@ No_Kad_Pengenalan,Nama,Markah
                 </div>
             </a>
 
-
             <!-- User Profile -->
             <?php if ($guru_info): ?>
             <div class="user-profile" id="userProfile">
                 <div class="user-avatar"><?php echo substr($guru_info['nama'], 0, 2); ?></div>
                 <div class="user-info">
                     <h4><?php echo htmlspecialchars($guru_info['nama']); ?></h4>
-                    <p>Admin Guru Tahun 6</p>
+                    <p>Guru</p>
                 </div>
                 <i class="fas fa-chevron-down"></i>
             </div>
@@ -1416,19 +1436,56 @@ No_Kad_Pengenalan,Nama,Markah
         </div>
     </header>
 
-    <!-- Sidebar - Include dari includes/sidebar.php -->
-    <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+    <!-- Sidebar - Create a simple sidebar or include your existing one -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-title">Menu Utama</div>
+            <a href="../dashboard-guru.php" class="sidebar-item">
+                <i class="fas fa-tachometer-alt"></i>
+                Dashboard
+            </a>
+            <a href="kelas-saya.php" class="sidebar-item">
+                <i class="fas fa-users"></i>
+                Kelas Saya
+            </a>
+            <a href="pelajar-saya.php" class="sidebar-item">
+                <i class="fas fa-user-graduate"></i>
+                Pelajar Saya
+            </a>
+            <a href="subjek-saya.php" class="sidebar-item">
+                <i class="fas fa-book"></i>
+                Subjek Saya
+            </a>
+        </div>
 
-       <?php
-    require_once '../includes/session.php';
-    require_once '../includes/functions.php';
-    SessionManager::requireGuruLogin();
+        <div class="sidebar-section">
+            <div class="sidebar-title">Peperiksaan & Penilaian</div>
+            <a href="tambah-markah.php" class="sidebar-item active">
+                <i class="fas fa-plus-circle"></i>
+                Tambah Markah
+            </a>
+            <a href="semak-markah.php" class="sidebar-item">
+                <i class="fas fa-search"></i>
+                Semak Markah
+            </a>
+            <a href="laporan-prestasi.php" class="sidebar-item">
+                <i class="fas fa-chart-bar"></i>
+                Laporan Prestasi
+            </a>
+        </div>
 
-    $functions = new GuruFunctions();
-    $pelajar_list = $functions->getAllPelajar();
-    ?>
-
-    <?php include '../includes/header.php'; ?>
+        <div class="sidebar-section">
+            <div class="sidebar-title">Sistem</div>
+            <a href="profil-saya.php" class="sidebar-item">
+                <i class="fas fa-user-cog"></i>
+                Profil Saya
+            </a>
+            <a href="../logout.php" class="sidebar-item" style="color: var(--danger);">
+                <i class="fas fa-sign-out-alt"></i>
+                Log Keluar
+            </a>
+        </div>
+    </aside>
 
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
@@ -1450,22 +1507,22 @@ No_Kad_Pengenalan,Nama,Markah
             </div>
         </div>
 
-         <!-- Show messages -->
+        <!-- Show messages -->
         <?php if (isset($success_message)): ?>
-            <div class="alert-message alert-success">
-                <i class="fas fa-check-circle"></i>
-                <?php echo $success_message; ?>
+            <div style="background: rgba(16, 185, 129, 0.1); border-left: 4px solid var(--success); padding: 15px 20px; border-radius: 12px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
+                <i class="fas fa-check-circle" style="font-size: 20px; color: var(--success);"></i>
+                <span style="color: var(--success);"><?php echo $success_message; ?></span>
             </div>
         <?php endif; ?>
         
         <?php if (isset($error_message)): ?>
-            <div class="alert-message alert-error">
-                <i class="fas fa-exclamation-circle"></i>
-                <?php echo $error_message; ?>
+            <div style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--danger); padding: 15px 20px; border-radius: 12px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
+                <i class="fas fa-exclamation-circle" style="font-size: 20px; color: var(--danger);"></i>
+                <span style="color: var(--danger);"><?php echo $error_message; ?></span>
             </div>
         <?php endif; ?>
 
-         <!-- Selection Section -->
+        <!-- Selection Section -->
         <div class="selection-section">
             <div class="selection-title">
                 <i class="fas fa-filter"></i>
@@ -1476,7 +1533,7 @@ No_Kad_Pengenalan,Nama,Markah
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label required">Subjek</label>
-                        <select class="form-select" name="subject" id="subjectSelect" onchange="loadStudents()" required>
+                        <select class="form-select" name="subject" id="subjectSelect" required>
                             <option value="">Pilih Subjek</option>
                             <?php foreach ($subjects as $subject): ?>
                                 <option value="<?php echo $subject['id']; ?>" 
@@ -1489,7 +1546,7 @@ No_Kad_Pengenalan,Nama,Markah
                     
                     <div class="form-group">
                         <label class="form-label required">Kelas</label>
-                        <select class="form-select" name="class" id="classSelect" onchange="loadStudents()" required>
+                        <select class="form-select" name="class" id="classSelect" required>
                             <option value="">Pilih Kelas</option>
                             <?php foreach ($classes as $class): ?>
                                 <option value="<?php echo $class['nama']; ?>"
@@ -1527,13 +1584,13 @@ No_Kad_Pengenalan,Nama,Markah
                     <div class="form-group">
                         <label class="form-label required">Markah Penuh</label>
                         <input type="number" class="form-input" name="markah_penuh" id="fullMarks" 
-                               value="<?php echo $markah_penuh; ?>" min="1" max="200" onchange="updateMarkingScheme()" required>
+                               value="<?php echo $markah_penuh; ?>" min="1" max="200" required>
                     </div>
                     
                     <div class="form-group">
                         <label class="form-label required">Markah Lulus</label>
                         <input type="number" class="form-input" name="markah_lulus" id="passingMarks" 
-                               value="<?php echo $markah_lulus; ?>" min="0" max="100" onchange="updateMarkingScheme()" required>
+                               value="<?php echo $markah_lulus; ?>" min="0" max="100" required>
                     </div>
                 </div>
                 
@@ -1576,88 +1633,81 @@ No_Kad_Pengenalan,Nama,Markah
             </div>
             
             <div style="overflow-x: auto;">
-                <form id="marksForm" method="POST" action="">
-                    <input type="hidden" name="action" value="add_single">
-                    <input type="hidden" name="id_peperiksaan" id="hiddenExamId" value="<?php echo $selected_exam; ?>">
-                    
-                    <table class="marks-table" id="marksTable">
-                        <thead>
-                            <tr>
-                                <th>BIL</th>
-                                <th>PELAJAR</th>
-                                <th>NO. KAD PENGENALAN</th>
-                                <th>MARKAH (0-<span id="fullMarksDisplay"><?php echo $markah_penuh; ?></span>)</th>
-                                <th>GRED</th>
-                                <th>STATUS</th>
-                                <th>CATATAN</th>
-                                <th>TINDAKAN</th>
+                <table class="marks-table" id="marksTable">
+                    <thead>
+                        <tr>
+                            <th>BIL</th>
+                            <th>PELAJAR</th>
+                            <th>NO. KAD PENGENALAN</th>
+                            <th>MARKAH (0-<span id="fullMarksDisplay"><?php echo $markah_penuh; ?></span>)</th>
+                            <th>GRED</th>
+                            <th>STATUS</th>
+                            <th>CATATAN</th>
+                            <th>TINDAKAN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="marksTableBody">
+                        <?php foreach ($students as $index => $student): ?>
+                            <?php
+                            $initials = '';
+                            $names = explode(' ', $student['nama']);
+                            if (count($names) >= 2) {
+                                $initials = $names[0][0] . $names[count($names)-1][0];
+                            } else {
+                                $initials = substr($student['nama'], 0, 2);
+                            }
+                            ?>
+                            <tr data-student-id="<?php echo $student['id']; ?>">
+                                <td><?php echo $index + 1; ?></td>
+                                <td>
+                                    <div class="student-row">
+                                        <div class="student-avatar"><?php echo strtoupper($initials); ?></div>
+                                        <div class="student-info">
+                                            <h4><?php echo htmlspecialchars($student['nama']); ?></h4>
+                                            <p>ID: <?php echo htmlspecialchars($student['id_kelas']); ?></p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><?php echo htmlspecialchars($student['no_kp']); ?></td>
+                                <td>
+                                    <div class="mark-input-container">
+                                        <input type="number" 
+                                               class="mark-input" 
+                                               id="mark-<?php echo $student['id']; ?>"
+                                               min="0" 
+                                               max="<?php echo $markah_penuh; ?>"
+                                               placeholder="0-<?php echo $markah_penuh; ?>"
+                                               oninput="updateMark('<?php echo $student['id']; ?>', this.value)"
+                                               onblur="validateMark('<?php echo $student['id']; ?>')">
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="grade-badge" id="grade-<?php echo $student['id']; ?>">
+                                        -
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="status-badge status-warning" id="status-<?php echo $student['id']; ?>">
+                                        BELUM DIISI
+                                    </span>
+                                </td>
+                                <td>
+                                    <input type="text" 
+                                           class="form-input" 
+                                           style="font-size: 13px; padding: 8px 12px;"
+                                           id="notes-<?php echo $student['id']; ?>"
+                                           placeholder="Catatan...">
+                                </td>
+                                <td>
+                                    <button type="button" class="action-btn primary" 
+                                            onclick="simpanMarkahIndividu('<?php echo $student['id']; ?>')">
+                                        <i class="fas fa-save"></i> Simpan
+                                    </button>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody id="marksTableBody">
-                            <?php foreach ($students as $index => $student): ?>
-                                <?php
-                                $initials = '';
-                                $names = explode(' ', $student['nama']);
-                                if (count($names) >= 2) {
-                                    $initials = $names[0][0] . $names[count($names)-1][0];
-                                } else {
-                                    $initials = substr($student['nama'], 0, 2);
-                                }
-                                ?>
-                                <tr data-student-id="<?php echo $student['id']; ?>">
-                                    <td><?php echo $index + 1; ?></td>
-                                    <td>
-                                        <div class="student-row">
-                                            <div class="student-avatar"><?php echo strtoupper($initials); ?></div>
-                                            <div class="student-info">
-                                                <h4><?php echo htmlspecialchars($student['nama']); ?></h4>
-                                                <p>ID: <?php echo htmlspecialchars($student['id_kelas']); ?></p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($student['no_kp']); ?></td>
-                                    <td>
-                                        <div class="mark-input-container">
-                                            <input type="number" 
-                                                   class="mark-input" 
-                                                   name="markah[<?php echo $student['id']; ?>]"
-                                                   id="mark-<?php echo $student['id']; ?>"
-                                                   min="0" 
-                                                   max="<?php echo $markah_penuh; ?>"
-                                                   placeholder="0-<?php echo $markah_penuh; ?>"
-                                                   oninput="updateMark('<?php echo $student['id']; ?>', this.value)"
-                                                   onblur="validateMark('<?php echo $student['id']; ?>')">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="grade-badge" id="grade-<?php echo $student['id']; ?>">
-                                            -
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-warning" id="status-<?php echo $student['id']; ?>">
-                                            BELUM DIISI
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <input type="text" 
-                                               class="form-input" 
-                                               style="font-size: 13px; padding: 8px 12px;"
-                                               name="catatan[<?php echo $student['id']; ?>]"
-                                               id="notes-<?php echo $student['id']; ?>"
-                                                 placeholder="Catatan...">
-                                    </td>
-                                    <td>
-                                        <button type="button" class="action-btn primary" 
-                                                onclick="simpanMarkahIndividu('<?php echo $student['id']; ?>')">
-                                            <i class="fas fa-save"></i> Simpan
-                                        </button>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </form>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
             <div style="text-align: right; margin-top: 20px; font-size: 13px; color: var(--medium-gray);">
                 <span id="marksStatus"><?php echo count($students); ?> pelajar ditemui. Tiada markah dimasukkan.</span>
@@ -1724,175 +1774,41 @@ No_Kad_Pengenalan,Nama,Markah
         const bulkUploadModal = document.getElementById('bulkUploadModal');
         const confirmationModal = document.getElementById('confirmationModal');
         const successModal = document.getElementById('successModal');
-        const marksContainer = document.getElementById('marksContainer');
-        const summarySection = document.getElementById('summarySection');
         const marksTableBody = document.getElementById('marksTableBody');
         const gradeBars = document.getElementById('gradeBars');
 
         // Current state
-        let currentStudents = [];
+        let currentStudents = <?php echo json_encode($students); ?>;
         let currentMarks = {};
         let gradeDistribution = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
 
-        // Sample data for students
-        const sampleStudents = {
-            '6A': [
-                { id: 'STU001', name: 'Ahmad bin Ali', ic: '120101-01-1234', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU002', name: 'Siti binti Abu', ic: '120202-02-5678', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU003', name: 'Muhammad bin Hassan', ic: '120303-03-9012', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU004', name: 'Aisyah binti Musa', ic: '120404-04-3456', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU005', name: 'Ali bin Abdullah', ic: '120505-05-7890', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU006', name: 'Fatimah binti Omar', ic: '120606-06-2345', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU007', name: 'Hassan bin Ismail', ic: '120707-07-6789', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU008', name: 'Zainab binti Yusuf', ic: '120808-08-1234', marks: null, grade: '', status: 'pending', notes: '' }
-            ],
-            '6B': [
-                { id: 'STU009', name: 'Ibrahim bin Adam', ic: '120909-09-5678', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU010', name: 'Mariam binti Noah', ic: '121010-10-9012', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU011', name: 'Yusuf bin Idris', ic: '121111-11-3456', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU012', name: 'Sarah binti Harun', ic: '121212-12-7890', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU013', name: 'Ismail bin Lut', ic: '130101-01-2345', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU014', name: 'Hajar binti Yakub', ic: '130202-02-6789', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU015', name: 'Isa bin Daud', ic: '130303-03-1234', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU016', name: 'Maryam binti Sulaiman', ic: '130404-04-5678', marks: null, grade: '', status: 'pending', notes: '' }
-            ],
-            '5A': [
-                { id: 'STU017', name: 'Musa bin Zakaria', ic: '130505-05-9012', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU018', name: 'Khadijah binti Yahya', ic: '130606-06-3456', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU019', name: 'Harun bin Yunus', ic: '130707-07-7890', marks: null, grade: '', status: 'pending', notes: '' },
-                { id: 'STU020', name: 'Asiyah binti Ilyas', ic: '130808-08-2345', marks: null, grade: '', status: 'pending', notes: '' }
-            ]
-        };
-
         // Initialize page
         function initializePage() {
-            // Set up event listeners
             setupEventListeners();
-            
-            // Set default values
-            document.getElementById('subjectSelect').value = 'MAT601';
-            document.getElementById('classSelect').value = '6A';
-            document.getElementById('assessmentType').value = 'quiz1';
-            
-            // Load initial data
-            loadStudents();
+            updateFullMarksDisplay();
         }
 
-        // Load students based on selection
-        function loadStudents() {
-            const subject = document.getElementById('subjectSelect').value;
-            const classSelect = document.getElementById('classSelect').value;
-            
-            if (!subject || !classSelect) {
-                marksContainer.style.display = 'none';
-                summarySection.style.display = 'none';
-                return;
-            }
-            
-            currentStudents = sampleStudents[classSelect] || [];
-            currentMarks = {};
-            
-            // Reset grade distribution
-            gradeDistribution = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
-            
-            // Show marks container
-            marksContainer.style.display = 'block';
-            summarySection.style.display = 'block';
-            
-            // Load students into table
-            loadStudentTable();
-            
-            // Update summary
-            updateSummary();
-        }
-
-        // Load student table
-        function loadStudentTable() {
-            marksTableBody.innerHTML = currentStudents.map((student, index) => {
-                // Get student initials for avatar
-                const names = student.name.split(' ');
-                const initials = names.length >= 2 
-                    ? names[0].charAt(0) + names[names.length - 1].charAt(0)
-                    : names[0].substring(0, 2);
-                
-                return `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>
-                            <div class="student-row">
-                                <div class="student-avatar">${initials}</div>
-                                <div class="student-info">
-                                    <h4>${student.name}</h4>
-                                    <p>ID: ${student.id}</p>
-                                </div>
-                            </div>
-                        </td>
-                        <td>${student.ic}</td>
-                        <td>
-                            <div class="mark-input-container">
-                                <input type="number" 
-                                       class="mark-input" 
-                                       id="mark-${student.id}"
-                                       min="0" 
-                                       max="${document.getElementById('fullMarks').value}"
-                                       value="${student.marks !== null ? student.marks : ''}"
-                                       oninput="updateMark('${student.id}', this.value)"
-                                       onblur="validateMark('${student.id}')"
-                                       placeholder="0-${document.getElementById('fullMarks').value}">
-                            </div>
-                        </td>
-                        <td>
-                            <span class="grade-badge grade-${student.grade.toLowerCase()}" id="grade-${student.id}">
-                                ${student.grade || '-'}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="status-badge ${getStatusClass(student.status)}" id="status-${student.id}">
-                                ${getStatusText(student.status)}
-                            </span>
-                        </td>
-                        <td>
-                            <input type="text" 
-                                   class="form-input" 
-                                   style="font-size: 13px; padding: 8px 12px;"
-                                   id="notes-${student.id}"
-                                   value="${student.notes}"
-                                   placeholder="Catatan..."
-                                   onchange="updateNotes('${student.id}', this.value)">
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-            
-            // Update full marks display
-            document.getElementById('fullMarksDisplay').textContent = document.getElementById('fullMarks').value;
+        function updateFullMarksDisplay() {
+            const fullMarks = document.getElementById('fullMarks').value;
+            document.getElementById('fullMarksDisplay').textContent = fullMarks;
         }
 
         // Update mark for a student
         function updateMark(studentId, mark) {
-            const student = currentStudents.find(s => s.id === studentId);
+            const student = currentStudents.find(s => s.id == studentId);
             if (!student) return;
             
-            // Parse mark value
             const markValue = mark === '' ? null : parseInt(mark);
-            
-            // Update student data
             student.marks = markValue;
             
-            // Update current marks object
             if (markValue !== null) {
                 currentMarks[studentId] = markValue;
             } else {
                 delete currentMarks[studentId];
             }
             
-            // Update grade and status
             updateStudentGradeAndStatus(studentId);
-            
-            // Update summary
             updateSummary();
-            
-            // Update marks status
             updateMarksStatus();
         }
 
@@ -1908,95 +1824,70 @@ No_Kad_Pengenalan,Nama,Markah
                     showNotification(`Markah mesti antara 0 dan ${fullMarks}`, 'warning');
                 } else {
                     input.classList.remove('out-of-range');
-                    
-                    // Add visual feedback based on mark
-                    const percentage = (markValue / fullMarks) * 100;
-                    input.classList.remove('excellent', 'good', 'average');
-                    
-                    if (percentage >= 80) {
-                        input.classList.add('excellent');
-                    } else if (percentage >= 60) {
-                        input.classList.add('good');
-                    } else if (percentage >= 40) {
-                        input.classList.add('average');
-                    }
                 }
-            } else {
-                input.classList.remove('out-of-range', 'excellent', 'good', 'average');
             }
         }
 
         // Update student grade and status
         function updateStudentGradeAndStatus(studentId) {
-            const student = currentStudents.find(s => s.id === studentId);
+            const student = currentStudents.find(s => s.id == studentId);
             if (!student) return;
             
             const fullMarks = parseInt(document.getElementById('fullMarks').value);
             const passingMarks = parseInt(document.getElementById('passingMarks').value);
             
-            // Calculate grade
-            let grade = 'F';
+            let grade = '-';
             let status = 'pending';
             
             if (student.marks !== null) {
                 const percentage = (student.marks / fullMarks) * 100;
                 
-                if (percentage >= 80) {
-                    grade = 'A';
-                } else if (percentage >= 70) {
-                    grade = 'B';
-                } else if (percentage >= 60) {
-                    grade = 'C';
-                } else if (percentage >= 50) {
-                    grade = 'D';
-                } else if (percentage >= 40) {
-                    grade = 'E';
-                }
+                if (percentage >= 80) grade = 'A';
+                else if (percentage >= 70) grade = 'B';
+                else if (percentage >= 60) grade = 'C';
+                else if (percentage >= 50) grade = 'D';
+                else if (percentage >= 40) grade = 'E';
+                else grade = 'F';
                 
-                // Update status
                 status = student.marks >= passingMarks ? 'passed' : 'failed';
-                
-                // Update grade distribution
                 updateGradeDistribution();
-            } else {
-                status = 'pending';
             }
             
-            // Update student data
             student.grade = grade;
             student.status = status;
             
-            // Update UI
             const gradeBadge = document.getElementById(`grade-${studentId}`);
             const statusBadge = document.getElementById(`status-${studentId}`);
             
-            gradeBadge.textContent = student.marks !== null ? grade : '-';
-            gradeBadge.className = `grade-badge grade-${grade.toLowerCase()}`;
+            if (gradeBadge) {
+                gradeBadge.textContent = grade;
+                gradeBadge.className = `grade-badge grade-${grade.toLowerCase()}`;
+            }
             
-            statusBadge.textContent = getStatusText(status);
-            statusBadge.className = `status-badge ${getStatusClass(status)}`;
+            if (statusBadge) {
+                statusBadge.textContent = getStatusText(status);
+                statusBadge.className = `status-badge ${getStatusClass(status)}`;
+            }
         }
 
         // Update grade distribution
         function updateGradeDistribution() {
-            // Reset distribution
             gradeDistribution = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
             
-            // Count grades
             currentStudents.forEach(student => {
-                if (student.grade && student.marks !== null) {
+                if (student.grade && student.grade !== '-') {
                     gradeDistribution[student.grade] = (gradeDistribution[student.grade] || 0) + 1;
                 }
             });
             
-            // Update grade distribution display
             updateGradeDistributionDisplay();
         }
 
         // Update grade distribution display
         function updateGradeDistributionDisplay() {
-            const totalStudents = currentStudents.length;
-            const totalWithMarks = Object.values(currentMarks).length;
+            if (!gradeBars) return;
+            
+            const totalWithMarks = Object.keys(currentMarks).length;
             
             gradeBars.innerHTML = '';
             
@@ -2017,9 +1908,7 @@ No_Kad_Pengenalan,Nama,Markah
                     <div class="grade-bar">
                         <div class="grade-label">Gred ${grade}</div>
                         <div class="grade-bar-fill">
-                            <div class="grade-fill" id="grade-fill-${grade}" 
-                                 style="width: ${percentage}%; background: ${gradeColor};">
-                            </div>
+                            <div class="grade-fill" style="width: ${percentage}%; background: ${gradeColor};"></div>
                         </div>
                         <div class="grade-count">${count}</div>
                     </div>
@@ -2033,10 +1922,9 @@ No_Kad_Pengenalan,Nama,Markah
             const totalStudents = currentStudents.length;
             const totalWithMarks = marks.length;
             
-            // Calculate statistics
             let average = 0;
             let highest = 0;
-            let lowest = 100;
+            let lowest = 1000;
             
             if (marks.length > 0) {
                 const sum = marks.reduce((a, b) => a + b, 0);
@@ -2045,17 +1933,16 @@ No_Kad_Pengenalan,Nama,Markah
                 lowest = Math.min(...marks);
             }
             
-            // Update UI
             document.getElementById('averageMarks').textContent = average.toFixed(1);
             document.getElementById('highestMarks').textContent = highest;
-            document.getElementById('lowestMarks').textContent = lowest > 99 ? 0 : lowest;
+            document.getElementById('lowestMarks').textContent = lowest === 1000 ? 0 : lowest;
             document.getElementById('studentsCompleted').textContent = `${totalWithMarks}/${totalStudents}`;
         }
 
         // Update marks status
         function updateMarksStatus() {
             const totalStudents = currentStudents.length;
-            const totalWithMarks = Object.values(currentMarks).length;
+            const totalWithMarks = Object.keys(currentMarks).length;
             
             let statusText = '';
             let statusColor = 'var(--medium-gray)';
@@ -2071,15 +1958,10 @@ No_Kad_Pengenalan,Nama,Markah
                 statusColor = 'var(--success)';
             }
             
-            document.getElementById('marksStatus').textContent = statusText;
-            document.getElementById('marksStatus').style.color = statusColor;
-        }
-
-        // Update notes for a student
-        function updateNotes(studentId, notes) {
-            const student = currentStudents.find(s => s.id === studentId);
-            if (student) {
-                student.notes = notes;
+            const marksStatus = document.getElementById('marksStatus');
+            if (marksStatus) {
+                marksStatus.textContent = statusText;
+                marksStatus.style.color = statusColor;
             }
         }
 
@@ -2092,17 +1974,14 @@ No_Kad_Pengenalan,Nama,Markah
             const fullMarks = parseInt(document.getElementById('fullMarks').value);
             
             currentStudents.forEach(student => {
-                if (student.marks === null) {
-                    // Generate random mark between 40 and 95
+                if (student.marks === null || student.marks === undefined) {
                     const randomMark = Math.floor(Math.random() * 56) + 40;
                     
-                    // Update mark
                     const input = document.getElementById(`mark-${student.id}`);
-                    input.value = randomMark;
-                    
-                    // Update student data
-                    updateMark(student.id, randomMark);
-                    validateMark(student.id);
+                    if (input) {
+                        input.value = randomMark;
+                        updateMark(student.id, randomMark);
+                    }
                 }
             });
             
@@ -2117,13 +1996,12 @@ No_Kad_Pengenalan,Nama,Markah
             
             currentStudents.forEach(student => {
                 student.marks = null;
-                student.grade = '';
+                student.grade = '-';
                 student.status = 'pending';
                 
                 const input = document.getElementById(`mark-${student.id}`);
                 if (input) {
                     input.value = '';
-                    input.classList.remove('out-of-range', 'excellent', 'good', 'average');
                 }
                 
                 updateStudentGradeAndStatus(student.id);
@@ -2132,24 +2010,22 @@ No_Kad_Pengenalan,Nama,Markah
             currentMarks = {};
             updateSummary();
             updateMarksStatus();
+            updateGradeDistributionDisplay();
             
             showNotification('Semua markah telah dikosongkan', 'info');
         }
 
         // Save all marks
         function simpanSemuaMarkah() {
-            const totalWithMarks = Object.values(currentMarks).length;
-            const totalStudents = currentStudents.length;
+            const totalWithMarks = Object.keys(currentMarks).length;
             
             if (totalWithMarks === 0) {
                 showNotification('Tiada markah untuk disimpan', 'warning');
                 return;
             }
             
-            // Show confirmation modal
             document.getElementById('confirmationTitle').textContent = 'Simpan Markah';
             document.getElementById('confirmationMessage').textContent = `Adakah anda pasti ingin menyimpan markah untuk ${totalWithMarks} pelajar?`;
-            document.getElementById('confirmationDetails').textContent = 'Markah akan disimpan ke dalam sistem dan tidak boleh diubah melainkan melalui kemaskini markah.';
             
             document.getElementById('confirmActionBtn').onclick = function() {
                 saveMarksToSystem();
@@ -2161,47 +2037,25 @@ No_Kad_Pengenalan,Nama,Markah
 
         // Save marks to system (simulated)
         function saveMarksToSystem() {
-            // Show loading
             showNotification('Menyimpan markah...', 'info');
             
-            // Simulate API call delay
             setTimeout(() => {
-                // Show success modal
                 document.getElementById('successMessage').textContent = 'Markah Berjaya Disimpan!';
-                document.getElementById('successDetails').textContent = `Markah untuk ${Object.values(currentMarks).length} pelajar telah berjaya disimpan ke dalam sistem.`;
-                
+                document.getElementById('successDetails').textContent = `Markah untuk ${Object.keys(currentMarks).length} pelajar telah berjaya disimpan.`;
                 successModal.classList.add('active');
-                
-                // Log saved data (for demo)
-                console.log('Marks saved:', {
-                    subject: document.getElementById('subjectSelect').value,
-                    class: document.getElementById('classSelect').value,
-                    assessmentType: document.getElementById('assessmentType').value,
-                    assessmentDate: document.getElementById('assessmentDate').value,
-                    fullMarks: document.getElementById('fullMarks').value,
-                    passingMarks: document.getElementById('passingMarks').value,
-                    marks: currentMarks,
-                    students: currentStudents
-                });
             }, 1500);
         }
 
-        // Update marking scheme
-        function updateMarkingScheme() {
-            const fullMarks = document.getElementById('fullMarks').value;
-            document.getElementById('fullMarksDisplay').textContent = fullMarks;
+        // Simpan markah individu
+        function simpanMarkahIndividu(studentId) {
+            const student = currentStudents.find(s => s.id == studentId);
+            if (!student || student.marks === null) {
+                showNotification('Sila masukkan markah terlebih dahulu', 'warning');
+                return;
+            }
             
-            // Update max attribute for all mark inputs
-            currentStudents.forEach(student => {
-                const input = document.getElementById(`mark-${student.id}`);
-                if (input) {
-                    input.max = fullMarks;
-                    input.placeholder = `0-${fullMarks}`;
-                    
-                    // Revalidate current value
-                    validateMark(student.id);
-                }
-            });
+            // Here you would normally send to server via AJAX
+            showNotification(`Markah untuk ${student.nama} telah disimpan`, 'success');
         }
 
         // Open bulk upload modal
@@ -2212,89 +2066,6 @@ No_Kad_Pengenalan,Nama,Markah
         // Close bulk upload modal
         function closeBulkUploadModal() {
             bulkUploadModal.classList.remove('active');
-        }
-
-        // Handle file upload
-        function handleFileUpload() {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            
-            if (!file) return;
-            
-            // Check file type
-            const validTypes = ['.xlsx', '.xls', '.csv'];
-            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-            
-            if (!validTypes.includes(fileExtension)) {
-                showNotification('Sila pilih fail Excel atau CSV sahaja', 'error');
-                fileInput.value = '';
-                return;
-            }
-            
-            // Check file size (max 10MB)
-            if (file.size > 10 * 1024 * 1024) {
-                showNotification('Fail terlalu besar. Saiz maksimum 10MB', 'error');
-                fileInput.value = '';
-                return;
-            }
-            
-            showNotification(`Fail "${file.name}" dipilih`, 'info');
-        }
-
-        // Simulate bulk upload
-        function simulateBulkUpload() {
-            const uploadProgress = document.getElementById('uploadProgress');
-            const uploadProgressFill = document.getElementById('uploadProgressFill');
-            const uploadProgressText = document.getElementById('uploadProgressText');
-            
-            // Show progress bar
-            uploadProgress.style.display = 'block';
-            
-            // Simulate upload progress
-            let progress = 0;
-            const interval = setInterval(() => {
-                progress += 10;
-                uploadProgressFill.style.width = `${progress}%`;
-                uploadProgressText.textContent = `${progress}%`;
-                
-                if (progress >= 100) {
-                    clearInterval(interval);
-                    
-                    // Simulate processing
-                    setTimeout(() => {
-                        // Simulate successful upload
-                        showNotification('Fail berjaya dimuat naik dan diproses', 'success');
-                        
-                        // Simulate data loading from file
-                        setTimeout(() => {
-                            // Load sample data from "uploaded file"
-                            const sampleData = {
-                                'STU001': 85,
-                                'STU002': 72,
-                                'STU003': 90,
-                                'STU004': 68,
-                                'STU005': 79,
-                                'STU006': 55,
-                                'STU007': 92,
-                                'STU008': 61
-                            };
-                            
-                            // Apply the marks
-                            Object.keys(sampleData).forEach(studentId => {
-                                const input = document.getElementById(`mark-${studentId}`);
-                                if (input) {
-                                    input.value = sampleData[studentId];
-                                    updateMark(studentId, sampleData[studentId]);
-                                    validateMark(studentId);
-                                }
-                            });
-                            
-                            closeBulkUploadModal();
-                            showNotification('Markah dari fail berjaya dimuatkan', 'success');
-                        }, 500);
-                    }, 500);
-                }
-            }, 100);
         }
 
         // Close confirmation modal
@@ -2332,9 +2103,24 @@ No_Kad_Pengenalan,Nama,Markah
             }
         }
 
+        // Handle file upload
+        function handleFileUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) return;
+            
+            showNotification(`Fail "${file.name}" dipilih`, 'info');
+        }
+
+        // Process bulk upload
+        function processBulkUpload() {
+            showNotification('Fungsi muat naik pukal akan datang', 'info');
+            closeBulkUploadModal();
+        }
+
         // Show notification
         function showNotification(message, type = 'info') {
-            // Create notification element
             const notification = document.createElement('div');
             notification.style.cssText = `
                 position: fixed;
@@ -2359,30 +2145,21 @@ No_Kad_Pengenalan,Nama,Markah
             
             document.body.appendChild(notification);
             
-            // Remove after 3 seconds
             setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
+                notification.remove();
             }, 3000);
         }
 
         // Setup event listeners
         function setupEventListeners() {
-            // Toggle sidebar
-            menuToggle.addEventListener('click', toggleSidebar);
-            sidebarOverlay.addEventListener('click', closeSidebar);
+            if (menuToggle) {
+                menuToggle.addEventListener('click', toggleSidebar);
+            }
             
-            // Close sidebar when clicking on sidebar items
-            document.querySelectorAll('.sidebar-item').forEach(item => {
-                item.addEventListener('click', closeSidebar);
-            });
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', closeSidebar);
+            }
             
-            // Add window resize listener
-            window.addEventListener('resize', function() {
-                closeSidebar();
-            });
-            
-            // Close modal when clicking outside
             document.addEventListener('click', function(event) {
                 if (event.target.classList.contains('modal')) {
                     closeBulkUploadModal();
@@ -2390,6 +2167,9 @@ No_Kad_Pengenalan,Nama,Markah
                     closeSuccessModal();
                 }
             });
+            
+            document.getElementById('fullMarks')?.addEventListener('change', updateFullMarksDisplay);
+            document.getElementById('passingMarks')?.addEventListener('change', updateFullMarksDisplay);
         }
 
         // Toggle Sidebar
@@ -2397,7 +2177,6 @@ No_Kad_Pengenalan,Nama,Markah
             sidebar.classList.toggle('sidebar-active');
             sidebarOverlay.classList.toggle('active');
             mainContent.classList.toggle('full-width');
-            document.body.style.overflow = sidebar.classList.contains('sidebar-active') ? 'hidden' : '';
         }
 
         // Close Sidebar on Mobile
@@ -2406,7 +2185,6 @@ No_Kad_Pengenalan,Nama,Markah
                 sidebar.classList.remove('sidebar-active');
                 sidebarOverlay.classList.remove('active');
                 mainContent.classList.remove('full-width');
-                document.body.style.overflow = '';
             }
         }
 
@@ -2423,24 +2201,11 @@ No_Kad_Pengenalan,Nama,Markah
                     opacity: 1;
                 }
             }
-            
-            @keyframes slideOut {
-                from {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-                to {
-                    transform: translateX(100%);
-                    opacity: 0;
-                }
-            }
         `;
         document.head.appendChild(style);
 
         // Initialize page when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            initializePage();
-        });
+        document.addEventListener('DOMContentLoaded', initializePage);
     </script>
 </body>
 </html>

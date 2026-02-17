@@ -98,14 +98,303 @@ function getGuruById($guru_id) {
         $guru = mysqli_fetch_assoc($result);
         
         return [
-            'guru_id' => $guru['id'],
-            'guru_nama' => $guru['nama'],
-            'guru_email' => $guru['email'],
-            'guru_no_telefon' => $guru['no_telefon'] ?? ''
+            'id' => $guru['id'],
+            'nama' => $guru['nama'],
+            'email' => $guru['email'],
+            'no_telefon' => $guru['no_telefon'] ?? ''
         ];
     }
     
     return false;
+}
+
+/**
+ * Get guru info by ID (alias for getGuruById)
+ */
+function getGuruInfo($guru_id) {
+    return getGuruById($guru_id);
+}
+
+// ============================================
+// SUBJEK (SUBJECT) FUNCTIONS
+// ============================================
+
+/**
+ * Get all subjects
+ */
+function getAllSubjects() {
+    global $conn;
+    
+    $sql = "SELECT * FROM matapelajaran WHERE status = 1 ORDER BY nama ASC";
+    $result = mysqli_query($conn, $sql);
+    $subjects = [];
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $subjects[] = $row;
+        }
+    }
+    
+    return $subjects;
+}
+
+/**
+ * Get subjects by guru
+ */
+function getSubjectsByGuru($guru_id) {
+    global $conn;
+    
+    $guru_id = mysqli_real_escape_string($conn, $guru_id);
+    
+    $sql = "SELECT m.* FROM matapelajaran m
+            JOIN pengajar p ON m.id = p.id_matapelajaran
+            WHERE p.id_guru = '$guru_id' AND m.status = 1
+            ORDER BY m.nama ASC";
+    
+    $result = mysqli_query($conn, $sql);
+    $subjects = [];
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $subjects[] = $row;
+        }
+    }
+    
+    return $subjects;
+}
+
+/**
+ * Get subject by ID
+ */
+function getSubjectById($id) {
+    global $conn;
+    
+    $id = mysqli_real_escape_string($conn, $id);
+    $sql = "SELECT * FROM matapelajaran WHERE id = '$id' LIMIT 1";
+    $result = mysqli_query($conn, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        return mysqli_fetch_assoc($result);
+    }
+    
+    return false;
+}
+
+// ============================================
+// PEPERIKSAAN (EXAM) FUNCTIONS
+// ============================================
+
+/**
+ * Get all exams
+ */
+function getAllExams() {
+    global $conn;
+    
+    $sql = "SELECT p.*, m.nama as nama_matapelajaran, k.nama as nama_kelas 
+            FROM peperiksaan p
+            JOIN matapelajaran m ON p.id_matapelajaran = m.id
+            JOIN kelas k ON p.id_kelas = k.id
+            WHERE p.status = 1
+            ORDER BY p.tarikh_mula DESC";
+    
+    $result = mysqli_query($conn, $sql);
+    $exams = [];
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $exams[] = $row;
+        }
+    }
+    
+    return $exams;
+}
+
+/**
+ * Get exams by guru
+ */
+function getExamsByGuru($guru_id) {
+    global $conn;
+    
+    $guru_id = mysqli_real_escape_string($conn, $guru_id);
+    
+    $sql = "SELECT p.*, m.nama as nama_matapelajaran, k.nama as nama_kelas 
+            FROM peperiksaan p
+            JOIN matapelajaran m ON p.id_matapelajaran = m.id
+            JOIN kelas k ON p.id_kelas = k.id
+            JOIN pengajar pj ON k.id = pj.id_kelas AND m.id = pj.id_matapelajaran
+            WHERE pj.id_guru = '$guru_id' AND p.status = 1
+            ORDER BY p.tarikh_mula DESC";
+    
+    $result = mysqli_query($conn, $sql);
+    $exams = [];
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $exams[] = $row;
+        }
+    }
+    
+    return $exams;
+}
+
+/**
+ * Get exam by ID
+ */
+function getExamById($id) {
+    global $conn;
+    
+    $id = mysqli_real_escape_string($conn, $id);
+    $sql = "SELECT p.*, m.nama as nama_matapelajaran, k.nama as nama_kelas 
+            FROM peperiksaan p
+            JOIN matapelajaran m ON p.id_matapelajaran = m.id
+            JOIN kelas k ON p.id_kelas = k.id
+            WHERE p.id = '$id' LIMIT 1";
+    
+    $result = mysqli_query($conn, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        return mysqli_fetch_assoc($result);
+    }
+    
+    return false;
+}
+
+// ============================================
+// MARKAH (MARKS) FUNCTIONS
+// ============================================
+
+/**
+ * Add single mark
+ */
+function addMark($data) {
+    global $conn;
+    
+    $id_pelajar = mysqli_real_escape_string($conn, $data['id_pelajar']);
+    $id_peperiksaan = mysqli_real_escape_string($conn, $data['id_peperiksaan']);
+    $markah = mysqli_real_escape_string($conn, $data['markah']);
+    $gred = mysqli_real_escape_string($conn, $data['gred'] ?? '');
+    $catatan = mysqli_real_escape_string($conn, $data['catatan'] ?? '');
+    
+    // Check if mark already exists
+    $check_sql = "SELECT id FROM markah WHERE id_pelajar = '$id_pelajar' AND id_peperiksaan = '$id_peperiksaan'";
+    $check_result = mysqli_query($conn, $check_sql);
+    
+    if (mysqli_num_rows($check_result) > 0) {
+        // Update existing mark
+        $sql = "UPDATE markah 
+                SET markah = '$markah', gred = '$gred', catatan = '$catatan', updated_at = NOW() 
+                WHERE id_pelajar = '$id_pelajar' AND id_peperiksaan = '$id_peperiksaan'";
+    } else {
+        // Insert new mark
+        $sql = "INSERT INTO markah (id_pelajar, id_peperiksaan, markah, gred, catatan, status) 
+                VALUES ('$id_pelajar', '$id_peperiksaan', '$markah', '$gred', '$catatan', 1)";
+    }
+    
+    if (mysqli_query($conn, $sql)) {
+        return ['success' => true, 'message' => 'Markah berjaya disimpan'];
+    } else {
+        return ['success' => false, 'message' => 'Ralat: ' . mysqli_error($conn)];
+    }
+}
+
+/**
+ * Add multiple marks
+ */
+function addMultipleMarks($marks_data) {
+    global $conn;
+    
+    $success_count = 0;
+    $errors = [];
+    
+    foreach ($marks_data as $data) {
+        $result = addMark($data);
+        if ($result['success']) {
+            $success_count++;
+        } else {
+            $errors[] = $result['message'];
+        }
+    }
+    
+    if ($success_count > 0) {
+        return [
+            'success' => true, 
+            'message' => "$success_count markah berjaya disimpan",
+            'errors' => $errors
+        ];
+    } else {
+        return [
+            'success' => false, 
+            'message' => 'Tiada markah berjaya disimpan',
+            'errors' => $errors
+        ];
+    }
+}
+
+/**
+ * Get marks by exam
+ */
+function getMarksByExam($exam_id) {
+    global $conn;
+    
+    $exam_id = mysqli_real_escape_string($conn, $exam_id);
+    
+    $sql = "SELECT m.*, p.nama as nama_pelajar, p.no_kp 
+            FROM markah m
+            JOIN pelajar p ON m.id_pelajar = p.id
+            WHERE m.id_peperiksaan = '$exam_id' AND m.status = 1
+            ORDER BY p.nama ASC";
+    
+    $result = mysqli_query($conn, $sql);
+    $marks = [];
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $marks[] = $row;
+        }
+    }
+    
+    return $marks;
+}
+
+/**
+ * Get students by class
+ */
+function getStudentsByClass($class_name) {
+    global $conn;
+    
+    $class_name = mysqli_real_escape_string($conn, $class_name);
+    
+    $sql = "SELECT p.* FROM pelajar p
+            JOIN kelas k ON p.id_kelas = k.id
+            WHERE k.nama = '$class_name' AND p.status = 1
+            ORDER BY p.nama ASC";
+    
+    $result = mysqli_query($conn, $sql);
+    $students = [];
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $students[] = $row;
+        }
+    }
+    
+    return $students;
+}
+
+/**
+ * Calculate grade based on marks
+ */
+function calculateGrade($mark, $full_marks = 100) {
+    if ($mark === null || $mark === '') return '';
+    
+    $percentage = ($mark / $full_marks) * 100;
+    
+    if ($percentage >= 80) return 'A';
+    if ($percentage >= 70) return 'B';
+    if ($percentage >= 60) return 'C';
+    if ($percentage >= 50) return 'D';
+    if ($percentage >= 40) return 'E';
+    return 'F';
 }
 
 // ============================================
@@ -113,7 +402,7 @@ function getGuruById($guru_id) {
 // ============================================
 
 /**
- * Get students by guru with filters - VERSION DENGAN JOIN TERUS KE kelas
+ * Get students by guru with filters
  */
 function getPelajarByGuru($guru_id, $search = '', $kelas = '', $tahun = '', $status = '', $prestasi = '') {
     global $conn;
@@ -326,11 +615,11 @@ function getKelasById($id) {
 }
 
 // ============================================
-// STATISTICS & REPORTS - VERSION YANG DAH DIBETULKAN
+// STATISTICS & REPORTS
 // ============================================
 
 /**
- * Get student statistics - GUNA id_kelas dalam table pelajar
+ * Get student statistics
  */
 function getStatistikPelajar($guru_id) {
     global $conn;
@@ -370,8 +659,8 @@ function getStatistikPelajar($guru_id) {
     return [
         'total_pelajar' => $total,
         'pelajar_aktif' => $active,
-        'prestasi_purata' => 78.5, // Demo data
-        'kadar_kehadiran' => 92.3   // Demo data
+        'prestasi_purata' => 78.5,
+        'kadar_kehadiran' => 92.3
     ];
 }
 
