@@ -30,20 +30,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $response['message'] = "Kod subjek sudah wujud!";
             } else {
                 // Insert into database
-                $sql = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, 1)";
+                $sql = "INSERT INTO matapelajaran (kod, nama, tahun, status) VALUES (?, ?, ?, 'aktif')";
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param("sss", $kod, $nama, $tahun);
                 
                 if ($stmt->execute()) {
                     $subject_id = $conn->insert_id;
                     
-                    // Insert details
-                    $details_sql = "INSERT INTO subject_details (id_matapelajaran, jenis, penerangan, buku_teks) 
-                                   VALUES (?, ?, ?, ?)";
-                    $details_stmt = $conn->prepare($details_sql);
-                    $details_stmt->bind_param("isss", $subject_id, $jenis, $penerangan, $buku_teks);
-                    $details_stmt->execute();
-                    $details_stmt->close();
+                    // subject_details table removed
                     
                     $response['success'] = true;
                     $response['message'] = "Subjek berjaya ditambah!";

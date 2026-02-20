@@ -5,25 +5,8 @@ ob_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Path ke config
-$possible_paths = [
-    __DIR__ . '/../config/connect.php',
-    __DIR__ . '/../../config/connect.php',
-    dirname(__DIR__) . '/config/connect.php'
-];
 
-$connected = false;
-foreach ($possible_paths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        $connected = true;
-        break;
-    }
-}
-
-if (!$connected) {
-    die("ERROR: Cannot find connect.php");
-}
+require_once __DIR__ . '/../../config/connect.php';
 
 // Check login
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -86,11 +69,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $search = $_GET['search'] ?? '';
 $kelas = $_GET['kelas'] ?? '';
 $tahun = $_GET['tahun'] ?? '';
-$status = $_GET['status'] ?? '';
+$status_filter = $_GET['status'] ?? '';
+$status = ($status_filter === 'active') ? 'aktif' : $status_filter;
 $prestasi = $_GET['prestasi'] ?? '';
 
 // Get data from database
-$pelajar_list = getPelajarByGuru($guru_id, $search, $kelas, $tahun, $status, $prestasi);
+$pelajar_list = getPelajarByGuru($guru_id, $search, $kelas, $status);
 $kelas_guru = getKelasByGuru($guru_id);
 $statistik = getStatistikPelajar($guru_id);
 $all_kelas = getAllKelas();
@@ -323,7 +307,7 @@ function handleImportStudents() {
                     'no_ic' => $no_kp,
                     'jantina' => $jantina,
                     'id_kelas' => $id_kelas,
-                    'status' => 'active'
+                    'status' => 'aktif'
                 ];
                 
                 if (tambahPelajar($student_data)) {

@@ -1,224 +1,113 @@
-<?php  
+<?php
 session_start();
+ob_start();
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// PATH FLEXIBLE
-$possible_paths = [
-    __DIR__ . '/../config/connect.php',
-    __DIR__ . '/../../config/connect.php',
-    dirname(__DIR__) . '/config/connect.php',
-    dirname(dirname(__DIR__)) . '/config/connect.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/dashboard/SlipKu/config/connect.php',
-    'C:/xampp/htdocs/dashboard/SlipKu/config/connect.php'
-];
-
-$connected = false;
-foreach ($possible_paths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        $connected = true;
-        break;
-    }
-}
-
-if (!$connected) {
-    die("<h3>ERROR: Cannot find connect.php</h3>");
-}
+require_once __DIR__ . '/../../config/connect.php';
 
 // Check login
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: ../login-guru.php');
-    exit();
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true || !isset($_SESSION['guru_id'])) {
+    header('Location: ../login-guru.php'); exit();
 }
 
 $guru_id = $_SESSION['guru_id'];
 $current_page = 'kelas-saya.php';
 
-// Get teacher initials
+// Initials
 $initials = '';
 if (isset($_SESSION['guru_nama'])) {
-    $name_parts = explode(' ', $_SESSION['guru_nama']);
-    foreach ($name_parts as $part) {
-        if (!empty($part)) {
-            $initials .= strtoupper(substr($part, 0, 1));
-        }
-    }
+    foreach (explode(' ', $_SESSION['guru_nama']) as $part)
+        if (!empty($part)) $initials .= strtoupper(substr($part, 0, 1));
     $initials = substr($initials, 0, 2);
 }
 
-// Database connection
-$db = isset($conn) ? $conn : (isset($database) ? $database : null);
-if (!$db) {
-    die("ERROR: Database connection not found.");
-}
-
-// ------------------------------------------------------------
-// HANDLE TAMBAH KELAS BARU
-// ------------------------------------------------------------
 $success_message = '';
 $error_message = '';
 
+// Handle TAMBAH KELAS
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'tambah_kelas') {
     $nama_kelas = trim($_POST['nama_kelas'] ?? '');
-    $darjah = trim($_POST['darjah'] ?? '');
     $tahun = trim($_POST['tahun'] ?? date('Y'));
     
-    if (empty($nama_kelas) || empty($darjah)) {
-        $error_message = 'Sila isi semua ruangan yang diperlukan.';
+    if (empty($nama_kelas)) {
+        $error_message = 'Sila isi nama kelas.';
     } else {
         try {
-            $db->begin_transaction();
+            $conn->begin_transaction();
+            $sql_ins = "INSERT INTO kelas (nama, tahun, id_guru, status) VALUES (?, ?, ?, 'aktif')";
+            $stmt_ins = $conn->prepare($sql_ins);
+            $stmt_ins->bind_param("sii", $nama_kelas, $tahun, $guru_id);
+            $stmt_ins->execute();
+            $kelas_id = $conn->insert_id;
+            $stmt_ins->close();
             
-            // Insert kelas
-            $sql_kelas = "INSERT INTO kelas (nama, darjah, tahun, status) VALUES (?, ?, ?, 'aktif')";
-            $stmt_kelas = $db->prepare($sql_kelas);
-            $stmt_kelas->bind_param("sss", $nama_kelas, $darjah, $tahun);
-            $stmt_kelas->execute();
-            $kelas_id = $db->insert_id;
+            // Insert into pengajar
+            $sql_p = "INSERT INTO pengajar (id_kelas, id_guru, tahun_akademik, status) VALUES (?, ?, ?, 'aktif')";
+            $tahun_akademik = "$tahun";
+            $stmt_p = $conn->prepare($sql_p);
+            $stmt_p->bind_param("iis", $kelas_id, $guru_id, $tahun_akademik);
+            $stmt_p->execute();
+            $stmt_p->close();
             
-            // Insert pengajar
-            $sql_pengajar = "INSERT INTO pengajar (id_guru, id_kelas, status) VALUES (?, ?, 'aktif')";
-            $stmt_pengajar = $db->prepare($sql_pengajar);
-            $stmt_pengajar->bind_param("ii", $guru_id, $kelas_id);
-            $stmt_pengajar->execute();
-            
-            $db->commit();
-            
-            header("Location: kelas-saya.php?success=1");
-            exit();
-            
+            $conn->commit();
+            header("Location: kelas-saya.php?success=1"); exit();
         } catch (Exception $e) {
-            $db->rollback();
+            $conn->rollback();
             $error_message = 'Ralat: ' . $e->getMessage();
         }
     }
 }
 
-// Check for success message from redirect
-if (isset($_GET['success'])) {
-    $success_message = 'Kelas berjaya ditambah!';
-}
+if (isset($_GET['success'])) $success_message = 'Kelas berjaya ditambah!';
 
-// ------------------------------------------------------------
-// GET KELAS - Hanya kelas yang diajar oleh guru ini
-// ------------------------------------------------------------
+// GET KELAS - kelas yang diajar guru ini
 $classes = [];
 $total_murid_keseluruhan = 0;
-$total_prestasi = 0;
 
 try {
-    $sql = "SELECT 
-            k.id, 
-            k.nama,
-            k.darjah,
-            k.tahun,
-            COUNT(p.id) as total_murid,
-            COALESCE(AVG(m.markah), 0) as average_performance
-        FROM pengajar pj
-        JOIN kelas k ON pj.id_kelas = k.id
-        LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 'aktif'
-        LEFT JOIN peperiksaan pe ON k.id = pe.id_kelas
-        LEFT JOIN markah m ON pe.id = m.id_peperiksaan AND m.status = 'aktif'
-        WHERE pj.id_guru = ? 
-            AND pj.status = 'aktif' 
-            AND k.status = 'aktif'
-        GROUP BY k.id, k.nama, k.darjah, k.tahun
-        ORDER BY k.darjah, k.nama";
-    
-    $stmt = $db->prepare($sql);
-    if ($stmt) {
-        $stmt->bind_param("i", $guru_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        while ($row = $result->fetch_assoc()) {
-            $total_murid = (int)($row['total_murid'] ?? 0);
-            $avg_performance = round((float)($row['average_performance'] ?? 0), 1);
-            
-            $classes[] = [
-                'id' => $row['id'],
-                'nama' => $row['nama'],
-                'darjah' => $row['darjah'] ?? '',
-                'tahun' => $row['tahun'] ?? date('Y'),
-                'total_murid' => $total_murid,
-                'average_performance' => $avg_performance
-            ];
-            
-            $total_murid_keseluruhan += $total_murid;
-            $total_prestasi += $avg_performance;
-        
-            }
+    $sql = "SELECT k.id, k.nama, k.tahun,
+                COUNT(DISTINCT p.id) as total_murid,
+                COALESCE(AVG(m.markah), 0) as average_performance
+            FROM pengajar pj
+            JOIN kelas k ON pj.id_kelas = k.id
+            LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 'aktif'
+            LEFT JOIN markah m ON m.id_pelajar = p.id AND m.status = 'aktif'
+            WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
+            GROUP BY k.id, k.nama, k.tahun
+            ORDER BY k.tahun DESC, k.nama ASC";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $guru_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $classes[] = [
+            'id' => $row['id'],
+            'nama' => $row['nama'],
+            'tahun' => $row['tahun'] ?? date('Y'),
+            'total_murid' => (int)$row['total_murid'],
+            'average_performance' => round((float)$row['average_performance'], 1)
+        ];
+        $total_murid_keseluruhan += (int)$row['total_murid'];
     }
-} catch (Exception $e) {
-    error_log("Exception: " . $e->getMessage());
-}
+    $stmt->close();
+} catch (Exception $e) { error_log($e->getMessage()); }
 
 $totalClasses = count($classes);
 $totalStudents = $total_murid_keseluruhan;
-$avgPerformance = $totalClasses > 0 ? round($total_prestasi / $totalClasses, 1) : 0;
+$avgPerformance = $totalClasses > 0 ? round(array_sum(array_column($classes, 'average_performance')) / $totalClasses, 1) : 0;
 
-// ------------------------------------------------------------
-// GET COUNTS FOR SIDEBAR BADGES
-// ------------------------------------------------------------
-$total_students = 0;
-$unmarked_count = 0;
+// Sidebar badge counts
+$total_students = $totalStudents;
 $subjek_count = 0;
-
 try {
-    // Total students (dalam kelas guru ini)
-    $sql_students = "SELECT COUNT(DISTINCT p.id) as total 
-                     FROM pelajar p
-                     JOIN kelas k ON p.id_kelas = k.id
-                     JOIN pengajar pj ON k.id = pj.id_kelas
-                     WHERE pj.id_guru = ?";
-    $stmt_students = $db->prepare($sql_students);
-    if ($stmt_students) {
-        $stmt_students->bind_param("i", $guru_id);
-        $stmt_students->execute();
-        $result_students = $stmt_students->get_result();
-        $row_students = $result_students->fetch_assoc();
-        $total_students = $row_students['total'] ?? 0;
-    
-        }
-    
-    // Unmarked exams
-    $sql_unmarked = "SELECT COUNT(*) as total 
-                     FROM markah m
-                     JOIN peperiksaan p ON m.id_peperiksaan = p.id
-                     JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
-                        AND p.id_kelas = pj.id_kelas
-                     WHERE pj.id_guru = ? 
-                        AND (m.gred IS NULL OR m.gred = '')";
-    $stmt_unmarked = $db->prepare($sql_unmarked);
-    if ($stmt_unmarked) {
-        $stmt_unmarked->bind_param("i", $guru_id);
-        $stmt_unmarked->execute();
-        $result_unmarked = $stmt_unmarked->get_result();
-        $row_unmarked = $result_unmarked->fetch_assoc();
-        $unmarked_count = $row_unmarked['total'] ?? 0;
-
-    }
-    
-    // Subjects count
-    $sql_subjek = "SELECT COUNT(DISTINCT id_matapelajaran) as total 
-                   FROM pengajar 
-                   WHERE id_guru = ?";
-    $stmt_subjek = $db->prepare($sql_subjek);
-    if ($stmt_subjek) {
-        $stmt_subjek->bind_param("i", $guru_id);
-        $stmt_subjek->execute();
-        $result_subjek = $stmt_subjek->get_result();
-        $row_subjek = $result_subjek->fetch_assoc();
-        $subjek_count = $row_subjek['total'] ?? 0;
-   
-        }
-    
-} catch (Exception $e) {
-    error_log("Error getting counts: " . $e->getMessage());
-}
-?>
+    $ss = $conn->prepare("SELECT COUNT(DISTINCT id_matapelajaran) as c FROM pengajar WHERE id_guru = ? AND status = 'aktif'");
+    $ss->bind_param("i", $guru_id);
+    $ss->execute();
+    $subjek_count = $ss->get_result()->fetch_assoc()['c'] ?? 0;
+    $ss->close();
+} catch (Exception $e) {}
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -1130,7 +1019,7 @@ try {
                                 <i class="fas fa-layer-group"></i>
                                 Darjah
                             </label>
-                            <select class="form-select" name="darjah" required>
+                            <select class="form-select" name="tahun" required>
                                 <option value="">Pilih Darjah</option>
                                 <option value="1">Darjah 1</option>
                                 <option value="2">Darjah 2</option>
@@ -1310,7 +1199,7 @@ try {
                                     </div>
                                     <div class="class-details">
                                         <div class="class-name"><?php echo htmlspecialchars($class['nama']); ?></div>
-                                        <div class="class-subject">Darjah <?php echo htmlspecialchars($class['darjah']); ?></div>
+                                        <div class="class-subject">Darjah <?php echo htmlspecialchars($class['tahun']); ?></div>
                                     </div>
                                 </div>
                             </td>
@@ -1379,7 +1268,7 @@ try {
                 document.getElementById('modalTitle').textContent = 'Maklumat Kelas: ' + className;
                 document.getElementById('classNameDetail').textContent = className;
 
-                document.getElementById('classLevelDetail').textContent = `Darjah ${classData.darjah || ''}`;
+                document.getElementById('classLevelDetail').textContent = `Darjah ${classData.tahun || ''}`;
  
                 document.getElementById('classYearDetail').textContent = classData.tahun || '2026';
                 document.getElementById('classPerformanceDetail').textContent = classData.average_performance.toFixed(1) + '%';

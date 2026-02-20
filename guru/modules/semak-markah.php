@@ -1,57 +1,69 @@
 <?php
-// Start session and check login
 session_start();
 ob_start();
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+require_once __DIR__ . '/../../config/connect.php';
 
-// Path ke config
-$possible_paths = [
-    __DIR__ . '/../config/connect.php',
-    __DIR__ . '/../../config/connect.php',
-    dirname(__DIR__) . '/config/connect.php'
-];
-
-$connected = false;
-foreach ($possible_paths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        $connected = true;
-        break;
-    }
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true || !isset($_SESSION['guru_id'])) {
+    header('Location: ../login-guru.php'); exit();
 }
-
-if (!$connected) {
-    die("ERROR: Cannot find connect.php");
-}
-
-// Check login
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: ../login-guru.php');
-    exit();
-}
-
 $guru_id = $_SESSION['guru_id'];
 $current_page = 'semak-markah.php';
-
-// Include database functions
 require_once __DIR__ . '/../includes/db_functions.php';
-
-// Get guru info
 $guru_info = getGuruById($guru_id);
-
-// Get initials for avatar
 $initials = '';
 if (isset($_SESSION['guru_nama'])) {
-    $parts = explode(' ', $_SESSION['guru_nama']);
-    foreach ($parts as $p) {
-        if (!empty($p)) {
-            $initials .= strtoupper(substr($p, 0, 1));
-        }
-    }
+    foreach (explode(' ', $_SESSION['guru_nama']) as $p)
+        if (!empty($p)) $initials .= strtoupper(substr($p, 0, 1));
     $initials = substr($initials, 0, 2);
 }
+
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
+    header('Content-Type: application/json');
+    $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                p.nama as nama_pelajar, p.no_kp, p.jantina,
+                k.nama as nama_kelas,
+                pp.nama_peperiksaan,
+                mp.nama as nama_subjek, mp.kod as kod_subjek
+            FROM markah m
+            JOIN pelajar p ON m.id_pelajar = p.id
+            JOIN kelas k ON p.id_kelas = k.id
+            JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+            JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+            JOIN pengajar pj ON mp.id = pj.id_matapelajaran
+            WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
+            ORDER BY p.nama ASC";
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+        $stmt->bind_param("i", $guru_id);
+        $stmt->execute();
+        $marks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        $students = [];
+        foreach ($marks as $m) {
+            $sid = $m['id_pelajar'];
+            if (!isset($students[$sid])) {
+                $students[$sid] = ['id' => $sid, 'nama' => $m['nama_pelajar'], 'no_kp' => $m['no_kp'],
+                    'jantina' => $m['jantina'], 'kelas' => $m['nama_kelas'], 'marks' => [], 'total' => 0, 'count' => 0];
+            }
+            $students[$sid]['marks'][] = ['id' => $m['id'], 'subjek' => $m['nama_subjek'],
+                'kod' => $m['kod_subjek'], 'peperiksaan' => $m['nama_peperiksaan'],
+                'markah' => $m['markah'], 'gred' => $m['gred']];
+            if ($m['markah'] !== null) { $students[$sid]['total'] += $m['markah']; $students[$sid]['count']++; }
+        }
+        foreach ($students as &$s) {
+            $s['purata'] = $s['count'] > 0 ? round($s['total'] / $s['count'], 1) : 0;
+            $s['gred_purata'] = calculateGrade($s['purata']);
+        }
+        echo json_encode(['success' => true, 'students' => array_values($students)]);
+    } else {
+        echo json_encode(['success' => false, 'students' => [], 'message' => $conn->error]);
+    }
+    exit();
+}
+$peperiksaan_list = getExamsByGuru($guru_id);
+$kelas_list = getKelasByGuru($guru_id);
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -1841,216 +1853,7 @@ if (isset($_SESSION['guru_nama'])) {
         let filteredSubjects = [];
 
         // Sample data for students
-        const sampleStudents = [
-            {
-                id: 'STU001',
-                name: 'Ahmad bin Ali',
-                class: '6A',
-                ic: '120101-01-1234',
-                marks: {
-                    matematik: { score: 95, grade: 'A', status: 'passed' },
-                    sains: { score: 88, grade: 'A', status: 'passed' },
-                    bahasa_melayu: { score: 82, grade: 'B', status: 'passed' },
-                    bahasa_inggeris: { score: 78, grade: 'B', status: 'passed' },
-                    pj: { score: 90, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 92,
-                    ujian2: 88,
-                    kuiz1: 95,
-                    kuiz2: 90,
-                    tugasan: 85,
-                    peperiksaan: 94
-                },
-                total: 544,
-                average: 90.7,
-                overallGrade: 'A',
-                rank: 1,
-                performance: 'excellent'
-            },
-            {
-                id: 'STU002',
-                name: 'Siti binti Abu',
-                class: '6A',
-                ic: '120202-02-5678',
-                marks: {
-                    matematik: { score: 85, grade: 'A', status: 'passed' },
-                    sains: { score: 72, grade: 'B', status: 'passed' },
-                    bahasa_melayu: { score: 90, grade: 'A', status: 'passed' },
-                    bahasa_inggeris: { score: 68, grade: 'C', status: 'passed' },
-                    pj: { score: 88, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 80,
-                    ujian2: 75,
-                    kuiz1: 85,
-                    kuiz2: 78,
-                    tugasan: 82,
-                    peperiksaan: 82
-                },
-                total: 482,
-                average: 80.3,
-                overallGrade: 'B',
-                rank: 3,
-                performance: 'good'
-            },
-            {
-                id: 'STU003',
-                name: 'Muhammad bin Hassan',
-                class: '6A',
-                ic: '120303-03-9012',
-                marks: {
-                    matematik: { score: 92, grade: 'A', status: 'passed' },
-                    sains: { score: 85, grade: 'A', status: 'passed' },
-                    bahasa_melayu: { score: 88, grade: 'A', status: 'passed' },
-                    bahasa_inggeris: { score: 82, grade: 'B', status: 'passed' },
-                    pj: { score: 95, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 90,
-                    ujian2: 88,
-                    kuiz1: 92,
-                    kuiz2: 85,
-                    tugasan: 87,
-                    peperiksaan: 91
-                },
-                total: 533,
-                average: 88.8,
-                overallGrade: 'A',
-                rank: 2,
-                performance: 'excellent'
-            },
-            {
-                id: 'STU004',
-                name: 'Aisyah binti Musa',
-                class: '6A',
-                ic: '120404-04-3456',
-                marks: {
-                    matematik: { score: 68, grade: 'C', status: 'passed' },
-                    sains: { score: 72, grade: 'B', status: 'passed' },
-                    bahasa_melayu: { score: 85, grade: 'A', status: 'passed' },
-                    bahasa_inggeris: { score: 65, grade: 'C', status: 'passed' },
-                    pj: { score: 80, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 70,
-                    ujian2: 65,
-                    kuiz1: 68,
-                    kuiz2: 72,
-                    tugasan: 75,
-                    peperiksaan: 69
-                },
-                total: 419,
-                average: 69.8,
-                overallGrade: 'C',
-                rank: 5,
-                performance: 'average'
-            },
-            {
-                id: 'STU005',
-                name: 'Ali bin Abdullah',
-                class: '6A',
-                ic: '120505-05-7890',
-                marks: {
-                    matematik: { score: 79, grade: 'B', status: 'passed' },
-                    sains: { score: 75, grade: 'B', status: 'passed' },
-                    bahasa_melayu: { score: 82, grade: 'B', status: 'passed' },
-                    bahasa_inggeris: { score: 70, grade: 'C', status: 'passed' },
-                    pj: { score: 85, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 78,
-                    ujian2: 75,
-                    kuiz1: 79,
-                    kuiz2: 72,
-                    tugasan: 80,
-                    peperiksaan: 77
-                },
-                total: 461,
-                average: 76.8,
-                overallGrade: 'B',
-                rank: 4,
-                performance: 'good'
-            },
-            {
-                id: 'STU006',
-                name: 'Fatimah binti Omar',
-                class: '6A',
-                ic: '120606-06-2345',
-                marks: {
-                    matematik: { score: 55, grade: 'E', status: 'passed' },
-                    sains: { score: 48, grade: 'E', status: 'passed' },
-                    bahasa_melayu: { score: 62, grade: 'D', status: 'passed' },
-                    bahasa_inggeris: { score: 58, grade: 'E', status: 'passed' },
-                    pj: { score: 70, grade: 'C', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 52,
-                    ujian2: 48,
-                    kuiz1: 55,
-                    kuiz2: 50,
-                    tugasan: 58,
-                    peperiksaan: 53
-                },
-                total: 316,
-                average: 52.7,
-                overallGrade: 'E',
-                rank: 8,
-                performance: 'poor'
-            },
-            {
-                id: 'STU007',
-                name: 'Hassan bin Ismail',
-                class: '6A',
-                ic: '120707-07-6789',
-                marks: {
-                    matematik: { score: 92, grade: 'A', status: 'passed' },
-                    sains: { score: 90, grade: 'A', status: 'passed' },
-                    bahasa_melayu: { score: 88, grade: 'A', status: 'passed' },
-                    bahasa_inggeris: { score: 85, grade: 'A', status: 'passed' },
-                    pj: { score: 94, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 90,
-                    ujian2: 92,
-                    kuiz1: 94,
-                    kuiz2: 88,
-                    tugasan: 89,
-                    peperiksaan: 93
-                },
-                total: 546,
-                average: 91.0,
-                overallGrade: 'A',
-                rank: 1,
-                performance: 'excellent'
-            },
-            {
-                id: 'STU008',
-                name: 'Zainab binti Yusuf',
-                class: '6A',
-                ic: '120808-08-1234',
-                marks: {
-                    matematik: { score: 61, grade: 'D', status: 'passed' },
-                    sains: { score: 58, grade: 'E', status: 'passed' },
-                    bahasa_melayu: { score: 72, grade: 'B', status: 'passed' },
-                    bahasa_inggeris: { score: 65, grade: 'C', status: 'passed' },
-                    pj: { score: 80, grade: 'A', status: 'passed' }
-                },
-                assessments: {
-                    ujian1: 60,
-                    ujian2: 58,
-                    kuiz1: 61,
-                    kuiz2: 55,
-                    tugasan: 65,
-                    peperiksaan: 62
-                },
-                total: 361,
-                average: 60.2,
-                overallGrade: 'D',
-                rank: 7,
-                performance: 'average'
-            }
-        ];
+        const sampleStudents = [];
 
         // Sample data for subjects
         const sampleSubjects = [
@@ -2123,7 +1926,20 @@ if (isset($_SESSION['guru_nama'])) {
 
         // Initialize page
         function initializePage() {
-            currentStudents = [...sampleStudents];
+            fetch('semak-markah.php?ajax=get_marks')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        currentStudents = data.students.map(s => ({
+                            id: s.id,
+                            studentName: s.nama,
+                            studentIC: s.no_kp,
+                            studentClass: s.kelas,
+                            gender: s.jantina,
+                            marks: s.marks,
+                            average: s.purata,
+                            grade: s.gred_purata
+                        }));
             currentSubjects = [...sampleSubjects];
             filteredStudents = [...currentStudents];
             filteredSubjects = [...currentSubjects];

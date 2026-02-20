@@ -1,297 +1,140 @@
 <?php
 session_start();
 
-// Debug: Check session
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Check login dengan lebih ketat
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    // Clear any existing session data
-    session_unset();
-    session_destroy();
-    
-    // Start fresh session for error message
-    session_start();
-    $_SESSION['login_error'] = 'Sila log masuk terlebih dahulu.';
-    
-    header('Location: login-guru.php');
-    exit();
+// Check login
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true || !isset($_SESSION['guru_id'])) {
+    session_unset(); session_destroy(); session_start();
+    header('Location: login-guru.php'); exit();
 }
 
-// Check session timeout (30 minit)
-$session_timeout = 1800; // 30 minit dalam saat
+// Session timeout (30 min)
+$session_timeout = 1800;
 if (isset($_SESSION['guru_login_time']) && (time() - $_SESSION['guru_login_time'] > $session_timeout)) {
-    // Session expired
-    session_unset();
-    session_destroy();
-    
-    // Start fresh session for error message
-    session_start();
+    session_unset(); session_destroy(); session_start();
     $_SESSION['login_error'] = 'Sesi anda telah tamat. Sila log masuk semula.';
-    
-    header('Location: login-guru.php');
-    exit();
+    header('Location: login-guru.php'); exit();
 }
-
-// Renew session time
 $_SESSION['guru_login_time'] = time();
 
-// Database connection
 require_once __DIR__ . '/../config/connect.php';
-
-// Debug: Check connection
-if (!isset($conn) || !($conn instanceof mysqli)) {
-    die("ERROR: Database connection not established.");
-}
 
 $id_guru = $_SESSION['guru_id'];
 
-// VERIFY guru exists in database (security check)
-$sql_verify = "SELECT id, nama, email FROM guru WHERE id = ? AND status = 'aktif'";
-$stmt_verify = $conn->prepare($sql_verify);
+// Verify guru exists
+$stmt_verify = $conn->prepare("SELECT id, nama, email FROM guru WHERE id = ? AND status = 'aktif'");
 $stmt_verify->bind_param("i", $id_guru);
 $stmt_verify->execute();
 $verify_result = $stmt_verify->get_result();
 
 if ($verify_result->num_rows === 0) {
-    // Guru tidak wujud atau tidak aktif
-    session_unset();
-    session_destroy();
-    
-    // Start fresh session for error message
-    session_start();
-    $_SESSION['login_error'] = 'Akaun tidak sah. Sila log masuk semula.';
-    
-    header('Location: login-guru.php');
-    exit();
+    session_unset(); session_destroy(); session_start();
+    header('Location: login-guru.php'); exit();
 }
-
 $guru = $verify_result->fetch_assoc();
-// Update session dengan data terkini dari DB
 $_SESSION['guru_nama'] = $guru['nama'];
 $_SESSION['guru_email'] = $guru['email'];
+$stmt_verify->close();
 
-$current_page = basename($_SERVER['PHP_SELF']);
+$current_page = 'dashboard-guru.php';
 
-// ------------------------------------------------------------
-// DATA UNTUK DASHBOARD - KHAS UNTUK GURU YANG LOGIN
-// ------------------------------------------------------------
+// ---- DATA DASHBOARD ----
 
-// 1. GET KELAS - hanya kelas yang diajar oleh guru ini
+// 1. KELAS yang diajar guru ini
 try {
-    $sql_kelas = "SELECT 
-                    k.id, 
-                    k.nama,
-                    k.tingkatan,
-                    COUNT(DISTINCT p.id_pelajar) as jumlah_pelajar
+    $sql_kelas = "SELECT DISTINCT k.id, k.nama, k.tahun,
+                    COUNT(DISTINCT p.id) as jumlah_pelajar
                   FROM pengajar pj
                   JOIN kelas k ON pj.id_kelas = k.id
-                  LEFT JOIN pendaftaran_kelas p ON k.id = p.id_kelas AND p.status = 'aktif'
-                  WHERE pj.id_guru = ? 
-                    AND pj.status = 'aktif' 
-                    AND k.status = 'aktif'
-                  GROUP BY k.id, k.nama, k.tingkatan";
-    
+                  LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 'aktif'
+                  WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
+                  GROUP BY k.id, k.nama, k.tahun";
     $stmt_kelas = $conn->prepare($sql_kelas);
     $stmt_kelas->bind_param("i", $id_guru);
     $stmt_kelas->execute();
-    $result_kelas = $stmt_kelas->get_result();
-    
-    $kelas_list = [];
-    $kelas_count = 0;
-    while ($row = $result_kelas->fetch_assoc()) {
-        $kelas_list[] = $row;
-        $kelas_count++;
-    }
-} catch (Exception $e) {
-    $kelas_list = [];
-    $kelas_count = 0;
-}
+    $kelas_list = $stmt_kelas->get_result()->fetch_all(MYSQLI_ASSOC);
+    $kelas_count = count($kelas_list);
+    $stmt_kelas->close();
+} catch (Exception $e) { $kelas_list = []; $kelas_count = 0; }
 
-// 2. GET SUBJEK - hanya subjek yang diajar oleh guru ini
+// 2. SUBJEK yang diajar guru ini
 try {
-    $sql_subjek = "SELECT 
-                    m.id,
-                    m.nama,
-                    m.kod,
+    $sql_subjek = "SELECT DISTINCT m.id, m.nama, m.kod,
                     COUNT(DISTINCT pj.id_kelas) as jumlah_kelas
                   FROM pengajar pj
                   JOIN matapelajaran m ON pj.id_matapelajaran = m.id
-                  WHERE pj.id_guru = ? 
-                    AND pj.status = 'aktif' 
-                    AND m.status = 'aktif'
+                  WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
                   GROUP BY m.id, m.nama, m.kod";
-    
     $stmt_subjek = $conn->prepare($sql_subjek);
     $stmt_subjek->bind_param("i", $id_guru);
     $stmt_subjek->execute();
-    $result_subjek = $stmt_subjek->get_result();
-    
-    $subjek_list = [];
-    $subjek_count = 0;
-    while ($row = $result_subjek->fetch_assoc()) {
-        $subjek_list[] = $row;
-        $subjek_count++;
-    }
-} catch (Exception $e) {
-    $subjek_list = [];
-    $subjek_count = 0;
-}
+    $subjek_list = $stmt_subjek->get_result()->fetch_all(MYSQLI_ASSOC);
+    $subjek_count = count($subjek_list);
+    $stmt_subjek->close();
+} catch (Exception $e) { $subjek_list = []; $subjek_count = 0; }
 
-// 3. GET PELAJAR - hanya pelajar dalam kelas yang diajar oleh guru ini
+// 3. JUMLAH PELAJAR dalam kelas guru ini
 try {
-    $sql_pelajar = "SELECT 
-                    COUNT(DISTINCT p.id) as total
+    $sql_pelajar = "SELECT COUNT(DISTINCT p.id) as total
                   FROM pelajar p
-                  JOIN pendaftaran_kelas pk ON p.id = pk.id_pelajar
-                  JOIN kelas k ON pk.id_kelas = k.id
+                  JOIN kelas k ON p.id_kelas = k.id
                   JOIN pengajar pj ON k.id = pj.id_kelas
-                  WHERE pj.id_guru = ? 
-                    AND p.status = 'aktif' 
-                    AND pk.status = 'aktif'
-                    AND k.status = 'aktif'
-                    AND pj.status = 'aktif'";
-    
+                  WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'";
     $stmt_pelajar = $conn->prepare($sql_pelajar);
     $stmt_pelajar->bind_param("i", $id_guru);
     $stmt_pelajar->execute();
-    $result_pelajar = $stmt_pelajar->get_result();
-    $row = $result_pelajar->fetch_assoc();
+    $row = $stmt_pelajar->get_result()->fetch_assoc();
     $total_students = $row['total'] ?? 0;
-} catch (Exception $e) {
-    $total_students = 0;
-}
+    $stmt_pelajar->close();
+} catch (Exception $e) { $total_students = 0; }
 
-// 4. GET SENARAI PELAJAR (untuk paparan detail)
+// 4. PEPERIKSAAN terkini (via subjek yang diajar)
 try {
-    $sql_pelajar_list = "SELECT 
-                        p.id,
-                        p.nama,
-                        p.no_kp,
-                        p.tingkatan,
-                        k.nama as kelas_nama
-                      FROM pelajar p
-                      JOIN pendaftaran_kelas pk ON p.id = pk.id_pelajar
-                      JOIN kelas k ON pk.id_kelas = k.id
-                      JOIN pengajar pj ON k.id = pj.id_kelas
-                      WHERE pj.id_guru = ? 
-                        AND p.status = 'aktif' 
-                        AND pk.status = 'aktif'
-                        AND k.status = 'aktif'
-                        AND pj.status = 'aktif'
-                      LIMIT 10";
-    
-    $stmt_pelajar_list = $conn->prepare($sql_pelajar_list);
-    $stmt_pelajar_list->bind_param("i", $id_guru);
-    $stmt_pelajar_list->execute();
-    $pelajar_list = $stmt_pelajar_list->get_result();
-} catch (Exception $e) {
-    $pelajar_list = null;
-}
-
-// 5. GET UJIAN YANG BELUM DINILAI - hanya untuk kelas/subjek guru ini
-try {
-    $sql_unmarked = "SELECT 
-                    COUNT(*) as total
-                  FROM markah m
-                  JOIN peperiksaan p ON m.id_peperiksaan = p.id
-                  JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
-                    AND p.id_kelas = pj.id_kelas
-                  WHERE pj.id_guru = ? 
-                    AND (m.gred IS NULL OR m.gred = '')
-                    AND m.status = 'aktif'
-                    AND p.status = 'aktif'
-                    AND pj.status = 'aktif'";
-    
-    $stmt_unmarked = $conn->prepare($sql_unmarked);
-    $stmt_unmarked->bind_param("i", $id_guru);
-    $stmt_unmarked->execute();
-    $unmarked_result = $stmt_unmarked->get_result();
-    $row = $unmarked_result->fetch_assoc();
-    $unmarked_count = $row['total'] ?? 0;
-} catch (Exception $e) {
-    $unmarked_count = 0;
-}
-
-// 6. GET UJIAN TERKINI - untuk kelas/subjek guru ini
-try {
-    $sql_peperiksaan = "SELECT 
-                        mp.nama as mata_pelajaran,
-                        k.nama as kelas,
-                        p.jenis,
-                        p.tarikh,
-                        COUNT(m.id) as jumlah_markah,
-                        SUM(CASE WHEN m.gred IS NOT NULL AND m.gred != '' THEN 1 ELSE 0 END) as sudah_dinilai
-                      FROM peperiksaan p
-                      JOIN matapelajaran mp ON p.id_matapelajaran = mp.id
-                      JOIN kelas k ON p.id_kelas = k.id
-                      JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
-                        AND p.id_kelas = pj.id_kelas
-                      LEFT JOIN markah m ON p.id = m.id_peperiksaan
-                      WHERE pj.id_guru = ? 
-                        AND p.status = 'aktif'
-                        AND pj.status = 'aktif'
-                      GROUP BY p.id, mp.nama, k.nama, p.jenis, p.tarikh
-                      ORDER BY p.tarikh DESC
-                      LIMIT 5";
-    
+    $sql_peperiksaan = "SELECT DISTINCT p.id, p.nama_peperiksaan, p.tarikh_mula, p.tarikh_tamat,
+                          p.jenis, m.nama as mata_pelajaran, p.status
+                        FROM peperiksaan p
+                        JOIN matapelajaran m ON p.id_matapelajaran = m.id
+                        JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran
+                        WHERE pj.id_guru = ? AND pj.status = 'aktif' AND p.status = 'aktif'
+                        ORDER BY p.tarikh_mula DESC LIMIT 5";
     $stmt_peperiksaan = $conn->prepare($sql_peperiksaan);
     $stmt_peperiksaan->bind_param("i", $id_guru);
     $stmt_peperiksaan->execute();
-    $peperiksaan_list = $stmt_peperiksaan->get_result();
-} catch (Exception $e) {
-    $peperiksaan_list = null;
-}
+    $peperiksaan_list = $stmt_peperiksaan->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_peperiksaan->close();
+} catch (Exception $e) { $peperiksaan_list = []; }
 
-// 7. GET PRESTASI KELAS - purata markah untuk kelas guru ini
+// 5. PRESTASI KELAS - purata markah
 try {
-    $sql_prestasi = "SELECT 
-                    k.nama,
-                    AVG(m.markah) as purata_markah
-                  FROM markah m
-                  JOIN peperiksaan p ON m.id_peperiksaan = p.id
-                  JOIN kelas k ON p.id_kelas = k.id
-                  JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran 
-                    AND p.id_kelas = pj.id_kelas
-                  WHERE pj.id_guru = ? 
-                    AND m.markah IS NOT NULL
-                    AND m.status = 'aktif'
-                    AND p.status = 'aktif'
-                    AND pj.status = 'aktif'
-                  GROUP BY k.id, k.nama
-                  ORDER BY purata_markah DESC
-                  LIMIT 5";
-    
+    $sql_prestasi = "SELECT k.nama,
+                      AVG(m.markah) as purata_markah,
+                      COUNT(m.id) as jumlah_markah
+                    FROM markah m
+                    JOIN peperiksaan p ON m.id_perperiksaan = p.id
+                    JOIN matapelajaran mp ON p.id_matapelajaran = mp.id
+                    JOIN pengajar pj ON mp.id = pj.id_matapelajaran
+                    JOIN kelas k ON pj.id_kelas = k.id
+                    WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.markah IS NOT NULL
+                    GROUP BY k.id, k.nama
+                    ORDER BY purata_markah DESC LIMIT 5";
     $stmt_prestasi = $conn->prepare($sql_prestasi);
     $stmt_prestasi->bind_param("i", $id_guru);
     $stmt_prestasi->execute();
-    $prestasi_kelas = $stmt_prestasi->get_result();
-} catch (Exception $e) {
-    $prestasi_kelas = null;
-}
+    $prestasi_kelas = $stmt_prestasi->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_prestasi->close();
+} catch (Exception $e) { $prestasi_kelas = []; }
 
-// Set defaults jika tiada data
-if ($kelas_count == 0) $kelas_count = 0;
-if ($subjek_count == 0) $subjek_count = 0;
-if ($total_students == 0) $total_students = 0;
-if ($unmarked_count == 0) $unmarked_count = 0;
-
-// Get teacher initials
+// Get initials
 $initials = '';
 if (isset($_SESSION['guru_nama'])) {
-    $name_parts = explode(' ', $_SESSION['guru_nama']);
-    foreach ($name_parts as $part) {
-        if (!empty($part)) {
-            $initials .= strtoupper(substr($part, 0, 1));
-        }
+    foreach (explode(' ', $_SESSION['guru_nama']) as $part) {
+        if (!empty($part)) $initials .= strtoupper(substr($part, 0, 1));
     }
     $initials = substr($initials, 0, 2);
 }
-
-
 ?>
-
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -1080,7 +923,7 @@ if (isset($_SESSION['guru_nama'])) {
                             $status = ($exam['sudah_dinilai'] == $exam['jumlah_markah'] && $exam['jumlah_markah'] > 0) ? 'graded' : 'upcoming';
                             $status_class = ($status == 'graded') ? 'status-graded' : 'status-upcoming';
                             $status_text = ($status == 'graded') ? 'Telah Dinilai' : 'Belum Dinilai';
-                            $tarikh = date('d M Y', strtotime($exam['tarikh']));
+                            $tarikh = date('d M Y', strtotime($exam['tarikh_mula']));
                             
                             echo '
                             <div class="exam-item">

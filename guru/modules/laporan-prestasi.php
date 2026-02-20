@@ -1,57 +1,95 @@
 <?php
-// Start session and check login
 session_start();
 ob_start();
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+require_once __DIR__ . '/../../config/connect.php';
 
-// Path ke config
-$possible_paths = [
-    __DIR__ . '/../config/connect.php',
-    __DIR__ . '/../../config/connect.php',
-    dirname(__DIR__) . '/config/connect.php'
-];
-
-$connected = false;
-foreach ($possible_paths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        $connected = true;
-        break;
-    }
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true || !isset($_SESSION['guru_id'])) {
+    header('Location: ../login-guru.php'); exit();
+}
+$guru_id = $_SESSION['guru_id'];
+$current_page = 'laporan-prestasi.php';
+require_once __DIR__ . '/../includes/db_functions.php';
+$guru_info = getGuruById($guru_id);
+$initials = '';
+if (isset($_SESSION['guru_nama'])) {
+    foreach (explode(' ', $_SESSION['guru_nama']) as $p)
+        if (!empty($p)) $initials .= strtoupper(substr($p, 0, 1));
+    $initials = substr($initials, 0, 2);
 }
 
-if (!$connected) {
-    die("ERROR: Cannot find connect.php");
-}
-
-// Check login
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: ../login-guru.php');
+// AJAX: GET REPORT DATA
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_report') {
+    header('Content-Type: application/json');
+    
+    // Top performers
+    $sql_top = "SELECT p.nama, p.no_kp, k.nama as kelas,
+                    AVG(m.markah) as purata, COUNT(m.id) as jumlah,
+                    MAX(m.markah) as tertinggi, MIN(m.markah) as terendah
+                FROM markah m
+                JOIN pelajar p ON m.id_pelajar = p.id
+                JOIN kelas k ON p.id_kelas = k.id
+                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                JOIN pengajar pj ON pp.id_matapelajaran = pj.id_matapelajaran
+                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
+                GROUP BY p.id, p.nama, p.no_kp, k.nama
+                ORDER BY purata DESC LIMIT 10";
+    
+    // Class comparison
+    $sql_kelas = "SELECT k.nama, k.id,
+                    AVG(m.markah) as purata,
+                    COUNT(DISTINCT p.id) as jumlah_pelajar,
+                    COUNT(m.id) as jumlah_markah,
+                    SUM(CASE WHEN m.markah >= 40 THEN 1 ELSE 0 END) as lulus,
+                    SUM(CASE WHEN m.markah < 40 THEN 1 ELSE 0 END) as gagal
+                FROM kelas k
+                JOIN pengajar pj ON k.id = pj.id_kelas
+                LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 'aktif'
+                LEFT JOIN markah m ON p.id = m.id_pelajar AND m.status = 'aktif'
+                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
+                GROUP BY k.id, k.nama";
+    
+    // Detailed - all students with marks
+    $sql_detail = "SELECT p.nama, p.no_kp, k.nama as kelas,
+                    m.markah, m.gred, pp.nama_peperiksaan,
+                    mp.nama as subjek
+                FROM markah m
+                JOIN pelajar p ON m.id_pelajar = p.id
+                JOIN kelas k ON p.id_kelas = k.id
+                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                JOIN pengajar pj ON mp.id = pj.id_matapelajaran
+                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
+                ORDER BY purata DESC";
+    
+    $response = [];
+    
+    $stmt = $conn->prepare($sql_top);
+    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['top'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
+    
+    $stmt = $conn->prepare($sql_kelas);
+    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['kelas'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
+    
+    $stmt = $conn->prepare($sql_detail);
+    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['detail'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
+    
+    // Stats
+    $stmt = $conn->prepare("SELECT COUNT(DISTINCT m.id_pelajar) as total_pelajar, AVG(m.markah) as purata_keseluruhan,
+                SUM(CASE WHEN m.markah >= 40 THEN 1 ELSE 0 END) as lulus,
+                SUM(CASE WHEN m.markah < 40 THEN 1 ELSE 0 END) as gagal
+                FROM markah m JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                JOIN pengajar pj ON pp.id_matapelajaran = pj.id_matapelajaran
+                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'");
+    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['stats'] = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
+    
+    $response['success'] = true;
+    echo json_encode($response);
     exit();
 }
 
-$guru_id = $_SESSION['guru_id'];
-$current_page = 'laporan-prestasi.php';
-
-// Include database functions
-require_once __DIR__ . '/../includes/db_functions.php';
-
-// Get guru info
-$guru_info = getGuruById($guru_id);
-
-// Get initials for avatar
-$initials = '';
-if (isset($_SESSION['guru_nama'])) {
-    $parts = explode(' ', $_SESSION['guru_nama']);
-    foreach ($parts as $p) {
-        if (!empty($p)) {
-            $initials .= strtoupper(substr($p, 0, 1));
-        }
-    }
-    $initials = substr($initials, 0, 2);
-}
+$kelas_list = getKelasByGuru($guru_id);
+$peperiksaan_list = getExamsByGuru($guru_id);
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -1734,207 +1772,43 @@ if (isset($_SESSION['guru_nama'])) {
         let currentChartType = 'bar';
 
         // Sample data
-        const sampleStudents = [
-            {
-                id: 'STU001',
-                name: 'Ahmad bin Ali',
-                class: '6A',
-                marks: {
-                    matematik: 95,
-                    sains: 88,
-                    bahasa_melayu: 82,
-                    bahasa_inggeris: 78,
-                    pj: 90
-                },
-                assessments: {
-                    ujian1: 92,
-                    ujian2: 88,
-                    peperiksaan: 94
-                },
-                average: 90.7,
-                grade: 'A',
-                rank: 1,
-                trend: 'up',
-                analysis: 'Cemerlang dalam semua subjek'
-            },
-            {
-                id: 'STU002',
-                name: 'Siti binti Abu',
-                class: '6A',
-                marks: {
-                    matematik: 85,
-                    sains: 72,
-                    bahasa_melayu: 90,
-                    bahasa_inggeris: 68,
-                    pj: 88
-                },
-                assessments: {
-                    ujian1: 80,
-                    ujian2: 75,
-                    peperiksaan: 82
-                },
-                average: 80.3,
-                grade: 'B',
-                rank: 3,
-                trend: 'up',
-                analysis: 'Baik, perlu tingkatkan Bahasa Inggeris'
-            },
-            {
-                id: 'STU003',
-                name: 'Muhammad bin Hassan',
-                class: '6A',
-                marks: {
-                    matematik: 92,
-                    sains: 85,
-                    bahasa_melayu: 88,
-                    bahasa_inggeris: 82,
-                    pj: 95
-                },
-                assessments: {
-                    ujian1: 90,
-                    ujian2: 88,
-                    peperiksaan: 91
-                },
-                average: 88.8,
-                grade: 'A',
-                rank: 2,
-                trend: 'stable',
-                analysis: 'Prestasi konsisten dan cemerlang'
-            },
-            {
-                id: 'STU004',
-                name: 'Aisyah binti Musa',
-                class: '6A',
-                marks: {
-                    matematik: 68,
-                    sains: 72,
-                    bahasa_melayu: 85,
-                    bahasa_inggeris: 65,
-                    pj: 80
-                },
-                assessments: {
-                    ujian1: 70,
-                    ujian2: 65,
-                    peperiksaan: 69
-                },
-                average: 69.8,
-                grade: 'C',
-                rank: 5,
-                trend: 'up',
-                analysis: 'Peningkatan baik, teruskan usaha'
-            },
-            {
-                id: 'STU005',
-                name: 'Ali bin Abdullah',
-                class: '6A',
-                marks: {
-                    matematik: 79,
-                    sains: 75,
-                    bahasa_melayu: 82,
-                    bahasa_inggeris: 70,
-                    pj: 85
-                },
-                assessments: {
-                    ujian1: 78,
-                    ujian2: 75,
-                    peperiksaan: 77
-                },
-                average: 76.8,
-                grade: 'B',
-                rank: 4,
-                trend: 'down',
-                analysis: 'Sedikit penurunan, perlu perhatian'
-            },
-            {
-                id: 'STU006',
-                name: 'Fatimah binti Omar',
-                class: '6A',
-                marks: {
-                    matematik: 55,
-                    sains: 48,
-                    bahasa_melayu: 62,
-                    bahasa_inggeris: 58,
-                    pj: 70
-                },
-                assessments: {
-                    ujian1: 52,
-                    ujian2: 48,
-                    peperiksaan: 53
-                },
-                average: 52.7,
-                grade: 'E',
-                rank: 8,
-                trend: 'down',
-                analysis: 'Perlu bimbingan intensif'
-            },
-            {
-                id: 'STU007',
-                name: 'Hassan bin Ismail',
-                class: '6A',
-                marks: {
-                    matematik: 92,
-                    sains: 90,
-                    bahasa_melayu: 88,
-                    bahasa_inggeris: 85,
-                    pj: 94
-                },
-                assessments: {
-                    ujian1: 90,
-                    ujian2: 92,
-                    peperiksaan: 93
-                },
-                average: 91.0,
-                grade: 'A',
-                rank: 1,
-                trend: 'up',
-                analysis: 'Pencapaian terbaik dalam kelas'
-            },
-            {
-                id: 'STU008',
-                name: 'Zainab binti Yusuf',
-                class: '6A',
-                marks: {
-                    matematik: 61,
-                    sains: 58,
-                    bahasa_melayu: 72,
-                    bahasa_inggeris: 65,
-                    pj: 80
-                },
-                assessments: {
-                    ujian1: 60,
-                    ujian2: 58,
-                    peperiksaan: 62
-                },
-                average: 60.2,
-                grade: 'D',
-                rank: 7,
-                trend: 'stable',
-                analysis: 'Prestasi sederhana, ada potensi'
-            }
-        ];
+        const sampleStudents = [];
 
-        const classData = [
-            { class: '6A', students: 8, average: 78.4, topStudent: 'Hassan bin Ismail', topAverage: 91.0, rank: 1, trend: 'up', analysis: 'Kelas terbaik' },
-            { class: '6B', students: 7, average: 72.3, topStudent: 'Ahmad bin Ibrahim', topAverage: 85.5, rank: 2, trend: 'stable', analysis: 'Prestasi baik' },
-            { class: '5A', students: 8, average: 68.9, topStudent: 'Sarah binti Musa', topAverage: 82.0, rank: 3, trend: 'up', analysis: 'Meningkat baik' },
-            { class: '5B', students: 6, average: 65.4, topStudent: 'Ali bin Hassan', topAverage: 78.5, rank: 4, trend: 'down', analysis: 'Perlu bimbingan' }
-        ];
+        const classData = [];
 
         // Initialize page
+        let realReportData = { top: [], kelas: [], detail: [], stats: null };
+        
         function initializePage() {
-            // Set up event listeners
             setupEventListeners();
-            
-            // Load initial data
-            loadTopPerformers();
-            loadClassComparison();
-            loadDetailedReport();
-            
-            // Initialize charts
-            initializeCharts();
-            
-            // Update report cards
-            updateReportCards();
+            fetch('laporan-prestasi.php?ajax=get_report')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        realReportData = data;
+                        // Map class data to expected format
+                        classData.push(...(data.kelas || []).map(k => ({
+                            class: k.nama,
+                            students: parseInt(k.jumlah_pelajar),
+                            average: parseFloat(k.purata || 0).toFixed(1),
+                            passed: parseInt(k.lulus || 0),
+                            failed: parseInt(k.gagal || 0),
+                            passRate: k.jumlah_markah > 0 ? Math.round((k.lulus / k.jumlah_markah) * 100) : 0
+                        })));
+                    }
+                    loadTopPerformers();
+                    loadClassComparison();
+                    loadDetailedReport();
+                    initializeCharts();
+                    updateReportCards();
+                })
+                .catch(e => {
+                    loadTopPerformers();
+                    loadClassComparison();
+                    loadDetailedReport();
+                    initializeCharts();
+                    updateReportCards();
+                });
         }
 
         // Change tab
@@ -1962,6 +1836,26 @@ if (isset($_SESSION['guru_nama'])) {
 
         // Load top performers
         function loadTopPerformers() {
+            if (realReportData.top && realReportData.top.length > 0) {
+                topPerformersBody.innerHTML = realReportData.top.map((s, i) => {
+                    const purata = parseFloat(s.purata || 0).toFixed(1);
+                    const gred = purata >= 90 ? 'A+' : purata >= 80 ? 'A' : purata >= 70 ? 'B' : purata >= 60 ? 'C' : purata >= 50 ? 'D' : 'F';
+                    const initials = s.nama.split(' ').slice(0,2).map(n => n[0]).join('');
+                    return `<tr>
+                        <td>${i+1}</td>
+                        <td><div style="display:flex;align-items:center;gap:10px">
+                            <div style="width:32px;height:32px;background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600">${initials}</div>
+                            <div><div style="font-weight:600">${s.nama}</div><div style="font-size:12px;color:#6b7280">${s.kelas}</div></div>
+                        </div></td>
+                        <td>${s.kelas}</td>
+                        <td><span style="font-weight:700;color:#4f46e5">${purata}%</span></td>
+                        <td><span style="background:${parseFloat(purata)>=60?'rgba(16,185,129,0.1)':'rgba(239,68,68,0.1)'};color:${parseFloat(purata)>=60?'#10b981':'#ef4444'};padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">${gred}</span></td>
+                        <td><span style="color:#10b981;font-weight:600">${s.tertinggi ?? '-'}</span></td>
+                    </tr>`;
+                }).join('');
+                return;
+            }
+            // Original fake fallback: 
             // Sort students by average (highest first)
             const sortedStudents = [...sampleStudents].sort((a, b) => b.average - a.average);
             

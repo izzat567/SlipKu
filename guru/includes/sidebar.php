@@ -38,7 +38,7 @@ if (!isset($current_page)) {
             <i class="fas fa-plus-circle"></i>
             Tambah Markah
         </a>
-        <a href="kemaskini-markah.php" class="sidebar-item <?php echo ($current_page == 'kemaskini-markah.php') ? 'active' : ''; ?>">
+        <a href="kemasikini-markah.php" class="sidebar-item <?php echo ($current_page == 'kemasikini-markah.php') ? 'active' : ''; ?>">
             <i class="fas fa-search"></i>
             Kemaskini Markah
         </a>

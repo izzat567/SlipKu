@@ -1,57 +1,143 @@
 <?php
-// Start session and check login
+// kemasikini-markah.php - FIXED VERSION
 session_start();
 ob_start();
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Path ke config
-$possible_paths = [
-    __DIR__ . '/../config/connect.php',
-    __DIR__ . '/../../config/connect.php',
-    dirname(__DIR__) . '/config/connect.php'
-];
-
-$connected = false;
-foreach ($possible_paths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        $connected = true;
-        break;
-    }
-}
-
-if (!$connected) {
-    die("ERROR: Cannot find connect.php");
-}
+require_once __DIR__ . '/../../config/connect.php';
 
 // Check login
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: ../login-guru.php');
-    exit();
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true || !isset($_SESSION['guru_id'])) {
+    header('Location: ../login-guru.php'); exit();
 }
 
 $guru_id = $_SESSION['guru_id'];
 $current_page = 'kemasikini-markah.php';
 
-// Include database functions
 require_once __DIR__ . '/../includes/db_functions.php';
 
-// Get guru info
 $guru_info = getGuruById($guru_id);
-
-// Get initials for avatar
 $initials = '';
 if (isset($_SESSION['guru_nama'])) {
-    $parts = explode(' ', $_SESSION['guru_nama']);
-    foreach ($parts as $p) {
-        if (!empty($p)) {
-            $initials .= strtoupper(substr($p, 0, 1));
-        }
-    }
+    foreach (explode(' ', $_SESSION['guru_nama']) as $p)
+        if (!empty($p)) $initials .= strtoupper(substr($p, 0, 1));
     $initials = substr($initials, 0, 2);
 }
+
+// AJAX: GET MARKS
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
+    header('Content-Type: application/json');
+    $peperiksaan_id = intval($_GET['peperiksaan_id'] ?? 0);
+    $kelas_id = intval($_GET['kelas_id'] ?? 0);
+    
+    if (!$peperiksaan_id && !$kelas_id) {
+        // Return all marks for this guru's subjects
+        $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                    p.nama as nama_pelajar, p.no_kp,
+                    k.nama as nama_kelas, k.id as id_kelas,
+                    pp.nama_peperiksaan, pp.id as id_peperiksaan,
+                    mp.nama as nama_subjek
+                FROM markah m
+                JOIN pelajar p ON m.id_pelajar = p.id
+                JOIN kelas k ON p.id_kelas = k.id
+                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                JOIN pengajar pj ON pp.id_matapelajaran = pj.id_matapelajaran AND pj.id_guru = ?
+                WHERE pj.status = 'aktif'
+                ORDER BY p.nama ASC";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $guru_id);
+    } elseif ($peperiksaan_id) {
+        $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                    p.nama as nama_pelajar, p.no_kp,
+                    k.nama as nama_kelas, k.id as id_kelas,
+                    pp.nama_peperiksaan, pp.id as id_peperiksaan,
+                    mp.nama as nama_subjek
+                FROM markah m
+                JOIN pelajar p ON m.id_pelajar = p.id
+                JOIN kelas k ON p.id_kelas = k.id
+                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                WHERE m.id_perperiksaan = ?
+                ORDER BY p.nama ASC";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $peperiksaan_id);
+    } else {
+        $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                    p.nama as nama_pelajar, p.no_kp,
+                    k.nama as nama_kelas, k.id as id_kelas,
+                    pp.nama_peperiksaan, pp.id as id_peperiksaan,
+                    mp.nama as nama_subjek
+                FROM markah m
+                JOIN pelajar p ON m.id_pelajar = p.id
+                JOIN kelas k ON p.id_kelas = k.id
+                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                WHERE p.id_kelas = ?
+                ORDER BY p.nama ASC";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $kelas_id);
+    }
+    
+    if ($stmt) {
+        $stmt->execute();
+        $marks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    } else {
+        $marks = [];
+    }
+    
+    echo json_encode(['success' => true, 'marks' => $marks]);
+    exit();
+}
+
+// AJAX: SAVE MARK UPDATE
+if (isset($_POST['ajax']) && $_POST['ajax'] === 'update_mark') {
+    header('Content-Type: application/json');
+    $mark_id = intval($_POST['mark_id'] ?? 0);
+    $markah_baru = intval($_POST['markah_baru'] ?? 0);
+    $today = date('Y-m-d');
+    $gred = calculateGrade($markah_baru);
+    
+    if (!$mark_id) {
+        echo json_encode(['success' => false, 'message' => 'ID markah tidak sah']); exit();
+    }
+    
+    $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, tarikh_kemaskini=? WHERE id=?");
+    $stmt->bind_param("issi", $markah_baru, $gred, $today, $mark_id);
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true, 'message' => 'Markah berjaya dikemaskini', 'gred' => $gred]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Ralat: ' . $conn->error]);
+    }
+    $stmt->close();
+    exit();
+}
+
+// AJAX: SAVE BULK UPDATES
+if (isset($_POST['ajax']) && $_POST['ajax'] === 'update_bulk') {
+    header('Content-Type: application/json');
+    $updates = json_decode($_POST['updates'] ?? '[]', true);
+    $today = date('Y-m-d');
+    $count = 0;
+    foreach ($updates as $update) {
+        $mark_id = intval($update['mark_id'] ?? 0);
+        $markah_baru = intval($update['markah_baru'] ?? 0);
+        $gred = calculateGrade($markah_baru);
+        $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, tarikh_kemaskini=? WHERE id=?");
+        $stmt->bind_param("issi", $markah_baru, $gred, $today, $mark_id);
+        if ($stmt->execute()) $count++;
+        $stmt->close();
+    }
+    echo json_encode(['success' => true, 'message' => "$count markah berjaya dikemaskini"]);
+    exit();
+}
+
+// GET dropdown data
+$peperiksaan_list = getExamsByGuru($guru_id);
+$kelas_list = getKelasByGuru($guru_id);
 ?>
 <!DOCTYPE html>
 <html lang="ms">
@@ -1420,36 +1506,31 @@ if (isset($_SESSION['guru_nama'])) {
             <div class="filter-options">
                 <div class="filter-group">
                     <label class="filter-label">Subjek:</label>
-                    <select class="filter-select" id="filterSubject" onchange="loadMarksData()">
-                        <option value="">Semua Subjek</option>
-                        <option value="MAT601" selected>Matematik</option>
-                        <option value="SNS601">Sains</option>
-                        <option value="BML601">Bahasa Melayu</option>
-                        <option value="ENG601">Bahasa Inggeris</option>
-                        <option value="PJK601">PJ & Kesihatan</option>
+                    <select class="filter-select" id="filterSubject" onchange="filterMarksData()">
+                        <option value="">Semua Peperiksaan</option>
+                        <?php foreach ($peperiksaan_list as $pp): ?>
+                        <option value="<?= htmlspecialchars($pp['nama_peperiksaan']) ?>"><?= htmlspecialchars($pp['nama_peperiksaan']) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
                 <div class="filter-group">
                     <label class="filter-label">Kelas:</label>
-                    <select class="filter-select" id="filterClass" onchange="loadMarksData()">
+                    <select class="filter-select" id="filterClass" onchange="filterMarksData()">
                         <option value="">Semua Kelas</option>
-                        <option value="6A" selected>Kelas 6A</option>
-                        <option value="6B">Kelas 6B</option>
-                        <option value="5A">Kelas 5A</option>
-                        <option value="5B">Kelas 5B</option>
+                        <?php foreach ($kelas_list as $kl): ?>
+                        <option value="<?= htmlspecialchars($kl['nama']) ?>"><?= htmlspecialchars($kl['nama']) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
                 <div class="filter-group">
                     <label class="filter-label">Jenis Penilaian:</label>
-                    <select class="filter-select" id="filterAssessment" onchange="loadMarksData()">
+                    <select class="filter-select" id="filterAssessment" onchange="filterMarksData()">
                         <option value="">Semua Jenis</option>
-                        <option value="exam">Peperiksaan Akhir</option>
-                        <option value="midterm">Peperiksaan Pertengahan Tahun</option>
-                        <option value="quiz1" selected>Kuiz 1</option>
-                        <option value="quiz2">Kuiz 2</option>
-                        <option value="assignment">Tugasan</option>
+                        <option value="bertulis">Bertulis</option>
+                        <option value="lisan">Lisan</option>
+                        <option value="amali">Amali</option>
                     </select>
                 </div>
                 
@@ -1553,264 +1634,37 @@ if (isset($_SESSION['guru_nama'])) {
         let changesCount = 0;
 
         // Sample data for marks
-        const sampleMarksData = [
-            {
-                id: 'MRK001',
-                studentId: 'STU001',
-                studentName: 'Ahmad bin Ali',
-                studentClass: '6A',
-                studentIC: '120101-01-1234',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 85,
-                currentMark: 85,
-                originalGrade: 'A',
-                currentGrade: 'A',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 85, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK002',
-                studentId: 'STU002',
-                studentName: 'Siti binti Abu',
-                studentClass: '6A',
-                studentIC: '120202-02-5678',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 72,
-                currentMark: 72,
-                originalGrade: 'B',
-                currentGrade: 'B',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 72, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK003',
-                studentId: 'STU003',
-                studentName: 'Muhammad bin Hassan',
-                studentClass: '6A',
-                studentIC: '120303-03-9012',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 90,
-                currentMark: 90,
-                originalGrade: 'A',
-                currentGrade: 'A',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 90, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK004',
-                studentId: 'STU004',
-                studentName: 'Aisyah binti Musa',
-                studentClass: '6A',
-                studentIC: '120404-04-3456',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 68,
-                currentMark: 68,
-                originalGrade: 'C',
-                currentGrade: 'C',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 68, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK005',
-                studentId: 'STU005',
-                studentName: 'Ali bin Abdullah',
-                studentClass: '6A',
-                studentIC: '120505-05-7890',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 79,
-                currentMark: 79,
-                originalGrade: 'B',
-                currentGrade: 'B',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 79, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK006',
-                studentId: 'STU006',
-                studentName: 'Fatimah binti Omar',
-                studentClass: '6A',
-                studentIC: '120606-06-2345',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 55,
-                currentMark: 55,
-                originalGrade: 'E',
-                currentGrade: 'E',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 55, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK007',
-                studentId: 'STU007',
-                studentName: 'Hassan bin Ismail',
-                studentClass: '6A',
-                studentIC: '120707-07-6789',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 92,
-                currentMark: 92,
-                originalGrade: 'A',
-                currentGrade: 'A',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 92, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            },
-            {
-                id: 'MRK008',
-                studentId: 'STU008',
-                studentName: 'Zainab binti Yusuf',
-                studentClass: '6A',
-                studentIC: '120808-08-1234',
-                subject: 'MAT601',
-                subjectName: 'Matematik',
-                assessmentType: 'quiz1',
-                assessmentName: 'Kuiz 1',
-                originalMark: 61,
-                currentMark: 61,
-                originalGrade: 'D',
-                currentGrade: 'D',
-                status: 'passed',
-                lastUpdated: '2023-10-10 14:30:00',
-                updatedBy: 'Cikgu Ahmad',
-                notes: 'Markah asal',
-                history: [
-                    { date: '2023-10-10 14:30:00', oldMark: null, newMark: 61, changedBy: 'Cikgu Ahmad', reason: 'Markah awal' }
-                ]
-            }
-        ];
+        const sampleMarksData = [];
 
         // Sample change history
-        const sampleChangeHistory = [
-            {
-                id: 'CHG001',
-                studentId: 'STU002',
-                studentName: 'Siti binti Abu',
-                subject: 'Sains',
-                assessmentType: 'midterm',
-                oldMark: 65,
-                newMark: 72,
-                oldGrade: 'C',
-                newGrade: 'B',
-                date: '2023-10-12 10:15:00',
-                changedBy: 'Cikgu Ahmad',
-                reason: 'Pembetulan kesilapan pengiraan'
-            },
-            {
-                id: 'CHG002',
-                studentId: 'STU005',
-                studentName: 'Ali bin Abdullah',
-                subject: 'Bahasa Melayu',
-                assessmentType: 'quiz1',
-                oldMark: 48,
-                newMark: 55,
-                oldGrade: 'E',
-                newGrade: 'E',
-                date: '2023-10-11 15:45:00',
-                changedBy: 'Cikgu Siti',
-                reason: 'Tambah markah untuk soalan bonus'
-            },
-            {
-                id: 'CHG003',
-                studentId: 'STU003',
-                studentName: 'Muhammad bin Hassan',
-                subject: 'Bahasa Inggeris',
-                assessmentType: 'assignment',
-                oldMark: 78,
-                newMark: 85,
-                oldGrade: 'B',
-                newGrade: 'A',
-                date: '2023-10-10 09:30:00',
-                changedBy: 'Cikgu Ali',
-                reason: 'Pembetulan ejaan yang tidak dinilai'
-            },
-            {
-                id: 'CHG004',
-                studentId: 'STU007',
-                studentName: 'Hassan bin Ismail',
-                subject: 'Matematik',
-                assessmentType: 'quiz2',
-                oldMark: 88,
-                newMark: 92,
-                oldGrade: 'A',
-                newGrade: 'A',
-                date: '2023-10-09 14:20:00',
-                changedBy: 'Cikgu Ahmad',
-                reason: 'Tambah markah untuk penyelesaian alternatif'
-            },
-            {
-                id: 'CHG005',
-                studentId: 'STU001',
-                studentName: 'Ahmad bin Ali',
-                subject: 'Sains',
-                assessmentType: 'project',
-                oldMark: 70,
-                newMark: 75,
-                oldGrade: 'B',
-                newGrade: 'B',
-                date: '2023-10-08 11:10:00',
-                changedBy: 'Cikgu Ahmad',
-                reason: 'Peningkatan markah untuk bahagian kesimpulan'
-            }
-        ];
+        const sampleChangeHistory = [];
 
         // Initialize page
         function initializePage() {
-            currentMarksData = JSON.parse(JSON.stringify(sampleMarksData));
-            originalMarksData = JSON.parse(JSON.stringify(sampleMarksData));
-            changeHistory = JSON.parse(JSON.stringify(sampleChangeHistory));
+            loadRealMarksData();
+        }
+        
+        function loadRealMarksData() {
+            fetch('kemasikini-markah.php?ajax=get_marks')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        currentMarksData = data.marks.map(m => ({
+                            id: m.id,
+                            studentId: m.id_pelajar,
+                            studentName: m.nama_pelajar,
+                            studentIC: m.no_kp,
+                            studentClass: m.nama_kelas,
+                            subjectName: m.nama_subjek,
+                            assessmentType: m.nama_peperiksaan,
+                            subject: m.nama_subjek,
+                            originalMark: m.markah,
+                            currentMark: m.markah,
+                            originalGrade: m.gred,
+                            catatan: m.catatan
+                        }));
+                        originalMarksData = JSON.parse(JSON.stringify(currentMarksData));
+                        changeHistory = [];
             
             // Set up event listeners
             setupEventListeners();
@@ -1824,6 +1678,15 @@ if (isset($_SESSION['guru_nama'])) {
         }
 
         // Load marks data
+        function filterMarksData() {
+            const subjectFilter = document.getElementById('filterSubject').value;
+            const classFilter = document.getElementById('filterClass').value;
+            let filtered = currentMarksData;
+            if (subjectFilter) filtered = filtered.filter(i => i.assessmentType === subjectFilter);
+            if (classFilter) filtered = filtered.filter(i => i.studentClass === classFilter);
+            loadMarksTable(filtered);
+        }
+
         function loadMarksData() {
             const subjectFilter = document.getElementById('filterSubject').value;
             const classFilter = document.getElementById('filterClass').value;
@@ -2329,68 +2192,41 @@ if (isset($_SESSION['guru_nama'])) {
             confirmationModal.classList.add('active');
         }
 
-        // Confirm update
+        // Confirm update - REAL DB SAVE
         function confirmUpdate() {
             const changedItems = currentMarksData.filter(item => item.currentMark !== item.originalMark);
+            if (changedItems.length === 0) { closeConfirmationModal(); return; }
             
-            // Simulate API call to save changes
             showNotification('Menyimpan perubahan...', 'info');
             
-            setTimeout(() => {
-                // Update original marks to current marks
-                changedItems.forEach(item => {
-                    // Add to change history
-                    const historyEntry = {
-                        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
-                        oldMark: item.originalMark,
-                        newMark: item.currentMark,
-                        changedBy: 'Cikgu Ahmad',
-                        reason: 'Pembetulan markah'
-                    };
-                    
-                    // Add to item history
-                    if (!item.history) item.history = [];
-                    item.history.push(historyEntry);
-                    
-                    // Update original mark
-                    item.originalMark = item.currentMark;
-                    
-                    // Add to global change history
-                    const changeHistoryEntry = {
-                        id: 'CHG' + (changeHistory.length + 1).toString().padStart(3, '0'),
-                        studentId: item.studentId,
-                        studentName: item.studentName,
-                        subject: item.subjectName,
-                        assessmentType: item.assessmentType,
-                        oldMark: historyEntry.oldMark,
-                        newMark: historyEntry.newMark,
-                        oldGrade: calculateGrade(historyEntry.oldMark),
-                        newGrade: calculateGrade(historyEntry.newMark),
-                        date: historyEntry.date,
-                        changedBy: historyEntry.changedBy,
-                        reason: historyEntry.reason
-                    };
-                    
-                    changeHistory.unshift(changeHistoryEntry);
+            const updates = changedItems.map(item => ({
+                mark_id: item.id,
+                markah_baru: item.currentMark
+            }));
+            
+            const formData = new FormData();
+            formData.append('ajax', 'update_bulk');
+            formData.append('updates', JSON.stringify(updates));
+            
+            fetch('kemasikini-markah.php', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    closeConfirmationModal();
+                    if (data.success) {
+                        changedItems.forEach(item => { item.originalMark = item.currentMark; });
+                        document.getElementById('successMessage').textContent = 'Perubahan Berjaya Disimpan!';
+                        document.getElementById('successDetails').textContent = data.message;
+                        successModal.classList.add('active');
+                        loadMarksData();
+                        updateChangesStatus();
+                    } else {
+                        showNotification('Ralat: ' + data.message, 'error');
+                    }
+                })
+                .catch(e => {
+                    closeConfirmationModal();
+                    showNotification('Ralat sambungan: ' + e.message, 'error');
                 });
-                
-                // Close confirmation modal
-                closeConfirmationModal();
-                
-                // Show success modal
-                document.getElementById('successMessage').textContent = 'Perubahan Berjaya Disimpan!';
-                document.getElementById('successDetails').textContent = `${changesCount} perubahan telah berjaya disimpan ke dalam sistem.`;
-                
-                successModal.classList.add('active');
-                
-                // Update UI
-                loadMarksData();
-                loadChangeHistory();
-                updateChangesStatus();
-                
-                // Log changes (for demo)
-                console.log('Changes saved:', changedItems);
-            }, 1500);
         }
 
         // Close history modal

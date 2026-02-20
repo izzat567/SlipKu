@@ -2,6 +2,8 @@
 session_start();
 ob_start();
 require_once __DIR__ . '/../../config/connect.php';
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) { header('Location: ../login-guru.php'); exit(); }
+$current_page = 'edit-subject.php';
 
 $error_message = '';
 $success_message = '';
@@ -15,14 +17,9 @@ if ($subject_id <= 0) {
 }
 
 // 1. AMBIL DATA SUBJEK UNTUK DIEDIT
-$sql = "SELECT m.*, 
-               COALESCE(sd.jenis, 'core') as jenis,
-               COALESCE(sd.penerangan, '') as penerangan,
-               COALESCE(sd.buku_teks, '') as buku_teks,
-               COALESCE(sd.catatan, '') as catatan
+$sql = "SELECT m.*, '' as jenis, '' as penerangan, '' as buku_teks, '' as catatan
         FROM matapelajaran m
-        LEFT JOIN subject_details sd ON m.id = sd.id_matapelajaran
-        WHERE m.id = ? AND m.status = 1";
+        WHERE m.id = ? AND m.status = 'aktif'";
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $subject_id);

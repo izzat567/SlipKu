@@ -7,24 +7,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Path ke config
-$possible_paths = [
-    __DIR__ . '/../config/connect.php',
-    __DIR__ . '/../../config/connect.php',
-    dirname(__DIR__) . '/config/connect.php'
-];
-
-$connected = false;
-foreach ($possible_paths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        $connected = true;
-        break;
-    }
-}
-
-if (!$connected) {
-    die("ERROR: Cannot find connect.php");
-}
+require_once __DIR__ . '/../../config/connect.php';
 
 // Check login
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -33,6 +16,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 $guru_id = $_SESSION['guru_id'];
+$current_page = 'tambah-markah.php';
 
 // Include database functions
 require_once __DIR__ . '/../includes/db_functions.php';
@@ -100,7 +84,7 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_students') {
         $class = $_GET['class'] ?? '';
-        $students = getStudentsByClass($class);
+        $students = is_numeric($class) ? getStudentsByClass((int)$class) : getStudentsByClassName($class);
         
         echo json_encode([
             'success' => true,
@@ -131,7 +115,7 @@ if (isset($_GET['markah_lulus'])) $markah_lulus = $_GET['markah_lulus'];
 
 // If class is selected, get students
 if ($selected_class) {
-    $students = getStudentsByClass($selected_class);
+    $students = is_numeric($selected_class) ? getStudentsByClass((int)$selected_class) : getStudentsByClassName($selected_class);
 }
 ?>
 <!DOCTYPE html>
@@ -1436,56 +1420,8 @@ No_Kad_Pengenalan,Nama,Markah
         </div>
     </header>
 
-    <!-- Sidebar - Create a simple sidebar or include your existing one -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-section">
-            <div class="sidebar-title">Menu Utama</div>
-            <a href="../dashboard-guru.php" class="sidebar-item">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="kelas-saya.php" class="sidebar-item">
-                <i class="fas fa-users"></i>
-                Kelas Saya
-            </a>
-            <a href="pelajar-saya.php" class="sidebar-item">
-                <i class="fas fa-user-graduate"></i>
-                Pelajar Saya
-            </a>
-            <a href="subjek-saya.php" class="sidebar-item">
-                <i class="fas fa-book"></i>
-                Subjek Saya
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Peperiksaan & Penilaian</div>
-            <a href="tambah-markah.php" class="sidebar-item active">
-                <i class="fas fa-plus-circle"></i>
-                Tambah Markah
-            </a>
-            <a href="semak-markah.php" class="sidebar-item">
-                <i class="fas fa-search"></i>
-                Semak Markah
-            </a>
-            <a href="laporan-prestasi.php" class="sidebar-item">
-                <i class="fas fa-chart-bar"></i>
-                Laporan Prestasi
-            </a>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-title">Sistem</div>
-            <a href="profil-saya.php" class="sidebar-item">
-                <i class="fas fa-user-cog"></i>
-                Profil Saya
-            </a>
-            <a href="../logout.php" class="sidebar-item" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                Log Keluar
-            </a>
-        </div>
-    </aside>
+    <!-- Sidebar -->
+    <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
