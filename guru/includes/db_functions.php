@@ -185,20 +185,12 @@ function getSubjectById($id) {
 // ============================================
 
 /**
- * Get all exams - VERSION DENGAN LEFT JOIN
+ * Get all exams - VERSION RINGKAS
  */
 function getAllExams() {
     global $conn;
     
-    $sql = "SELECT peperiksaan.*, 
-                   COALESCE(matapelajaran.nama, 'Tiada Subjek') as nama_matapelajaran, 
-                   COALESCE(kelas.nama, 'Tiada Kelas') as nama_kelas 
-            FROM peperiksaan 
-            LEFT JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
-            LEFT JOIN kelas ON peperiksaan.id_kelas = kelas.id
-            WHERE peperiksaan.status = 1 OR peperiksaan.status = 'aktif'
-            ORDER BY peperiksaan.tarikh_mula DESC";
-    
+    $sql = "SELECT * FROM peperiksaan WHERE status = 1 OR status = 'aktif' ORDER BY tarikh_mula DESC";
     $result = mysqli_query($conn, $sql);
     $exams = [];
     
@@ -212,23 +204,13 @@ function getAllExams() {
 }
 
 /**
- * Get exams by guru - VERSION YANG DAH DIBETULKAN UNTUK STRUKTUR DB ANDA
+ * Get exams by guru - VERSION RINGKAS
  */
 function getExamsByGuru($guru_id) {
     global $conn;
     
-    $guru_id = mysqli_real_escape_string($conn, $guru_id);
-    
-    // Version ringkas - ambil semua peperiksaan tanpa filter guru dulu
-    $sql = "SELECT peperiksaan.*, 
-                   COALESCE(matapelajaran.nama, 'Matematik') as nama_matapelajaran, 
-                   COALESCE(kelas.nama, '1 ALPHA') as nama_kelas 
-            FROM peperiksaan 
-            LEFT JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
-            LEFT JOIN kelas ON peperiksaan.id_kelas = kelas.id
-            WHERE peperiksaan.status = 1 OR peperiksaan.status = 'aktif'
-            ORDER BY peperiksaan.tarikh_mula DESC";
-    
+    // Abaikan $guru_id dulu, ambil semua peperiksaan
+    $sql = "SELECT * FROM peperiksaan WHERE status = 1 OR status = 'aktif' ORDER BY tarikh_mula DESC";
     $result = mysqli_query($conn, $sql);
     
     if (!$result) {
@@ -253,14 +235,7 @@ function getExamById($id) {
     global $conn;
     
     $id = mysqli_real_escape_string($conn, $id);
-    $sql = "SELECT peperiksaan.*, 
-                   COALESCE(matapelajaran.nama, 'Tiada Subjek') as nama_matapelajaran, 
-                   COALESCE(kelas.nama, 'Tiada Kelas') as nama_kelas 
-            FROM peperiksaan 
-            LEFT JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
-            LEFT JOIN kelas ON peperiksaan.id_kelas = kelas.id
-            WHERE peperiksaan.id = '$id' LIMIT 1";
-    
+    $sql = "SELECT * FROM peperiksaan WHERE id = '$id' LIMIT 1";
     $result = mysqli_query($conn, $sql);
     
     if ($result && mysqli_num_rows($result) > 0) {
