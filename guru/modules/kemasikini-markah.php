@@ -1665,16 +1665,25 @@ $kelas_list = getKelasByGuru($guru_id);
                         }));
                         originalMarksData = JSON.parse(JSON.stringify(currentMarksData));
                         changeHistory = [];
-            
-            // Set up event listeners
-            setupEventListeners();
-            
-            // Load initial data
-            loadMarksData();
-            loadChangeHistory();
-            
-            // Update changes status
-            updateChangesStatus();
+
+                        // Set up event listeners
+                        setupEventListeners();
+
+                        // Load initial data
+                        loadMarksData();
+                        loadChangeHistory();
+
+                        // Update changes status
+                        updateChangesStatus();
+                    }
+                })
+                .catch(err => {
+                    console.error('Ralat memuatkan data:', err);
+                    marksTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--medium-gray);">Tiada data markah dijumpai. Sila pastikan markah telah dimasukkan.</td></tr>';
+                    setupEventListeners();
+                    loadChangeHistory();
+                    updateChangesStatus();
+                });
         }
 
         // Load marks data
