@@ -139,7 +139,7 @@ function getAllSubjects() {
 }
 
 /**
- * Get subjects by guru
+ * Get subjects by guru - dengan error logging
  */
 function getSubjectsByGuru($guru_id) {
     global $conn;
@@ -151,15 +151,20 @@ function getSubjectsByGuru($guru_id) {
             WHERE p.id_guru = '$guru_id' AND m.status = 1
             ORDER BY m.nama ASC";
     
+    error_log("getSubjectsByGuru SQL: " . $sql);
     $result = mysqli_query($conn, $sql);
-    $subjects = [];
     
-    if ($result && mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $subjects[] = $row;
-        }
+    if (!$result) {
+        error_log("getSubjectsByGuru error: " . mysqli_error($conn));
+        return [];
     }
     
+    $subjects = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $subjects[] = $row;
+    }
+    
+    error_log("getSubjectsByGuru found: " . count($subjects) . " subjects");
     return $subjects;
 }
 
@@ -343,7 +348,7 @@ function getMarksByExam($exam_id) {
 }
 
 /**
- * Get students by class
+ * Get students by class - dengan error logging
  */
 function getStudentsByClass($class_name) {
     global $conn;
@@ -355,15 +360,20 @@ function getStudentsByClass($class_name) {
             WHERE k.nama = '$class_name' AND p.status = 1
             ORDER BY p.nama ASC";
     
+    error_log("getStudentsByClass SQL: " . $sql);
     $result = mysqli_query($conn, $sql);
-    $students = [];
     
-    if ($result && mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $students[] = $row;
-        }
+    if (!$result) {
+        error_log("getStudentsByClass error: " . mysqli_error($conn));
+        return [];
     }
     
+    $students = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $students[] = $row;
+    }
+    
+    error_log("getStudentsByClass found: " . count($students) . " students");
     return $students;
 }
 
@@ -559,7 +569,7 @@ function getAllKelas() {
 }
 
 /**
- * Get classes by guru
+ * Get classes by guru - dengan error logging
  */
 function getKelasByGuru($guru_id) {
     global $conn;
@@ -571,15 +581,20 @@ function getKelasByGuru($guru_id) {
             WHERE p.id_guru = '$guru_id' AND k.status = 1
             ORDER BY k.tahun DESC, k.nama ASC";
     
+    error_log("getKelasByGuru SQL: " . $sql);
     $result = mysqli_query($conn, $sql);
-    $classes = [];
     
-    if ($result && mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $classes[] = $row;
-        }
+    if (!$result) {
+        error_log("getKelasByGuru error: " . mysqli_error($conn));
+        return [];
     }
     
+    $classes = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $classes[] = $row;
+    }
+    
+    error_log("getKelasByGuru found: " . count($classes) . " classes");
     return $classes;
 }
 
