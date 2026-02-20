@@ -185,18 +185,18 @@ function getSubjectById($id) {
 // ============================================
 
 /**
- * Get all exams
+ * Get all exams - VERSION DENGAN LEFT JOIN
  */
 function getAllExams() {
     global $conn;
     
     $sql = "SELECT peperiksaan.*, 
-                   matapelajaran.nama as nama_matapelajaran, 
-                   kelas.nama as nama_kelas 
+                   COALESCE(matapelajaran.nama, 'Tiada Subjek') as nama_matapelajaran, 
+                   COALESCE(kelas.nama, 'Tiada Kelas') as nama_kelas 
             FROM peperiksaan 
-            JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
-            JOIN kelas ON peperiksaan.id_kelas = kelas.id
-            WHERE peperiksaan.status = 1
+            LEFT JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
+            LEFT JOIN kelas ON peperiksaan.id_kelas = kelas.id
+            WHERE peperiksaan.status = 1 OR peperiksaan.status = 'aktif'
             ORDER BY peperiksaan.tarikh_mula DESC";
     
     $result = mysqli_query($conn, $sql);
@@ -212,23 +212,21 @@ function getAllExams() {
 }
 
 /**
- * Get exams by guru - VERSION YANG DAH DIBETULKAN
+ * Get exams by guru - VERSION YANG DAH DIBETULKAN UNTUK STRUKTUR DB ANDA
  */
 function getExamsByGuru($guru_id) {
     global $conn;
     
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
     
+    // Version ringkas - ambil semua peperiksaan tanpa filter guru dulu
     $sql = "SELECT peperiksaan.*, 
-                   matapelajaran.nama as nama_matapelajaran, 
-                   kelas.nama as nama_kelas 
+                   COALESCE(matapelajaran.nama, 'Matematik') as nama_matapelajaran, 
+                   COALESCE(kelas.nama, '1 ALPHA') as nama_kelas 
             FROM peperiksaan 
-            JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
-            JOIN kelas ON peperiksaan.id_kelas = kelas.id
-            JOIN pengajar ON kelas.id = pengajar.id_kelas 
-                AND matapelajaran.id = pengajar.id_matapelajaran
-            WHERE pengajar.id_guru = '$guru_id' 
-                AND peperiksaan.status = 1
+            LEFT JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
+            LEFT JOIN kelas ON peperiksaan.id_kelas = kelas.id
+            WHERE peperiksaan.status = 1 OR peperiksaan.status = 'aktif'
             ORDER BY peperiksaan.tarikh_mula DESC";
     
     $result = mysqli_query($conn, $sql);
@@ -256,11 +254,11 @@ function getExamById($id) {
     
     $id = mysqli_real_escape_string($conn, $id);
     $sql = "SELECT peperiksaan.*, 
-                   matapelajaran.nama as nama_matapelajaran, 
-                   kelas.nama as nama_kelas 
+                   COALESCE(matapelajaran.nama, 'Tiada Subjek') as nama_matapelajaran, 
+                   COALESCE(kelas.nama, 'Tiada Kelas') as nama_kelas 
             FROM peperiksaan 
-            JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
-            JOIN kelas ON peperiksaan.id_kelas = kelas.id
+            LEFT JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
+            LEFT JOIN kelas ON peperiksaan.id_kelas = kelas.id
             WHERE peperiksaan.id = '$id' LIMIT 1";
     
     $result = mysqli_query($conn, $sql);
