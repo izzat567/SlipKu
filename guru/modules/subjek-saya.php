@@ -73,9 +73,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
             $pelajar_ids = array_column($pelajar, 'id');
             $placeholders2 = implode(',', array_fill(0, count($pelajar_ids), '?'));
             
+            // GUNA id_perperiksaan (mengikut struktur database)
             $marks_sql = "SELECT m.id_pelajar, m.markah, m.gred, p.nama_peperiksaan AS ujian 
                           FROM markah m
-                          INNER JOIN peperiksaan p ON m.id_peperiksaan = p.id
+                          INNER JOIN peperiksaan p ON m.id_perperiksaan = p.id
                           WHERE m.id_pelajar IN ($placeholders2) AND p.id_matapelajaran = ?";
             $types = str_repeat('i', count($pelajar_ids)) . 'i';
             $params = array_merge($pelajar_ids, [$subject_id]);
@@ -155,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
 
         echo json_encode([
             'id' => $subjek['id'],
-            'code' => $subjek['kod'], // TUKAR 'nod' KEPADA 'kod'
+            'code' => $subjek['kod'],
             'name' => $subjek['nama'],
             'year' => $subjek['tahun'],
             'kelas_id' => $kelas_id
@@ -420,7 +421,7 @@ try {
                 'id' => 'SUB' . str_pad($row['id'], 3, '0', STR_PAD_LEFT),
                 'db_id' => $row['id'],
                 'name' => $row['nama'],
-                'code' => $row['kod'], // GUNA 'kod' - INI SUDAH BETUL
+                'code' => $row['kod'],
                 'year' => $row['tahun'],
                 'type' => 'core',
                 'description' => '',
