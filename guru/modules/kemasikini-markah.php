@@ -1,3 +1,58 @@
+<?php
+// Start session and check login
+session_start();
+ob_start();
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Path ke config
+$possible_paths = [
+    __DIR__ . '/../config/connect.php',
+    __DIR__ . '/../../config/connect.php',
+    dirname(__DIR__) . '/config/connect.php'
+];
+
+$connected = false;
+foreach ($possible_paths as $path) {
+    if (file_exists($path)) {
+        require_once $path;
+        $connected = true;
+        break;
+    }
+}
+
+if (!$connected) {
+    die("ERROR: Cannot find connect.php");
+}
+
+// Check login
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+    header('Location: ../login-guru.php');
+    exit();
+}
+
+$guru_id = $_SESSION['guru_id'];
+$current_page = 'kemasikini-markah.php';
+
+// Include database functions
+require_once __DIR__ . '/../includes/db_functions.php';
+
+// Get guru info
+$guru_info = getGuruById($guru_id);
+
+// Get initials for avatar
+$initials = '';
+if (isset($_SESSION['guru_nama'])) {
+    $parts = explode(' ', $_SESSION['guru_nama']);
+    foreach ($parts as $p) {
+        if (!empty($p)) {
+            $initials .= strtoupper(substr($p, 0, 1));
+        }
+    }
+    $initials = substr($initials, 0, 2);
+}
+?>
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -1292,7 +1347,7 @@
             </button>
 
             <!-- Logo -->
-            <a href="dashboard-admin.html" class="logo">
+            <a href="../dashboard-guru.php" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1304,7 +1359,7 @@
 
             <!-- Desktop Navigation -->
             <nav class="top-nav">
-                <a href="dashboard-admin.html" class="nav-item">
+                <a href="../dashboard-guru.php" class="nav-item">
                     <i class="fas fa-home"></i>
                     Utama
                 </a>
@@ -1322,17 +1377,17 @@
 
             <!-- User Profile -->
             <div class="user-profile" id="userProfile">
-                <div class="user-avatar">GU</div>
+                <div class="user-avatar"><?php echo $initials ?: 'GU'; ?></div>
                 <div class="user-info">
-                    <h4>Cikgu Ahmad</h4>
-                    <p>Admin Guru Tahun 6</p>
+                    <h4><?php echo isset($_SESSION['guru_nama']) ? htmlspecialchars($_SESSION['guru_nama']) : 'Guru'; ?></h4>
+                    <p><?php echo isset($_SESSION['guru_role']) ? htmlspecialchars($_SESSION['guru_role']) : 'Guru'; ?></p>
                 </div>
                 <i class="fas fa-chevron-down"></i>
             </div>
         </div>
     </header>
 
-    <!-- Sidebar - Include dari includes/sidebar.php -->
+    <!-- Sidebar -->
     <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
     <!-- Main Content -->
@@ -2470,6 +2525,21 @@
                 to {
                     transform: translateX(100%);
                     opacity: 0;
+                }
+            }
+            
+            @media print {
+                .header, .sidebar, .page-actions, .marks-actions, .tabs, .search-section {
+                    display: none !important;
+                }
+                
+                .main-content {
+                    margin: 0 !important;
+                    padding: 20px !important;
+                }
+                
+                body {
+                    background: white !important;
                 }
             }
         `;
