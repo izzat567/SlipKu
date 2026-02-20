@@ -108,6 +108,7 @@ try {
     $subjek_count = $ss->get_result()->fetch_assoc()['c'] ?? 0;
     $ss->close();
 } catch (Exception $e) {}
+?>
 <!DOCTYPE html>
 <html lang="ms">
 <head>
@@ -1019,8 +1020,7 @@ try {
                                 <i class="fas fa-layer-group"></i>
                                 Darjah
                             </label>
-                            <select class="form-select" name="tahun" required>
-                                <option value="">Pilih Darjah</option>
+                            <select class="form-select" name="darjah" required>
                                 <option value="1">Darjah 1</option>
                                 <option value="2">Darjah 2</option>
                                 <option value="3">Darjah 3</option>
