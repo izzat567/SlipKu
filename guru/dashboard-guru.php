@@ -90,7 +90,29 @@ try {
     $stmt_pelajar->close();
 } catch (Exception $e) { $total_students = 0; }
 
-// 4. PEPERIKSAAN terkini (via subjek yang diajar)
+// 4. UJIAN BELUM DINILAI
+$unmarked_count = 0;
+try {
+    // Pelajar dalam kelas guru ini yang tiada markah untuk peperiksaan aktif
+    $sql_unmarked = "SELECT COUNT(DISTINCT p.id) as total
+                    FROM pelajar p
+                    JOIN kelas k ON p.id_kelas = k.id
+                    JOIN pengajar pj ON k.id = pj.id_kelas
+                    JOIN peperiksaan pp ON pj.id_matapelajaran = pp.id_matapelajaran
+                    LEFT JOIN markah m ON p.id = m.id_pelajar AND m.id_perperiksaan = pp.id
+                    WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
+                        AND pp.status = 'aktif' AND m.id IS NULL";
+    $stmt_unmarked = $conn->prepare($sql_unmarked);
+    if ($stmt_unmarked) {
+        $stmt_unmarked->bind_param("i", $id_guru);
+        $stmt_unmarked->execute();
+        $row = $stmt_unmarked->get_result()->fetch_assoc();
+        $unmarked_count = $row['total'] ?? 0;
+        $stmt_unmarked->close();
+    }
+} catch (Exception $e) { $unmarked_count = 0; }
+
+// 5. PEPERIKSAAN terkini (via subjek yang diajar)
 try {
     $sql_peperiksaan = "SELECT DISTINCT p.id, p.nama_peperiksaan, p.tarikh_mula, p.tarikh_tamat,
                           p.jenis, m.nama as mata_pelajaran, p.status
