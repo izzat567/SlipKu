@@ -1,35 +1,55 @@
 <?php
 session_start();
+ob_start();
 
-// Include database functions
-require_once __DIR__ . '/../includes/db_functions.php';
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-// Check if user is logged in
-if (!isset($_SESSION['guru_id'])) {
+// Path ke config
+$possible_paths = [
+    __DIR__ . '/../config/connect.php',
+    __DIR__ . '/../../config/connect.php',
+    dirname(__DIR__) . '/config/connect.php'
+];
+
+$connected = false;
+foreach ($possible_paths as $path) {
+    if (file_exists($path)) {
+        require_once $path;
+        $connected = true;
+        break;
+    }
+}
+
+if (!$connected) {
+    die("ERROR: Cannot find connect.php");
+}
+
+// Check login
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header('Location: ../login-guru.php');
     exit();
 }
 
-// Get guru info
 $guru_id = $_SESSION['guru_id'];
+$current_page = 'pelajar-saya.php';
+
+// Include database functions
+require_once __DIR__ . '/../includes/db_functions.php';
+
+// Get guru info
 $guru_info = getGuruById($guru_id);
 
-// If no guru in database, use session data
-if (!$guru_info && isset($_SESSION['guru_nama'])) {
-    $guru_info = [
-        'nama' => $_SESSION['guru_nama'],
-        'email' => $_SESSION['guru_email'],
-        'no_telefon' => $_SESSION['guru_telefon'] ?? ''
-    ];
-}
-
-// FOR TESTING ONLY - jika masih tak ada, guna default
-if (!$guru_info) {
-    $guru_info = [
-        'nama' => 'Cikgu Demo',
-        'email' => 'guru@demo.com',
-        'no_telefon' => '012-3456789'
-    ];
+// Get initials for avatar
+$initials = '';
+if (isset($_SESSION['guru_nama'])) {
+    $parts = explode(' ', $_SESSION['guru_nama']);
+    foreach ($parts as $p) {
+        if (!empty($p)) {
+            $initials .= strtoupper(substr($p, 0, 1));
+        }
+    }
+    $initials = substr($initials, 0, 2);
 }
 
 $action = $_GET['action'] ?? '';
@@ -83,25 +103,30 @@ if ($action === 'edit' && $student_id) {
 
 // Function to handle adding student
 function handleAddStudent() {
+    global $conn;
+    
     // Validate required fields
-    $required_fields = ['nama', 'no_ic', 'jantina'];
+    $required_fields = ['nama', 'no_ic', 'jantina', 'id_kelas'];
     foreach ($required_fields as $field) {
         if (empty($_POST[$field])) {
             $_SESSION['error_message'] = 'Sila isi semua maklumat yang diperlukan.';
-            return;
+            header('Location: pelajar-saya.php');
+            exit();
         }
     }
     
     // Check if IC already exists
     if (checkStudentExists($_POST['no_ic'])) {
         $_SESSION['error_message'] = 'No. Kad Pengenalan sudah wujud dalam sistem.';
-        return;
+        header('Location: pelajar-saya.php');
+        exit();
     }
     
     $data = [
         'nama' => trim($_POST['nama']),
         'no_ic' => trim($_POST['no_ic']),
-        'jantina' => $_POST['jantina']
+        'jantina' => $_POST['jantina'],
+        'id_kelas' => intval($_POST['id_kelas'])
     ];
     
     // Optional fields
@@ -115,6 +140,8 @@ function handleAddStudent() {
         exit();
     } else {
         $_SESSION['error_message'] = 'Gagal menambah pelajar. Sila cuba lagi.';
+        header('Location: pelajar-saya.php');
+        exit();
     }
 }
 
@@ -122,28 +149,32 @@ function handleAddStudent() {
 function handleEditStudent($id) {
     if (empty($id)) {
         $_SESSION['error_message'] = 'ID pelajar tidak sah.';
-        return;
+        header('Location: pelajar-saya.php');
+        exit();
     }
     
     // Validate required fields
-    $required_fields = ['nama', 'no_ic', 'jantina'];
+    $required_fields = ['nama', 'no_ic', 'jantina', 'id_kelas'];
     foreach ($required_fields as $field) {
         if (empty($_POST[$field])) {
             $_SESSION['error_message'] = 'Sila isi semua maklumat yang diperlukan.';
-            return;
+            header('Location: pelajar-saya.php');
+            exit();
         }
     }
     
     // Check if IC already exists (excluding current student)
     if (checkStudentExists($_POST['no_ic'], $id)) {
         $_SESSION['error_message'] = 'No. Kad Pengenalan sudah wujud dalam sistem.';
-        return;
+        header('Location: pelajar-saya.php');
+        exit();
     }
     
     $data = [
         'nama' => trim($_POST['nama']),
         'no_ic' => trim($_POST['no_ic']),
-        'jantina' => $_POST['jantina']
+        'jantina' => $_POST['jantina'],
+        'id_kelas' => intval($_POST['id_kelas'])
     ];
     
     // Optional fields
@@ -157,6 +188,8 @@ function handleEditStudent($id) {
         exit();
     } else {
         $_SESSION['error_message'] = 'Gagal mengemaskini pelajar. Sila cuba lagi.';
+        header('Location: pelajar-saya.php');
+        exit();
     }
 }
 
@@ -164,7 +197,8 @@ function handleEditStudent($id) {
 function handleDeleteStudent($id) {
     if (empty($id)) {
         $_SESSION['error_message'] = 'ID pelajar tidak sah.';
-        return;
+        header('Location: pelajar-saya.php');
+        exit();
     }
     
     if (padamPelajar($id)) {
@@ -210,6 +244,13 @@ function handleBulkUpdate() {
             } else {
                 $_SESSION['error_message'] = 'Gagal mengemaskini status pelajar.';
             }
+        } elseif ($_POST['bulk_action'] === 'change_class' && isset($_POST['new_kelas'])) {
+            $update_data = ['id_kelas' => intval($_POST['new_kelas'])];
+            if (bulkUpdateStudents($student_ids, $update_data)) {
+                $_SESSION['success_message'] = 'Kelas pelajar terpilih berjaya ditukar!';
+            } else {
+                $_SESSION['error_message'] = 'Gagal menukar kelas pelajar.';
+            }
         }
     } else {
         $_SESSION['error_message'] = 'Tiada pelajar dipilih atau tindakan tidak ditentukan.';
@@ -220,13 +261,97 @@ function handleBulkUpdate() {
 
 // Function to handle import students
 function handleImportStudents() {
-    // This would handle CSV/Excel file import
-    // For now, just show a message
-    if (isset($_FILES['import_file']) && $_FILES['import_file']['error'] === UPLOAD_ERR_OK) {
-        $_SESSION['success_message'] = 'Fail berjaya dimuat naik. Proses import sedang dijalankan.';
-    } else {
+    global $conn;
+    
+    if (!isset($_FILES['import_file']) || $_FILES['import_file']['error'] !== UPLOAD_ERR_OK) {
         $_SESSION['error_message'] = 'Gagal memuat naik fail.';
+        header('Location: pelajar-saya.php');
+        exit();
     }
+    
+    $file = $_FILES['import_file'];
+    $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    
+    if (!in_array($file_ext, ['csv', 'xlsx', 'xls'])) {
+        $_SESSION['error_message'] = 'Format fail tidak disokong. Sila gunakan CSV atau Excel.';
+        header('Location: pelajar-saya.php');
+        exit();
+    }
+    
+    $success_count = 0;
+    $error_count = 0;
+    $errors = [];
+    
+    if ($file_ext === 'csv') {
+        // Handle CSV import
+        if (($handle = fopen($file['tmp_name'], "r")) !== FALSE) {
+            $row = 0;
+            while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                $row++;
+                
+                // Skip header row
+                if ($row == 1) continue;
+                
+                // Check if row has enough columns
+                if (count($data) < 4) {
+                    $error_count++;
+                    $errors[] = "Baris $row: Data tidak lengkap";
+                    continue;
+                }
+                
+                $nama = trim($data[0]);
+                $no_kp = trim($data[1]);
+                $jantina = trim(strtoupper($data[2]));
+                $id_kelas = intval($data[3]);
+                
+                // Validate gender
+                if ($jantina !== 'L' && $jantina !== 'P') {
+                    $error_count++;
+                    $errors[] = "Baris $row: Jantina mesti 'L' atau 'P'";
+                    continue;
+                }
+                
+                // Check if IC already exists
+                if (checkStudentExists($no_kp)) {
+                    $error_count++;
+                    $errors[] = "Baris $row: No. KP '$no_kp' sudah wujud";
+                    continue;
+                }
+                
+                $student_data = [
+                    'nama' => $nama,
+                    'no_ic' => $no_kp,
+                    'jantina' => $jantina,
+                    'id_kelas' => $id_kelas,
+                    'status' => 'active'
+                ];
+                
+                if (tambahPelajar($student_data)) {
+                    $success_count++;
+                } else {
+                    $error_count++;
+                    $errors[] = "Baris $row: Gagal menyimpan data";
+                }
+            }
+            fclose($handle);
+        }
+    } else {
+        // For Excel files, we'll need PHPExcel or similar library
+        // For now, show message
+        $_SESSION['error_message'] = 'Sokongan untuk fail Excel akan ditambah kemudian. Sila gunakan fail CSV buat masa ini.';
+        header('Location: pelajar-saya.php');
+        exit();
+    }
+    
+    if ($success_count > 0) {
+        $_SESSION['success_message'] = "Berjaya import $success_count pelajar!";
+        if ($error_count > 0) {
+            $_SESSION['error_message'] = "$error_count pelajar gagal diimport. " . implode(", ", array_slice($errors, 0, 5));
+        }
+    } else {
+        $_SESSION['error_message'] = 'Tiada pelajar berjaya diimport. ' . implode(", ", array_slice($errors, 0, 5));
+    }
+    
     header('Location: pelajar-saya.php');
     exit();
 }
@@ -334,141 +459,6 @@ if (isset($_GET['ajax'])) {
             min-height: 100vh;
             overflow-x: hidden;
         }
-
-        /* ... (CSS yang sama seperti sebelumnya) ... */
-
-        /* Alert styles - TAMBAH INI */
-        .alert {
-            position: fixed;
-            top: 100px;
-            right: 30px;
-            z-index: 10000;
-            padding: 15px 25px;
-            border-radius: 12px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-            animation: slideIn 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            max-width: 400px;
-        }
-        
-        .alert-success {
-            background: var(--success);
-            color: white;
-        }
-        
-        .alert-error {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .alert-warning {
-            background: var(--warning);
-            color: white;
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        
-        @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Loading overlay */
-        #loadingOverlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255,255,255,0.8);
-            z-index: 10000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        #loadingOverlay.active {
-            display: flex;
-        }
-        
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid var(--primary-light);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-
-        /* Student details modal - TAMBAH INI */
-        .student-details-modal {
-            padding: 20px;
-        }
-        
-        .student-header {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .student-avatar-lg {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 18px;
-        }
-        
-        .student-info-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-        }
-        
-        .info-item {
-            background: var(--light-gray);
-            padding: 15px;
-            border-radius: 12px;
-        }
-        
-        .info-label {
-            display: block;
-            font-size: 12px;
-            color: var(--medium-gray);
-            margin-bottom: 5px;
-        }
-        
-        .info-value {
-            font-weight: 600;
-            color: var(--dark-gray);
-        }
-        
-        .page-ellipsis {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            color: var(--medium-gray);
-        }
-
-        /* ... (CSS yang selebihnya sama seperti sebelumnya) ... */
 
         /* Mobile Menu Toggle */
         .menu-toggle {
@@ -860,6 +850,71 @@ if (isset($_GET['ajax'])) {
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        /* Import Section */
+        .import-section {
+            background: var(--white);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .import-section.active {
+            display: block;
+        }
+
+        .import-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .import-header h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dark-gray);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .import-header h3 i {
+            color: var(--success);
+        }
+
+        .file-upload {
+            border: 2px dashed #e5e7eb;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 20px;
+        }
+
+        .file-upload:hover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .file-upload i {
+            font-size: 48px;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        .file-upload p {
+            color: var(--medium-gray);
+            margin-bottom: 10px;
+        }
+
+        .file-upload span {
+            font-size: 13px;
+            color: var(--medium-gray);
         }
 
         /* Class Summary */
@@ -1259,6 +1314,25 @@ if (isset($_GET['ajax'])) {
             border-color: var(--primary);
         }
 
+        .page-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-btn.disabled:hover {
+            background: var(--white);
+            border-color: #e5e7eb;
+        }
+
+        .page-ellipsis {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            color: var(--medium-gray);
+        }
+
         /* Empty State */
         .empty-state {
             text-align: center;
@@ -1284,6 +1358,128 @@ if (isset($_GET['ajax'])) {
             max-width: 400px;
             margin-left: auto;
             margin-right: auto;
+        }
+
+        /* Alert styles */
+        .alert {
+            position: fixed;
+            top: 100px;
+            right: 30px;
+            z-index: 10000;
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .alert-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .alert-error {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .alert-warning {
+            background: var(--warning);
+            color: white;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Loading overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.8);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #loadingOverlay.active {
+            display: flex;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--primary-light);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        /* Student details modal */
+        .student-details-modal {
+            padding: 20px;
+        }
+        
+        .student-header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .student-avatar-lg {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .student-info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        .info-item {
+            background: var(--light-gray);
+            padding: 15px;
+            border-radius: 12px;
+        }
+        
+        .info-label {
+            display: block;
+            font-size: 12px;
+            color: var(--medium-gray);
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-weight: 600;
+            color: var(--dark-gray);
         }
 
         /* Top Navigation for Mobile */
@@ -1574,19 +1770,31 @@ if (isset($_GET['ajax'])) {
                             <label class="form-label required">Jantina</label>
                             <select class="form-select" id="studentGender" name="jantina" required>
                                 <option value="">Pilih Jantina</option>
-                                <option value="male" <?= (isset($student) && $student['jantina'] == 'L') ? 'selected' : '' ?>>Lelaki</option>
-                                <option value="female" <?= (isset($student) && $student['jantina'] == 'P') ? 'selected' : '' ?>>Perempuan</option>
+                                <option value="L" <?= (isset($student) && $student['jantina'] == 'L') ? 'selected' : '' ?>>Lelaki</option>
+                                <option value="P" <?= (isset($student) && $student['jantina'] == 'P') ? 'selected' : '' ?>>Perempuan</option>
                             </select>
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" id="studentStatus" name="status">
-                                <option value="active" <?= (isset($student) && $student['status'] == 1) ? 'selected' : '' ?>>Aktif</option>
-                                <option value="inactive" <?= (isset($student) && $student['status'] == 0) ? 'selected' : '' ?>>Tidak Aktif</option>
-                                <option value="graduated" <?= (isset($student) && $student['status'] == 2) ? 'selected' : '' ?>>Tamat</option>
+                            <label class="form-label required">Kelas</label>
+                            <select class="form-select" id="studentKelas" name="id_kelas" required>
+                                <option value="">Pilih Kelas</option>
+                                <?php foreach ($kelas_guru as $kelas): ?>
+                                <option value="<?= $kelas['id'] ?>" <?= (isset($student) && $student['id_kelas'] == $kelas['id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($kelas['nama']) ?>
+                                </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="studentStatus" name="status">
+                            <option value="active" <?= (isset($student) && $student['status'] == 1) ? 'selected' : '' ?>>Aktif</option>
+                            <option value="inactive" <?= (isset($student) && $student['status'] == 0) ? 'selected' : '' ?>>Tidak Aktif</option>
+                            <option value="graduated" <?= (isset($student) && $student['status'] == 2) ? 'selected' : '' ?>>Tamat</option>
+                        </select>
                     </div>
                     
                     <input type="hidden" id="currentStudentId" value="<?= isset($student) ? $student['id'] : '' ?>">
@@ -1604,6 +1812,61 @@ if (isset($_GET['ajax'])) {
         </div>
     </div>
 
+    <!-- Modal for Import Students -->
+    <div class="modal" id="importModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Import Pelajar dari Fail</h3>
+                <button class="modal-close" onclick="closeImportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="import-section active">
+                    <div class="import-header">
+                        <h3><i class="fas fa-file-upload"></i> Muat Naik Fail</h3>
+                        <a href="download_template.php" class="btn btn-secondary btn-sm" style="padding: 8px 15px; font-size: 12px;">
+                            <i class="fas fa-download"></i> Muat Turun Template
+                        </a>
+                    </div>
+                    
+                    <form id="importForm" method="POST" enctype="multipart/form-data" action="?action=import">
+                        <div class="file-upload" onclick="document.getElementById('importFile').click()">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p><strong>Klik untuk pilih fail atau seret ke sini</strong></p>
+                            <p>Format yang disokong: .csv</p>
+                            <span>Saiz maksimum: 10MB</span>
+                        </div>
+                        <input type="file" id="importFile" name="import_file" accept=".csv" style="display: none;" onchange="showFileName()" required>
+                        
+                        <div style="margin: 20px 0; padding: 20px; background: var(--light-gray); border-radius: 12px;">
+                            <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--primary);">
+                                <i class="fas fa-info-circle"></i> Panduan Import
+                            </h4>
+                            <p style="font-size: 13px; color: var(--medium-gray); line-height: 1.6;">
+                                <strong>Format fail CSV:</strong><br>
+                                Nama,No_KP,Jantina,ID_Kelas<br>
+                                <strong>Contoh:</strong><br>
+                                Ahmad bin Ali,030101-14-1234,L,1<br>
+                                Siti binti Abu,030102-02-5678,P,1<br><br>
+                                <strong>Nota:</strong>
+                                <br>- Jantina: L untuk Lelaki, P untuk Perempuan
+                                <br>- ID_Kelas: Rujuk senarai kelas dalam sistem
+                            </p>
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Batal</button>
+                            <button type="submit" class="btn btn-success" id="importBtn">
+                                <i class="fas fa-upload"></i> Mula Import
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Mobile Sidebar Overlay -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -1616,7 +1879,7 @@ if (isset($_GET['ajax'])) {
             </button>
 
             <!-- Logo -->
-            <a href="#" class="logo">
+            <a href="../dashboard-guru.php" class="logo">
                 <div class="logo-icon">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
@@ -1628,17 +1891,19 @@ if (isset($_GET['ajax'])) {
 
             <!-- User Profile -->
             <div class="user-profile" id="userProfile">
-                <div class="user-avatar">GU</div>
+                <div class="user-avatar"><?php echo $initials ?: 'GU'; ?></div>
                 <div class="user-info">
-                    <h4>Cikgu Demo</h4>
-                    <p>Guru Demo (No Login Required)</p>
+                    <h4><?php echo isset($_SESSION['guru_nama']) ? htmlspecialchars($_SESSION['guru_nama']) : 'Guru'; ?></h4>
+                    <p><?php echo isset($_SESSION['guru_role']) ? htmlspecialchars($_SESSION['guru_role']) : 'Guru'; ?></p>
                 </div>
                 <i class="fas fa-chevron-down"></i>
             </div>
         </div>
     </header>
-            <!-- Sidebar - Include dari includes/sidebar.php -->
+
+    <!-- Sidebar -->
     <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+
     <!-- Main Content -->
     <main class="main-content" id="mainContent">
         <!-- Page Header -->
@@ -1648,6 +1913,10 @@ if (isset($_GET['ajax'])) {
                 <p>Urus dan pantau semua pelajar yang anda kendalikan</p>
             </div>
             <div class="page-actions">
+                <button class="btn btn-secondary" onclick="openImportModal()">
+                    <i class="fas fa-upload"></i>
+                    Import
+                </button>
                 <button class="btn btn-secondary" onclick="muatSemulaData()">
                     <i class="fas fa-sync-alt"></i>
                     Muat Semula
@@ -1697,6 +1966,9 @@ if (isset($_GET['ajax'])) {
                     <label class="filter-label">Kelas:</label>
                     <select class="filter-select" id="filterClass" onchange="filterStudents()">
                         <option value="">Semua Kelas</option>
+                        <?php foreach ($kelas_guru as $kelas): ?>
+                        <option value="<?= htmlspecialchars($kelas['nama']) ?>"><?= htmlspecialchars($kelas['nama']) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
@@ -1704,6 +1976,18 @@ if (isset($_GET['ajax'])) {
                     <label class="filter-label">Tahun:</label>
                     <select class="filter-select" id="filterYear" onchange="filterStudents()">
                         <option value="">Semua Tahun</option>
+                        <?php 
+                        $years = [];
+                        foreach ($kelas_guru as $kelas) {
+                            if (!in_array($kelas['tahun'], $years)) {
+                                $years[] = $kelas['tahun'];
+                            }
+                        }
+                        sort($years);
+                        foreach ($years as $year): 
+                        ?>
+                        <option value="<?= $year ?>">Tahun <?= $year ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
@@ -1743,7 +2027,6 @@ if (isset($_GET['ajax'])) {
                         <th>TAHUN</th>
                         <th>JANTINA</th>
                         <th>PRESTASI</th>
-                        <th>KEHADIRAN</th>
                         <th>STATUS</th>
                         <th style="width: 200px;">TINDAKAN</th>
                     </tr>
@@ -1754,11 +2037,41 @@ if (isset($_GET['ajax'])) {
             </table>
             
             <!-- Empty State -->
-            <div class="empty-state" id="emptyState">
+            <div class="empty-state" id="emptyState" style="display: none;">
                 <i class="fas fa-user-graduate"></i>
-                <h3>Memuatkan data pelajar...</h3>
-                <p>Sila tunggu sebentar.</p>
+                <h3>Tiada Pelajar Ditemui</h3>
+                <p>Tiada pelajar yang sepadan dengan carian atau penapis anda.</p>
+                <button class="btn btn-secondary" onclick="resetFilters()">
+                    <i class="fas fa-redo"></i>
+                    Reset Penapis
+                </button>
             </div>
+        </div>
+
+        <!-- Bulk Actions -->
+        <div class="bulk-actions" id="bulkActions" style="display: none;">
+            <div class="bulk-select">
+                <span id="selectedCount">0</span> pelajar dipilih
+            </div>
+            <select class="filter-select" id="bulkAction">
+                <option value="">Pilih Tindakan</option>
+                <option value="update_status">Kemaskini Status</option>
+                <option value="change_class">Tukar Kelas</option>
+                <option value="delete">Padam</option>
+            </select>
+            <select class="filter-select" id="bulkValue" style="display: none;">
+                <option value="">Pilih Nilai</option>
+                <option value="active">Aktif</option>
+                <option value="inactive">Tidak Aktif</option>
+                <option value="graduated">Tamat</option>
+            </select>
+            <select class="filter-select" id="bulkClass" style="display: none;">
+                <option value="">Pilih Kelas</option>
+                <?php foreach ($kelas_guru as $kelas): ?>
+                <option value="<?= $kelas['id'] ?>"><?= htmlspecialchars($kelas['nama']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button class="btn btn-primary" onclick="applyBulkAction()">Guna</button>
         </div>
 
         <!-- Pagination -->
@@ -1766,14 +2079,8 @@ if (isset($_GET['ajax'])) {
             <div class="pagination-info" id="paginationInfo">
                 Memuatkan data...
             </div>
-            <div class="pagination-controls">
-                <button class="page-btn" onclick="changePage('prev')">
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <button class="page-btn active">1</button>
-                <button class="page-btn" onclick="changePage('next')">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
+            <div class="pagination-controls" id="paginationControls">
+                <!-- Pagination buttons will be loaded here -->
             </div>
         </div>
     </main>
@@ -1785,9 +2092,15 @@ if (isset($_GET['ajax'])) {
         const sidebarOverlay = document.getElementById('sidebarOverlay');
         const mainContent = document.getElementById('mainContent');
         const studentModal = document.getElementById('studentModal');
+        const importModal = document.getElementById('importModal');
         const studentTableBody = document.getElementById('studentTableBody');
         const emptyState = document.getElementById('emptyState');
         const studentForm = document.getElementById('studentForm');
+        const bulkActions = document.getElementById('bulkActions');
+        const selectedCount = document.getElementById('selectedCount');
+        const bulkAction = document.getElementById('bulkAction');
+        const bulkValue = document.getElementById('bulkValue');
+        const bulkClass = document.getElementById('bulkClass');
 
         // Current state
         let studentsData = [];
@@ -1795,14 +2108,12 @@ if (isset($_GET['ajax'])) {
         let displayedStudents = [];
         let currentPage = 1;
         const studentsPerPage = 10;
+        let selectedStudents = [];
 
         // Initialize page
         function initializePage() {
             // Load data from server
             loadStudentsFromServer();
-            
-            // Initialize filters
-            initializeFilters();
             
             // Setup event listeners
             setupEventListeners();
@@ -1822,6 +2133,7 @@ if (isset($_GET['ajax'])) {
             document.addEventListener('click', function(event) {
                 if (event.target.classList.contains('modal')) {
                     closeModal();
+                    closeImportModal();
                 }
             });
             
@@ -1829,6 +2141,15 @@ if (isset($_GET['ajax'])) {
             window.addEventListener('resize', function() {
                 closeSidebar();
             });
+            
+            // Bulk action change
+            if (bulkAction) {
+                bulkAction.addEventListener('change', function() {
+                    const action = this.value;
+                    if (bulkValue) bulkValue.style.display = action === 'update_status' ? 'inline-block' : 'none';
+                    if (bulkClass) bulkClass.style.display = action === 'change_class' ? 'inline-block' : 'none';
+                });
+            }
         }
 
         // Toggle Sidebar
@@ -1853,48 +2174,6 @@ if (isset($_GET['ajax'])) {
                 if (mainContent) mainContent.classList.remove('full-width');
                 document.body.style.overflow = '';
             }
-        }
-
-        // Initialize filters with real data
-        function initializeFilters() {
-            // Load class options from server
-            fetch('?ajax=get_classes')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const classSelect = document.getElementById('filterClass');
-                    const yearSelect = document.getElementById('filterYear');
-                    
-                    // Clear existing options except the first one
-                    if (classSelect) {
-                        while (classSelect.options.length > 1) classSelect.remove(1);
-                    }
-                    if (yearSelect) {
-                        while (yearSelect.options.length > 1) yearSelect.remove(1);
-                    }
-                    
-                    // Add class options
-                    const uniqueClasses = [...new Set(data.classes.map(c => c.nama))];
-                    uniqueClasses.forEach(className => {
-                        const option = document.createElement('option');
-                        option.value = className;
-                        option.textContent = `Kelas ${className}`;
-                        if (classSelect) classSelect.appendChild(option);
-                    });
-                    
-                    // Add year options
-                    const uniqueYears = [...new Set(data.classes.map(c => c.tahun))].sort((a, b) => b - a);
-                    uniqueYears.forEach(year => {
-                        const option = document.createElement('option');
-                        option.value = year;
-                        option.textContent = `Tahun ${year}`;
-                        if (yearSelect) yearSelect.appendChild(option);
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error loading filters:', error);
-            });
         }
 
         // Load students from server
@@ -1943,11 +2222,6 @@ if (isset($_GET['ajax'])) {
 
         // Format student data for frontend
         function formatStudentData(dbStudent) {
-            // Calculate attendance percentage
-            const attendance = dbStudent.attendance_percentage || 
-                (dbStudent.total_kehadiran > 0 ? 
-                    Math.round((dbStudent.jumlah_kehadiran / dbStudent.total_kehadiran) * 100) : 0);
-            
             // Get gender text
             const genderText = dbStudent.jantina === 'L' ? 'Lelaki' : 'Perempuan';
             
@@ -1962,6 +2236,9 @@ if (isset($_GET['ajax'])) {
                 statusText = 'TAMAT';
             }
             
+            // Calculate performance (demo data for now)
+            const performance = Math.floor(Math.random() * 30) + 60;
+            
             return {
                 id: dbStudent.id.toString(),
                 name: dbStudent.nama,
@@ -1970,11 +2247,10 @@ if (isset($_GET['ajax'])) {
                 year: dbStudent.tahun ? `Tahun ${dbStudent.tahun}` : 'N/A',
                 gender: dbStudent.jantina === 'L' ? 'male' : 'female',
                 genderText: genderText,
-                performance: parseFloat(dbStudent.prestasi_purata) || 0,
-                attendance: attendance,
+                performance: performance,
                 status: status,
                 statusText: statusText,
-                student_id: dbStudent.student_id || dbStudent.id_kelas || '',
+                student_id: dbStudent.id_kelas || '',
                 kelas_nama: dbStudent.kelas_nama || '',
                 tahun: dbStudent.tahun || ''
             };
@@ -1999,18 +2275,7 @@ if (isset($_GET['ajax'])) {
         function loadStudentTable() {
             if (filteredStudents.length === 0) {
                 studentTableBody.innerHTML = '';
-                if (emptyState) {
-                    emptyState.style.display = 'block';
-                    emptyState.innerHTML = `
-                        <i class="fas fa-user-graduate"></i>
-                        <h3>Tiada Pelajar Ditemui</h3>
-                        <p>Tiada pelajar yang sepadan dengan carian atau penapis anda.</p>
-                        <button class="btn btn-secondary" onclick="resetFilters()">
-                            <i class="fas fa-redo"></i>
-                            Reset Penapis
-                        </button>
-                    `;
-                }
+                if (emptyState) emptyState.style.display = 'block';
                 return;
             }
             
@@ -2045,26 +2310,25 @@ if (isset($_GET['ajax'])) {
                     
                     // Determine status badge
                     let statusClass = '';
-                    let statusText = '';
                     switch(student.status) {
                         case 'active':
                             statusClass = 'status-active';
-                            statusText = 'AKTIF';
                             break;
                         case 'inactive':
                             statusClass = 'status-inactive';
-                            statusText = 'TIDAK AKTIF';
                             break;
                         case 'graduated':
                             statusClass = 'status-graduated';
-                            statusText = 'TAMAT';
                             break;
                     }
+                    
+                    const isSelected = selectedStudents.includes(student.id);
                     
                     return `
                         <tr>
                             <td>
-                                <input type="checkbox" class="student-checkbox" value="${student.id}" onchange="toggleStudentSelection('${student.id}')">
+                                <input type="checkbox" class="student-checkbox" value="${student.id}" 
+                                       ${isSelected ? 'checked' : ''} onchange="toggleStudentSelection('${student.id}')">
                             </td>
                             <td>
                                 <div class="student-avatar-cell">
@@ -2073,7 +2337,7 @@ if (isset($_GET['ajax'])) {
                                     </div>
                                     <div class="student-info">
                                         <div class="student-name">${student.name}</div>
-                                        <div class="student-id">${student.student_id || ''}</div>
+                                        <div class="student-id">${student.ic}</div>
                                     </div>
                                 </div>
                             </td>
@@ -2088,23 +2352,19 @@ if (isset($_GET['ajax'])) {
                                     <div class="performance-value">${student.performance.toFixed(1)}%</div>
                                 </div>
                             </td>
-                            <td>${student.attendance}%</td>
                             <td>
-                                <span class="status-badge ${statusClass}">${statusText}</span>
+                                <span class="status-badge ${statusClass}">${student.statusText}</span>
                             </td>
                             <td>
                                 <div class="action-cell">
                                     <button class="action-btn view" onclick="viewStudent('${student.id}')">
                                         <i class="fas fa-eye"></i>
-                                        Lihat
                                     </button>
                                     <button class="action-btn edit" onclick="editStudent('${student.id}')">
                                         <i class="fas fa-edit"></i>
-                                        Edit
                                     </button>
                                     <button class="action-btn delete" onclick="deleteStudent('${student.id}', '${student.name.replace(/'/g, "\\'")}')">
                                         <i class="fas fa-trash"></i>
-                                        Padam
                                     </button>
                                 </div>
                             </td>
@@ -2118,88 +2378,67 @@ if (isset($_GET['ajax'])) {
         function updatePaginationInfo() {
             const total = filteredStudents.length;
             const totalPages = Math.ceil(total / studentsPerPage);
-            const start = Math.min((currentPage - 1) * studentsPerPage + 1, total);
+            
+            if (total === 0) {
+                document.getElementById('paginationInfo').innerHTML = 'Tiada pelajar';
+                document.getElementById('paginationControls').innerHTML = '';
+                return;
+            }
+            
+            const start = (currentPage - 1) * studentsPerPage + 1;
             const end = Math.min(currentPage * studentsPerPage, total);
             
             const paginationInfo = document.getElementById('paginationInfo');
             if (paginationInfo) {
-                paginationInfo.innerHTML = `
-                    Menunjukkan ${start}-${end} daripada ${total} pelajar
-                `;
+                paginationInfo.innerHTML = `Menunjukkan ${start}-${end} daripada ${total} pelajar`;
             }
             
             // Update pagination controls
-            const pageControls = document.querySelector('.pagination-controls');
+            const pageControls = document.getElementById('paginationControls');
             if (pageControls) {
-                if (totalPages > 1) {
-                    pageControls.innerHTML = '';
-                    
-                    // Previous button
-                    const prevBtn = document.createElement('button');
-                    prevBtn.className = 'page-btn';
-                    prevBtn.disabled = currentPage === 1;
-                    prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
-                    prevBtn.onclick = () => changePage('prev');
-                    pageControls.appendChild(prevBtn);
-                    
-                    // Page numbers
-                    const maxVisiblePages = 5;
-                    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-                    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-                    
-                    if (endPage - startPage + 1 < maxVisiblePages) {
-                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
-                    }
-                    
-                    if (startPage > 1) {
-                        const firstBtn = document.createElement('button');
-                        firstBtn.className = 'page-btn';
-                        firstBtn.textContent = '1';
-                        firstBtn.onclick = () => goToPage(1);
-                        pageControls.appendChild(firstBtn);
-                        
-                        if (startPage > 2) {
-                            const ellipsis = document.createElement('span');
-                            ellipsis.className = 'page-ellipsis';
-                            ellipsis.textContent = '...';
-                            pageControls.appendChild(ellipsis);
-                        }
-                    }
-                    
-                    for (let i = startPage; i <= endPage; i++) {
-                        const pageBtn = document.createElement('button');
-                        pageBtn.className = 'page-btn';
-                        if (i === currentPage) pageBtn.classList.add('active');
-                        pageBtn.textContent = i;
-                        pageBtn.onclick = () => goToPage(i);
-                        pageControls.appendChild(pageBtn);
-                    }
-                    
-                    if (endPage < totalPages) {
-                        if (endPage < totalPages - 1) {
-                            const ellipsis = document.createElement('span');
-                            ellipsis.className = 'page-ellipsis';
-                            ellipsis.textContent = '...';
-                            pageControls.appendChild(ellipsis);
-                        }
-                        
-                        const lastBtn = document.createElement('button');
-                        lastBtn.className = 'page-btn';
-                        lastBtn.textContent = totalPages;
-                        lastBtn.onclick = () => goToPage(totalPages);
-                        pageControls.appendChild(lastBtn);
-                    }
-                    
-                    // Next button
-                    const nextBtn = document.createElement('button');
-                    nextBtn.className = 'page-btn';
-                    nextBtn.disabled = currentPage === totalPages;
-                    nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
-                    nextBtn.onclick = () => changePage('next');
-                    pageControls.appendChild(nextBtn);
-                } else {
-                    pageControls.innerHTML = '';
+                let controls = '';
+                
+                // Previous button
+                controls += `<button class="page-btn ${currentPage === 1 ? 'disabled' : ''}" 
+                                   onclick="changePage('prev')" ${currentPage === 1 ? 'disabled' : ''}>
+                                <i class="fas fa-chevron-left"></i>
+                             </button>`;
+                
+                // Page numbers
+                const maxVisiblePages = 5;
+                let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                
+                if (endPage - startPage + 1 < maxVisiblePages) {
+                    startPage = Math.max(1, endPage - maxVisiblePages + 1);
                 }
+                
+                if (startPage > 1) {
+                    controls += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+                    if (startPage > 2) {
+                        controls += `<span class="page-ellipsis">...</span>`;
+                    }
+                }
+                
+                for (let i = startPage; i <= endPage; i++) {
+                    controls += `<button class="page-btn ${i === currentPage ? 'active' : ''}" 
+                                       onclick="goToPage(${i})">${i}</button>`;
+                }
+                
+                if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                        controls += `<span class="page-ellipsis">...</span>`;
+                    }
+                    controls += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+                }
+                
+                // Next button
+                controls += `<button class="page-btn ${currentPage === totalPages ? 'disabled' : ''}" 
+                                   onclick="changePage('next')" ${currentPage === totalPages ? 'disabled' : ''}>
+                                <i class="fas fa-chevron-right"></i>
+                             </button>`;
+                
+                pageControls.innerHTML = controls;
             }
         }
 
@@ -2215,6 +2454,7 @@ if (isset($_GET['ajax'])) {
             
             loadStudentTable();
             updatePaginationInfo();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Go to specific page
@@ -2222,11 +2462,11 @@ if (isset($_GET['ajax'])) {
             currentPage = pageNumber;
             loadStudentTable();
             updatePaginationInfo();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Search students function
         function searchStudents() {
-            const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
             currentPage = 1;
             filterStudents();
         }
@@ -2260,7 +2500,7 @@ if (isset($_GET['ajax'])) {
                 let matchesTahun = true;
                 if (tahunFilter) {
                     matchesTahun = student.year.includes(tahunFilter) ||
-                                  student.tahun === tahunFilter;
+                                  student.tahun == tahunFilter;
                 }
                 
                 // Status filter
@@ -2291,6 +2531,7 @@ if (isset($_GET['ajax'])) {
                 return matchesSearch && matchesKelas && matchesTahun && matchesStatus && matchesPrestasi;
             });
             
+            currentPage = 1;
             loadStudentTable();
             updatePaginationInfo();
         }
@@ -2336,7 +2577,7 @@ if (isset($_GET['ajax'])) {
             }
             
             if (studentModal) {
-                studentModal.style.display = 'block';
+                studentModal.classList.add('active');
                 document.body.style.overflow = 'hidden';
             }
         }
@@ -2351,6 +2592,7 @@ if (isset($_GET['ajax'])) {
             const studentName = document.getElementById('studentName');
             const studentIC = document.getElementById('studentIC');
             const studentGender = document.getElementById('studentGender');
+            const studentKelas = document.getElementById('studentKelas');
             const studentStatus = document.getElementById('studentStatus');
             const currentStudentId = document.getElementById('currentStudentId');
             const icError = document.getElementById('icError');
@@ -2364,10 +2606,34 @@ if (isset($_GET['ajax'])) {
             if (studentIC) studentIC.value = student.ic;
             
             // Set gender
-            if (studentGender) studentGender.value = student.gender;
+            if (studentGender) {
+                for (let i = 0; i < studentGender.options.length; i++) {
+                    if (studentGender.options[i].value === (student.gender === 'male' ? 'L' : 'P')) {
+                        studentGender.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            
+            // Set kelas (need to find kelas id from name)
+            if (studentKelas && student.kelas_nama) {
+                for (let i = 0; i < studentKelas.options.length; i++) {
+                    if (studentKelas.options[i].text === student.kelas_nama) {
+                        studentKelas.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
             
             // Set status
-            if (studentStatus) studentStatus.value = student.status;
+            if (studentStatus) {
+                for (let i = 0; i < studentStatus.options.length; i++) {
+                    if (studentStatus.options[i].value === student.status) {
+                        studentStatus.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
             
             if (currentStudentId) currentStudentId.value = studentId;
             if (icError) icError.style.display = 'none';
@@ -2379,89 +2645,72 @@ if (isset($_GET['ajax'])) {
             }
             
             if (studentModal) {
-                studentModal.style.display = 'block';
+                studentModal.classList.add('active');
                 document.body.style.overflow = 'hidden';
             }
         }
 
         // View student details
         function viewStudent(studentId) {
-            showLoading(true);
+            const student = studentsData.find(s => s.id === studentId);
+            if (!student) return;
             
-            fetch(`?ajax=get_student&student_id=${studentId}`)
-                .then(response => response.json())
-                .then(data => {
-                    showLoading(false);
+            // Show student details in a modal or alert
+            const detailsHtml = `
+                <div class="student-details-modal">
+                    <div class="student-header">
+                        <div class="student-avatar-lg">${student.name.substring(0, 2).toUpperCase()}</div>
+                        <div>
+                            <h3>${student.name}</h3>
+                            <p>${student.ic}</p>
+                        </div>
+                    </div>
                     
-                    if (data.success) {
-                        const student = data.student;
-                        const performance = data.performance || {};
-                        const attendance = data.attendance || {};
-                        
-                        // Show student details in a modal or alert
-                        const detailsHtml = `
-                            <div class="student-details-modal">
-                                <div class="student-header">
-                                    <div class="student-avatar-lg">${student.nama?.substring(0, 2).toUpperCase() || ''}</div>
-                                    <div>
-                                        <h3>${student.nama || 'N/A'}</h3>
-                                        <p>${student.no_kp || ''}</p>
-                                    </div>
-                                </div>
-                                
-                                <div class="student-info-grid">
-                                    <div class="info-item">
-                                        <span class="info-label">Jantina:</span>
-                                        <span class="info-value">${student.jantina === 'L' ? 'Lelaki' : 'Perempuan'}</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Status:</span>
-                                        <span class="info-value">
-                                            ${student.status === 1 ? 'Aktif' : 
-                                              student.status === 0 ? 'Tidak Aktif' : 'Tamat'}
-                                        </span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Prestasi:</span>
-                                        <span class="info-value">${performance.average || 0}%</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Kehadiran:</span>
-                                        <span class="info-value">${attendance.percentage || 0}%</span>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                        
-                        // Create modal for details
-                        const detailsModal = document.createElement('div');
-                        detailsModal.className = 'modal';
-                        detailsModal.innerHTML = `
-                            <div class="modal-content" style="max-width: 500px;">
-                                <div class="modal-header">
-                                    <h3>Butiran Pelajar</h3>
-                                    <button class="modal-close" onclick="this.parentElement.parentElement.remove(); document.body.style.overflow=''">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
-                                <div class="modal-body">
-                                    ${detailsHtml}
-                                </div>
-                            </div>
-                        `;
-                        
-                        document.body.appendChild(detailsModal);
-                        detailsModal.style.display = 'block';
-                        document.body.style.overflow = 'hidden';
-                    } else {
-                        showNotification('Gagal memuatkan butiran pelajar', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showLoading(false);
-                    showNotification('Ralat sistem. Sila cuba lagi.', 'error');
-                });
+                    <div class="student-info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Kelas:</span>
+                            <span class="info-value">${student.class}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Tahun:</span>
+                            <span class="info-value">${student.year}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Jantina:</span>
+                            <span class="info-value">${student.genderText}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Status:</span>
+                            <span class="info-value">${student.statusText}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Prestasi:</span>
+                            <span class="info-value">${student.performance.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Create modal for details
+            const detailsModal = document.createElement('div');
+            detailsModal.className = 'modal';
+            detailsModal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3>Butiran Pelajar</h3>
+                        <button class="modal-close" onclick="this.closest('.modal').remove(); document.body.style.overflow=''">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        ${detailsHtml}
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(detailsModal);
+            detailsModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
         }
 
         // Delete student function
@@ -2477,10 +2726,15 @@ if (isset($_GET['ajax'])) {
                         if (data.success) {
                             showNotification(data.message || 'Pelajar berjaya dipadam', 'success');
                             
-                            // Reload student data
-                            setTimeout(() => {
-                                loadStudentsFromServer();
-                            }, 1000);
+                            // Remove from arrays
+                            studentsData = studentsData.filter(s => s.id !== studentId);
+                            filteredStudents = filteredStudents.filter(s => s.id !== studentId);
+                            selectedStudents = selectedStudents.filter(id => id !== studentId);
+                            
+                            // Reload table
+                            loadStudentTable();
+                            updatePaginationInfo();
+                            updateBulkActions();
                         } else {
                             showNotification(data.message || 'Gagal memadam pelajar', 'error');
                         }
@@ -2551,9 +2805,16 @@ if (isset($_GET['ajax'])) {
             const checkboxes = document.querySelectorAll('.student-checkbox');
             const checked = selectAllCheckbox?.checked;
             
+            selectedStudents = [];
+            
             checkboxes.forEach(checkbox => {
                 checkbox.checked = checked;
+                if (checked) {
+                    selectedStudents.push(checkbox.value);
+                }
             });
+            
+            updateBulkActions();
         }
 
         // Toggle individual student selection
@@ -2561,26 +2822,184 @@ if (isset($_GET['ajax'])) {
             const checkbox = document.querySelector(`.student-checkbox[value="${studentId}"]`);
             const selectAllCheckbox = document.getElementById('selectAll');
             
-            if (!selectAllCheckbox) return;
+            if (checkbox.checked) {
+                if (!selectedStudents.includes(studentId)) {
+                    selectedStudents.push(studentId);
+                }
+            } else {
+                selectedStudents = selectedStudents.filter(id => id !== studentId);
+            }
             
             // Update "select all" checkbox state
             const allCheckboxes = document.querySelectorAll('.student-checkbox');
-            const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
-            selectAllCheckbox.checked = allChecked;
-            selectAllCheckbox.indeterminate = !allChecked && Array.from(allCheckboxes).some(cb => cb.checked);
+            const allChecked = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = allChecked;
+                selectAllCheckbox.indeterminate = !allChecked && selectedStudents.length > 0 && selectedStudents.length < allCheckboxes.length;
+            }
+            
+            updateBulkActions();
+        }
+
+        // Update bulk actions display
+        function updateBulkActions() {
+            if (!bulkActions) return;
+            
+            if (selectedStudents.length > 0) {
+                bulkActions.style.display = 'flex';
+                if (selectedCount) selectedCount.textContent = selectedStudents.length;
+            } else {
+                bulkActions.style.display = 'none';
+            }
+        }
+
+        // Apply bulk action
+        function applyBulkAction() {
+            const action = bulkAction?.value;
+            
+            if (!action || selectedStudents.length === 0) {
+                showNotification('Sila pilih tindakan dan pastikan pelajar dipilih', 'warning');
+                return;
+            }
+            
+            if (action === 'delete') {
+                if (confirm(`Adakah anda pasti ingin memadam ${selectedStudents.length} pelajar terpilih?`)) {
+                    showLoading(true);
+                    
+                    // Create form data
+                    const formData = new FormData();
+                    selectedStudents.forEach(id => formData.append('student_ids[]', id));
+                    formData.append('action', 'bulk_delete');
+                    
+                    fetch('?action=bulk_delete', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(() => {
+                        showLoading(false);
+                        showNotification('Memadam pelajar...', 'info');
+                        setTimeout(() => {
+                            loadStudentsFromServer();
+                            selectedStudents = [];
+                            updateBulkActions();
+                        }, 1000);
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showLoading(false);
+                        showNotification('Ralat sistem', 'error');
+                    });
+                }
+            } else if (action === 'update_status') {
+                const newStatus = bulkValue?.value;
+                if (!newStatus) {
+                    showNotification('Sila pilih status baru', 'warning');
+                    return;
+                }
+                
+                showLoading(true);
+                
+                // Create form data
+                const formData = new FormData();
+                selectedStudents.forEach(id => formData.append('student_ids[]', id));
+                formData.append('action', 'bulk_update');
+                formData.append('bulk_action', 'update_status');
+                formData.append('new_status', newStatus);
+                
+                fetch('?action=bulk_update', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(() => {
+                    showLoading(false);
+                    showNotification('Mengemaskini status pelajar...', 'info');
+                    setTimeout(() => {
+                        loadStudentsFromServer();
+                        selectedStudents = [];
+                        updateBulkActions();
+                    }, 1000);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showLoading(false);
+                    showNotification('Ralat sistem', 'error');
+                });
+            } else if (action === 'change_class') {
+                const newClass = bulkClass?.value;
+                if (!newClass) {
+                    showNotification('Sila pilih kelas baru', 'warning');
+                    return;
+                }
+                
+                showLoading(true);
+                
+                // Create form data
+                const formData = new FormData();
+                selectedStudents.forEach(id => formData.append('student_ids[]', id));
+                formData.append('action', 'bulk_update');
+                formData.append('bulk_action', 'change_class');
+                formData.append('new_kelas', newClass);
+                
+                fetch('?action=bulk_update', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(() => {
+                    showLoading(false);
+                    showNotification('Menukar kelas pelajar...', 'info');
+                    setTimeout(() => {
+                        loadStudentsFromServer();
+                        selectedStudents = [];
+                        updateBulkActions();
+                    }, 1000);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showLoading(false);
+                    showNotification('Ralat sistem', 'error');
+                });
+            }
+        }
+
+        // Open import modal
+        function openImportModal() {
+            if (importModal) {
+                importModal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        // Close import modal
+        function closeImportModal() {
+            if (importModal) {
+                importModal.classList.remove('active');
+            }
+            document.body.style.overflow = '';
+        }
+
+        // Show file name when selected
+        function showFileName() {
+            const fileInput = document.getElementById('importFile');
+            const fileUploadDiv = document.querySelector('.file-upload p:first-of-type');
+            
+            if (fileInput && fileInput.files.length > 0 && fileUploadDiv) {
+                fileUploadDiv.innerHTML = `<strong>Fail dipilih: ${fileInput.files[0].name}</strong>`;
+            }
         }
 
         // Reload data
         function muatSemulaData() {
             currentPage = 1;
             loadStudentsFromServer();
+            selectedStudents = [];
+            updateBulkActions();
             showNotification('Data pelajar dimuat semula', 'success');
         }
 
         // Close modal function
         function closeModal() {
             if (studentModal) {
-                studentModal.style.display = 'none';
+                studentModal.classList.remove('active');
             }
             document.body.style.overflow = '';
         }
