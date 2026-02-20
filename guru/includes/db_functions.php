@@ -190,12 +190,14 @@ function getSubjectById($id) {
 function getAllExams() {
     global $conn;
     
-    $sql = "SELECT p.*, m.nama as nama_matapelajaran, k.nama as nama_kelas 
-            FROM peperiksaan p
-            JOIN matapelajaran m ON p.id_matapelajaran = m.id
-            JOIN kelas k ON p.id_kelas = k.id
-            WHERE p.status = 1
-            ORDER BY p.tarikh_mula DESC";
+    $sql = "SELECT peperiksaan.*, 
+                   matapelajaran.nama as nama_matapelajaran, 
+                   kelas.nama as nama_kelas 
+            FROM peperiksaan 
+            JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
+            JOIN kelas ON peperiksaan.id_kelas = kelas.id
+            WHERE peperiksaan.status = 1
+            ORDER BY peperiksaan.tarikh_mula DESC";
     
     $result = mysqli_query($conn, $sql);
     $exams = [];
@@ -210,28 +212,34 @@ function getAllExams() {
 }
 
 /**
- * Get exams by guru - VERSION YANG BETUL (GUNA ALIAS)
+ * Get exams by guru - VERSION YANG DAH DIBETULKAN
  */
 function getExamsByGuru($guru_id) {
     global $conn;
     
     $guru_id = mysqli_real_escape_string($conn, $guru_id);
     
-    $sql = "SELECT p.*, 
-                   m.nama as nama_matapelajaran, 
-                   k.nama as nama_kelas 
-            FROM peperiksaan p
-            JOIN matapelajaran m ON p.id_matapelajaran = m.id
-            JOIN kelas k ON p.id_kelas = k.id
-            JOIN pengajar pj ON k.id = pj.id_kelas AND m.id = pj.id_matapelajaran
-            WHERE pj.id_guru = '$guru_id' 
-                AND p.status = 1
-            ORDER BY p.tarikh_mula DESC";
+    $sql = "SELECT peperiksaan.*, 
+                   matapelajaran.nama as nama_matapelajaran, 
+                   kelas.nama as nama_kelas 
+            FROM peperiksaan 
+            JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
+            JOIN kelas ON peperiksaan.id_kelas = kelas.id
+            JOIN pengajar ON kelas.id = pengajar.id_kelas 
+                AND matapelajaran.id = pengajar.id_matapelajaran
+            WHERE pengajar.id_guru = '$guru_id' 
+                AND peperiksaan.status = 1
+            ORDER BY peperiksaan.tarikh_mula DESC";
     
     $result = mysqli_query($conn, $sql);
-    $exams = [];
     
-    if ($result && mysqli_num_rows($result) > 0) {
+    if (!$result) {
+        error_log("SQL Error in getExamsByGuru: " . mysqli_error($conn));
+        return [];
+    }
+    
+    $exams = [];
+    if (mysqli_num_rows($result) > 0) {
         while ($row = mysqli_fetch_assoc($result)) {
             $exams[] = $row;
         }
@@ -247,11 +255,13 @@ function getExamById($id) {
     global $conn;
     
     $id = mysqli_real_escape_string($conn, $id);
-    $sql = "SELECT p.*, m.nama as nama_matapelajaran, k.nama as nama_kelas 
-            FROM peperiksaan p
-            JOIN matapelajaran m ON p.id_matapelajaran = m.id
-            JOIN kelas k ON p.id_kelas = k.id
-            WHERE p.id = '$id' LIMIT 1";
+    $sql = "SELECT peperiksaan.*, 
+                   matapelajaran.nama as nama_matapelajaran, 
+                   kelas.nama as nama_kelas 
+            FROM peperiksaan 
+            JOIN matapelajaran ON peperiksaan.id_matapelajaran = matapelajaran.id
+            JOIN kelas ON peperiksaan.id_kelas = kelas.id
+            WHERE peperiksaan.id = '$id' LIMIT 1";
     
     $result = mysqli_query($conn, $sql);
     
