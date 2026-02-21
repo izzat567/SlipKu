@@ -33,34 +33,38 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
     $kelas_id = intval($_GET['kelas_id'] ?? 0);
     
     if (!$peperiksaan_id && !$kelas_id) {
-        // Return all marks for this guru's subjects
+        // Return all marks for this guru's classes
         $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
                     p.nama as nama_pelajar, p.no_kp,
                     k.nama as nama_kelas, k.id as id_kelas,
                     pp.nama_peperiksaan, pp.id as id_peperiksaan,
-                    mp.nama as nama_subjek
+                    COALESCE(mp.nama, '-') as nama_subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
                 JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                JOIN pengajar pj ON pp.id_matapelajaran = pj.id_matapelajaran AND pj.id_guru = ?
-                WHERE pj.status = 'aktif'
+                LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                WHERE m.status = 'aktif'
+                AND (p.status = 'aktif' OR p.status = '1')
+                AND (
+                    k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                    OR k.id_guru = ?
+                )
                 ORDER BY p.nama ASC";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $guru_id);
+        $stmt->bind_param("ii", $guru_id, $guru_id);
     } elseif ($peperiksaan_id) {
         $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
                     p.nama as nama_pelajar, p.no_kp,
                     k.nama as nama_kelas, k.id as id_kelas,
                     pp.nama_peperiksaan, pp.id as id_peperiksaan,
-                    mp.nama as nama_subjek
+                    COALESCE(mp.nama, '-') as nama_subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
                 JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                WHERE m.id_perperiksaan = ?
+                LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                WHERE m.id_perperiksaan = ? AND m.status = 'aktif'
                 ORDER BY p.nama ASC";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("i", $peperiksaan_id);
@@ -69,13 +73,13 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
                     p.nama as nama_pelajar, p.no_kp,
                     k.nama as nama_kelas, k.id as id_kelas,
                     pp.nama_peperiksaan, pp.id as id_peperiksaan,
-                    mp.nama as nama_subjek
+                    COALESCE(mp.nama, '-') as nama_subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
                 JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                WHERE p.id_kelas = ?
+                LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                WHERE p.id_kelas = ? AND m.status = 'aktif'
                 ORDER BY p.nama ASC";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("i", $kelas_id);

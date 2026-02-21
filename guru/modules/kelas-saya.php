@@ -37,16 +37,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $error_message = 'Sila pilih kelas.';
     } else {
         try {
-            // Semak sama ada sudah wujud
-            $cek = $conn->prepare("SELECT id FROM guru_kelas WHERE guru_id = ? AND kelas_id = ? AND tahun = ?");
-            $cek->bind_param("iii", $guru_id, $kelas_id, $tahun_akademik);
+            // Semak sama ada guru sudah mengajar kelas ini
+            $cek = $conn->prepare("SELECT id FROM pengajar WHERE id_guru = ? AND id_kelas = ? AND status = 'aktif'");
+            $cek->bind_param("ii", $guru_id, $kelas_id);
             $cek->execute();
             $cek->store_result();
             if ($cek->num_rows > 0) {
                 $error_message = 'Anda sudah ditugaskan ke kelas ini.';
             } else {
-                $ins = $conn->prepare("INSERT INTO guru_kelas (guru_id, kelas_id, tahun, status) VALUES (?, ?, ?, 1)");
-                $ins->bind_param("iii", $guru_id, $kelas_id, $tahun_akademik);
+                // Kemaskini kelas.id_guru DAN tambah record dalam pengajar
+                $upd_kelas = $conn->prepare("UPDATE kelas SET id_guru = ? WHERE id = ?");
+                $upd_kelas->bind_param("ii", $guru_id, $kelas_id);
+                $upd_kelas->execute();
+                $upd_kelas->close();
+                
+                // Tambah dalam pengajar (tanpa id_matapelajaran dulu)
+                $ins = $conn->prepare("INSERT INTO pengajar (id_kelas, id_guru, tahun_akademik, status) VALUES (?, ?, ?, 'aktif')");
+                $ins->bind_param("iis", $kelas_id, $guru_id, $tahun_akademik);
                 $ins->execute();
                 $ins->close();
                 header("Location: kelas-saya.php?success=1"); exit();
@@ -62,18 +69,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Handle EDIT KELAS
 // =============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_kelas') {
-    $guru_kelas_id = intval($_POST['guru_kelas_id'] ?? 0);
+    $kelas_id_lama = intval($_POST['guru_kelas_id'] ?? 0); // ini sebenarnya kelas_id lama
     $kelas_id_baru = intval($_POST['kelas_id_baru'] ?? 0);
-    $tahun_baru = intval($_POST['tahun_baru'] ?? date('Y'));
+    $tahun_baru = trim($_POST['tahun_baru'] ?? date('Y'));
 
-    if (!$guru_kelas_id || !$kelas_id_baru) {
+    if (!$kelas_id_lama || !$kelas_id_baru) {
         $error_message = 'Data tidak lengkap.';
     } else {
         try {
-            $upd = $conn->prepare("UPDATE guru_kelas SET kelas_id=?, tahun=? WHERE id=? AND guru_id=?");
-            $upd->bind_param("iiii", $kelas_id_baru, $tahun_baru, $guru_kelas_id, $guru_id);
-            $upd->execute();
-            $upd->close();
+            // Buang assignment lama, tetapkan yang baru
+            if ($kelas_id_lama !== $kelas_id_baru) {
+                // Buang guru dari kelas lama
+                $conn->prepare("UPDATE kelas SET id_guru = NULL WHERE id = ? AND id_guru = ?")->execute();
+                $upd_old = $conn->prepare("UPDATE pengajar SET status = 'tidak_aktif' WHERE id_guru = ? AND id_kelas = ?");
+                $upd_old->bind_param("ii", $guru_id, $kelas_id_lama);
+                $upd_old->execute();
+                $upd_old->close();
+            }
+            // Tetapkan guru ke kelas baru
+            $upd_new = $conn->prepare("UPDATE kelas SET id_guru = ? WHERE id = ?");
+            $upd_new->bind_param("ii", $guru_id, $kelas_id_baru);
+            $upd_new->execute();
+            $upd_new->close();
+            
             header("Location: kelas-saya.php?success=edit"); exit();
         } catch (Exception $e) {
             $error_message = 'Ralat: ' . $e->getMessage();
@@ -91,45 +109,75 @@ if (isset($_GET['success'])) {
 // =============================================
 $all_kelas = [];
 try {
-    $res = $conn->query("SELECT id, nama, tahun FROM kelas WHERE status = 1 ORDER BY tahun ASC, nama ASC");
+    $res = $conn->query("SELECT id, nama, tahun FROM kelas WHERE status = 'aktif' ORDER BY tahun ASC, nama ASC");
     while ($row = $res->fetch_assoc()) {
         $all_kelas[] = $row;
     }
 } catch (Exception $e) {}
 
 // =============================================
-// GET kelas yang diajar guru ini (dari guru_kelas)
+// GET kelas yang diajar guru ini (dari pengajar DAN kelas.id_guru)
 // =============================================
 $classes = [];
 $total_murid_keseluruhan = 0;
 
 try {
-    $sql = "SELECT gk.id as guru_kelas_id, k.id, k.nama, k.tahun,
-                COUNT(DISTINCT p.id) as total_murid,
-                COALESCE(AVG(m.markah), 0) as average_performance
-            FROM guru_kelas gk
-            JOIN kelas k ON gk.kelas_id = k.id
-            LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 1
-            LEFT JOIN markah m ON m.id_pelajar = p.id AND m.status = 1
-            WHERE gk.guru_id = ? AND gk.status = 1 AND k.status = 1
-            GROUP BY gk.id, k.id, k.nama, k.tahun
-            ORDER BY k.tahun ASC, k.nama ASC";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $guru_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-        $classes[] = [
-            'guru_kelas_id' => $row['guru_kelas_id'],
-            'id'            => $row['id'],
-            'nama'          => $row['nama'],
-            'tahun'         => $row['tahun'],
-            'total_murid'   => (int)$row['total_murid'],
-            'average_performance' => round((float)$row['average_performance'], 1)
-        ];
-        $total_murid_keseluruhan += (int)$row['total_murid'];
+    // Kumpul kelas_id dari dua sumber
+    $kelas_ids = [];
+    
+    // Sumber 1: table pengajar
+    $stmt1 = $conn->prepare("SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif' AND id_kelas IS NOT NULL");
+    if ($stmt1) {
+        $stmt1->bind_param("i", $guru_id);
+        $stmt1->execute();
+        $r1 = $stmt1->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt1->close();
+        foreach ($r1 as $row) if ($row['id_kelas']) $kelas_ids[] = $row['id_kelas'];
     }
-    $stmt->close();
+    
+    // Sumber 2: kelas.id_guru
+    $stmt2 = $conn->prepare("SELECT id FROM kelas WHERE id_guru = ? AND status = 'aktif'");
+    if ($stmt2) {
+        $stmt2->bind_param("i", $guru_id);
+        $stmt2->execute();
+        $r2 = $stmt2->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt2->close();
+        foreach ($r2 as $row) if ($row['id']) $kelas_ids[] = $row['id'];
+    }
+    
+    $kelas_ids = array_unique(array_filter($kelas_ids));
+    
+    if (!empty($kelas_ids)) {
+        $placeholders = implode(',', array_fill(0, count($kelas_ids), '?'));
+        $types = str_repeat("i", count($kelas_ids));
+        
+        $sql = "SELECT k.id, k.nama, k.tahun,
+                    COUNT(DISTINCT p.id) as total_murid,
+                    COALESCE(AVG(m.markah), 0) as average_performance
+                FROM kelas k
+                LEFT JOIN pelajar p ON k.id = p.id_kelas AND (p.status = 'aktif' OR p.status = '1')
+                LEFT JOIN markah m ON m.id_pelajar = p.id AND m.status = 'aktif'
+                WHERE k.id IN ($placeholders) AND k.status = 'aktif'
+                GROUP BY k.id, k.nama, k.tahun
+                ORDER BY k.tahun ASC, k.nama ASC";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$kelas_ids);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $classes[] = [
+                'guru_kelas_id' => $row['id'], // guna k.id sebagai fallback
+                'id'            => $row['id'],
+                'nama'          => $row['nama'],
+                'tahun'         => $row['tahun'],
+                'total_murid'   => (int)$row['total_murid'],
+                'average_performance' => round((float)$row['average_performance'], 1)
+            ];
+            $total_murid_keseluruhan += (int)$row['total_murid'];
+        }
+        $stmt->close();
+    }
 } catch (Exception $e) { error_log($e->getMessage()); }
 
 $totalClasses     = count($classes);

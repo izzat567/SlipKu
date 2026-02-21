@@ -21,22 +21,28 @@ if (isset($_SESSION['guru_nama'])) {
 
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
     header('Content-Type: application/json');
+    // LEFT JOIN matapelajaran kerana peperiksaan.id_matapelajaran mungkin NULL
+    // Tunjuk semua markah untuk pelajar dalam kelas guru ini
     $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
                 p.nama as nama_pelajar, p.no_kp, p.jantina,
                 k.nama as nama_kelas,
                 pp.nama_peperiksaan,
-                mp.nama as nama_subjek, mp.kod as kod_subjek
+                COALESCE(mp.nama, '-') as nama_subjek, COALESCE(mp.kod, '-') as kod_subjek
             FROM markah m
             JOIN pelajar p ON m.id_pelajar = p.id
             JOIN kelas k ON p.id_kelas = k.id
             JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-            JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-            JOIN pengajar pj ON mp.id = pj.id_matapelajaran
-            WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
+            LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+            WHERE (p.status = 'aktif' OR p.status = '1')
+            AND m.status = 'aktif'
+            AND (
+                k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                OR k.id_guru = ?
+            )
             ORDER BY p.nama ASC";
     $stmt = $conn->prepare($sql);
     if ($stmt) {
-        $stmt->bind_param("i", $guru_id);
+        $stmt->bind_param("ii", $guru_id, $guru_id);
         $stmt->execute();
         $marks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();

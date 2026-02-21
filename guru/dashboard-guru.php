@@ -42,17 +42,20 @@ $current_page = 'dashboard-guru.php';
 
 // ---- DATA DASHBOARD ----
 
-// 1. KELAS yang diajar guru ini
+// 1. KELAS yang diajar guru ini (dari pengajar DAN kelas.id_guru)
 try {
     $sql_kelas = "SELECT DISTINCT k.id, k.nama, k.tahun,
                     COUNT(DISTINCT p.id) as jumlah_pelajar
-                  FROM pengajar pj
-                  JOIN kelas k ON pj.id_kelas = k.id
-                  LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 'aktif'
-                  WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
+                  FROM kelas k
+                  LEFT JOIN pelajar p ON k.id = p.id_kelas AND (p.status = 'aktif' OR p.status = '1')
+                  WHERE k.status = 'aktif'
+                  AND (
+                      k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                      OR k.id_guru = ?
+                  )
                   GROUP BY k.id, k.nama, k.tahun";
     $stmt_kelas = $conn->prepare($sql_kelas);
-    $stmt_kelas->bind_param("i", $id_guru);
+    $stmt_kelas->bind_param("ii", $id_guru, $id_guru);
     $stmt_kelas->execute();
     $kelas_list = $stmt_kelas->get_result()->fetch_all(MYSQLI_ASSOC);
     $kelas_count = count($kelas_list);
@@ -80,10 +83,14 @@ try {
     $sql_pelajar = "SELECT COUNT(DISTINCT p.id) as total
                   FROM pelajar p
                   JOIN kelas k ON p.id_kelas = k.id
-                  JOIN pengajar pj ON k.id = pj.id_kelas
-                  WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'";
+                  WHERE k.status = 'aktif'
+                  AND (p.status = 'aktif' OR p.status = '1')
+                  AND (
+                      k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                      OR k.id_guru = ?
+                  )";
     $stmt_pelajar = $conn->prepare($sql_pelajar);
-    $stmt_pelajar->bind_param("i", $id_guru);
+    $stmt_pelajar->bind_param("ii", $id_guru, $id_guru);
     $stmt_pelajar->execute();
     $row = $stmt_pelajar->get_result()->fetch_assoc();
     $total_students = $row['total'] ?? 0;
@@ -93,18 +100,20 @@ try {
 // 4. UJIAN BELUM DINILAI
 $unmarked_count = 0;
 try {
-    // Pelajar dalam kelas guru ini yang tiada markah untuk peperiksaan aktif
     $sql_unmarked = "SELECT COUNT(DISTINCT p.id) as total
                     FROM pelajar p
                     JOIN kelas k ON p.id_kelas = k.id
-                    JOIN pengajar pj ON k.id = pj.id_kelas
-                    JOIN peperiksaan pp ON pj.id_matapelajaran = pp.id_matapelajaran
+                    JOIN peperiksaan pp ON pp.status = 'aktif'
                     LEFT JOIN markah m ON p.id = m.id_pelajar AND m.id_perperiksaan = pp.id
-                    WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
-                        AND pp.status = 'aktif' AND m.id IS NULL";
+                    WHERE k.status = 'aktif' AND m.id IS NULL
+                    AND (p.status = 'aktif' OR p.status = '1')
+                    AND (
+                        k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                        OR k.id_guru = ?
+                    )";
     $stmt_unmarked = $conn->prepare($sql_unmarked);
     if ($stmt_unmarked) {
-        $stmt_unmarked->bind_param("i", $id_guru);
+        $stmt_unmarked->bind_param("ii", $id_guru, $id_guru);
         $stmt_unmarked->execute();
         $row = $stmt_unmarked->get_result()->fetch_assoc();
         $unmarked_count = $row['total'] ?? 0;
@@ -112,37 +121,37 @@ try {
     }
 } catch (Exception $e) { $unmarked_count = 0; }
 
-// 5. PEPERIKSAAN terkini (via subjek yang diajar)
+// 5. PEPERIKSAAN terkini (semua peperiksaan aktif)
 try {
     $sql_peperiksaan = "SELECT DISTINCT p.id, p.nama_peperiksaan, p.tarikh_mula, p.tarikh_tamat,
-                          p.jenis, m.nama as mata_pelajaran, p.status
+                          p.jenis, COALESCE(m.nama, '-') as mata_pelajaran, p.status
                         FROM peperiksaan p
-                        JOIN matapelajaran m ON p.id_matapelajaran = m.id
-                        JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran
-                        WHERE pj.id_guru = ? AND pj.status = 'aktif' AND p.status = 'aktif'
+                        LEFT JOIN matapelajaran m ON p.id_matapelajaran = m.id
+                        WHERE p.status = 'aktif'
                         ORDER BY p.tarikh_mula DESC LIMIT 5";
     $stmt_peperiksaan = $conn->prepare($sql_peperiksaan);
-    $stmt_peperiksaan->bind_param("i", $id_guru);
     $stmt_peperiksaan->execute();
     $peperiksaan_list = $stmt_peperiksaan->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt_peperiksaan->close();
 } catch (Exception $e) { $peperiksaan_list = []; }
 
-// 5. PRESTASI KELAS - purata markah
+// 6. PRESTASI KELAS - purata markah
 try {
     $sql_prestasi = "SELECT k.nama,
                       AVG(m.markah) as purata_markah,
                       COUNT(m.id) as jumlah_markah
                     FROM markah m
-                    JOIN peperiksaan p ON m.id_perperiksaan = p.id
-                    JOIN matapelajaran mp ON p.id_matapelajaran = mp.id
-                    JOIN pengajar pj ON mp.id = pj.id_matapelajaran
-                    JOIN kelas k ON pj.id_kelas = k.id
-                    WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.markah IS NOT NULL
+                    JOIN pelajar p ON m.id_pelajar = p.id
+                    JOIN kelas k ON p.id_kelas = k.id
+                    WHERE m.markah IS NOT NULL AND m.status = 'aktif'
+                    AND (
+                        k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                        OR k.id_guru = ?
+                    )
                     GROUP BY k.id, k.nama
                     ORDER BY purata_markah DESC LIMIT 5";
     $stmt_prestasi = $conn->prepare($sql_prestasi);
-    $stmt_prestasi->bind_param("i", $id_guru);
+    $stmt_prestasi->bind_param("ii", $id_guru, $id_guru);
     $stmt_prestasi->execute();
     $prestasi_kelas = $stmt_prestasi->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt_prestasi->close();

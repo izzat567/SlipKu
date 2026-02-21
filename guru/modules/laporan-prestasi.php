@@ -23,16 +23,19 @@ if (isset($_SESSION['guru_nama'])) {
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_report') {
     header('Content-Type: application/json');
     
-    // Top performers
+    // Top performers - dari kelas guru ini
     $sql_top = "SELECT p.nama, p.no_kp, k.nama as kelas,
                     AVG(m.markah) as purata, COUNT(m.id) as jumlah,
                     MAX(m.markah) as tertinggi, MIN(m.markah) as terendah
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
-                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-                JOIN pengajar pj ON pp.id_matapelajaran = pj.id_matapelajaran
-                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
+                WHERE m.status = 'aktif'
+                AND (p.status = 'aktif' OR p.status = '1')
+                AND (
+                    k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                    OR k.id_guru = ?
+                )
                 GROUP BY p.id, p.nama, p.no_kp, k.nama
                 ORDER BY purata DESC LIMIT 10";
     
@@ -44,44 +47,56 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_report') {
                     SUM(CASE WHEN m.markah >= 40 THEN 1 ELSE 0 END) as lulus,
                     SUM(CASE WHEN m.markah < 40 THEN 1 ELSE 0 END) as gagal
                 FROM kelas k
-                JOIN pengajar pj ON k.id = pj.id_kelas
-                LEFT JOIN pelajar p ON k.id = p.id_kelas AND p.status = 'aktif'
+                LEFT JOIN pelajar p ON k.id = p.id_kelas AND (p.status = 'aktif' OR p.status = '1')
                 LEFT JOIN markah m ON p.id = m.id_pelajar AND m.status = 'aktif'
-                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND k.status = 'aktif'
+                WHERE k.status = 'aktif'
+                AND (
+                    k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                    OR k.id_guru = ?
+                )
                 GROUP BY k.id, k.nama";
     
     // Detailed - all students with marks
     $sql_detail = "SELECT p.nama, p.no_kp, k.nama as kelas,
                     m.markah, m.gred, pp.nama_peperiksaan,
-                    mp.nama as subjek
+                    COALESCE(mp.nama, '-') as subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
                 JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-                JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                JOIN pengajar pj ON mp.id = pj.id_matapelajaran
-                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
-                ORDER BY purata DESC";
+                LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                WHERE m.status = 'aktif'
+                AND (p.status = 'aktif' OR p.status = '1')
+                AND (
+                    k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                    OR k.id_guru = ?
+                )
+                ORDER BY p.nama ASC";
     
     $response = [];
     
     $stmt = $conn->prepare($sql_top);
-    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['top'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
+    if ($stmt) { $stmt->bind_param("ii", $guru_id, $guru_id); $stmt->execute(); $response['top'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
     
     $stmt = $conn->prepare($sql_kelas);
-    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['kelas'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
+    if ($stmt) { $stmt->bind_param("ii", $guru_id, $guru_id); $stmt->execute(); $response['kelas'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
     
     $stmt = $conn->prepare($sql_detail);
-    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['detail'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
+    if ($stmt) { $stmt->bind_param("ii", $guru_id, $guru_id); $stmt->execute(); $response['detail'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close(); }
     
     // Stats
     $stmt = $conn->prepare("SELECT COUNT(DISTINCT m.id_pelajar) as total_pelajar, AVG(m.markah) as purata_keseluruhan,
                 SUM(CASE WHEN m.markah >= 40 THEN 1 ELSE 0 END) as lulus,
                 SUM(CASE WHEN m.markah < 40 THEN 1 ELSE 0 END) as gagal
-                FROM markah m JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
-                JOIN pengajar pj ON pp.id_matapelajaran = pj.id_matapelajaran
-                WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'");
-    if ($stmt) { $stmt->bind_param("i", $guru_id); $stmt->execute(); $response['stats'] = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
+                FROM markah m
+                JOIN pelajar p ON m.id_pelajar = p.id
+                JOIN kelas k ON p.id_kelas = k.id
+                WHERE m.status = 'aktif'
+                AND (
+                    k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
+                    OR k.id_guru = ?
+                )");
+    if ($stmt) { $stmt->bind_param("ii", $guru_id, $guru_id); $stmt->execute(); $response['stats'] = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
     
     $response['success'] = true;
     echo json_encode($response);
