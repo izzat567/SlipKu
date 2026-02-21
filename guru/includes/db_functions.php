@@ -460,6 +460,62 @@ function checkStudentExists($no_ic, $exclude_id = null) {
     return $count > 0;
 }
 
+
+// Dapatkan prestasi pelajar (purata markah)
+function getStudentPerformance($student_id) {
+    global $conn;
+    $student_id = intval($student_id);
+    $stmt = $conn->prepare("SELECT AVG(markah) as purata, COUNT(*) as jumlah FROM markah WHERE id_pelajar = ? AND status = 'aktif'");
+    if (!$stmt) return ['purata' => 0, 'jumlah' => 0];
+    $stmt->bind_param("i", $student_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return [
+        'purata' => round($row['purata'] ?? 0, 1),
+        'jumlah' => $row['jumlah'] ?? 0
+    ];
+}
+
+// Dapatkan kehadiran pelajar (fungsi asas)
+function getStudentAttendance($student_id) {
+    // Jika tiada jadual kehadiran, kembalikan data kosong
+    return ['hadir' => 0, 'jumlah' => 0, 'peratus' => 0];
+}
+
+// Kemaskini pelajar secara pukal
+function bulkUpdateStudents($student_ids, $data) {
+    global $conn;
+    if (empty($student_ids) || empty($data)) return false;
+    
+    $placeholders = implode(',', array_fill(0, count($student_ids), '?'));
+    $sets = [];
+    $params = [];
+    $types = '';
+    
+    foreach ($data as $col => $val) {
+        // Whitelist kolum yang boleh dikemaskini
+        if (in_array($col, ['status', 'id_kelas'])) {
+            $sets[] = "$col = ?";
+            $params[] = $val;
+            $types .= 's';
+        }
+    }
+    
+    if (empty($sets)) return false;
+    
+    $sql = "UPDATE pelajar SET " . implode(', ', $sets) . " WHERE id IN ($placeholders)";
+    $types .= str_repeat('i', count($student_ids));
+    $params = array_merge($params, $student_ids);
+    
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) return false;
+    $stmt->bind_param($types, ...$params);
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
 function ensureDemoGuruExists() {
     global $conn;
     // Demo guru already in DB, skip

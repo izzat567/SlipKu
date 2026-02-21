@@ -949,19 +949,22 @@ if (isset($_SESSION['guru_nama'])) {
                 </div>
                 <div class="exam-list">
                     <?php
-                    if ($peperiksaan_list && $peperiksaan_list->num_rows > 0) {
-                        while ($exam = $peperiksaan_list->fetch_assoc()) {
-                            $status = ($exam['sudah_dinilai'] == $exam['jumlah_markah'] && $exam['jumlah_markah'] > 0) ? 'graded' : 'upcoming';
+                    if (!empty($peperiksaan_list)) {
+                        foreach ($peperiksaan_list as $exam) {
+                            $jumlah_markah = $exam['jumlah_markah'] ?? 0;
+                            $sudah_dinilai = $exam['sudah_dinilai'] ?? 0;
+                            $status = ($sudah_dinilai == $jumlah_markah && $jumlah_markah > 0) ? 'graded' : 'upcoming';
                             $status_class = ($status == 'graded') ? 'status-graded' : 'status-upcoming';
                             $status_text = ($status == 'graded') ? 'Telah Dinilai' : 'Belum Dinilai';
-                            $tarikh = date('d M Y', strtotime($exam['tarikh_mula']));
+                            $tarikh = !empty($exam['tarikh_mula']) ? date('d M Y', strtotime($exam['tarikh_mula'])) : '-';
+                            $kelas_nama = $exam['kelas'] ?? $exam['nama_peperiksaan'] ?? '-';
                             
                             echo '
                             <div class="exam-item">
                                 <div class="exam-info">
-                                    <h4>' . htmlspecialchars($exam['mata_pelajaran']) . ' - ' . htmlspecialchars($exam['kelas']) . '</h4>
-                                    <p>' . htmlspecialchars($exam['jenis']) . ' • ' . $tarikh . '</p>
-                                    <small style="color: var(--medium-gray);">' . $exam['sudah_dinilai'] . '/' . $exam['jumlah_markah'] . ' dinilai</small>
+                                    <h4>' . htmlspecialchars($exam['mata_pelajaran'] ?? '-') . ' — ' . htmlspecialchars($kelas_nama) . '</h4>
+                                    <p>' . htmlspecialchars($exam['jenis'] ?? '-') . ' • ' . $tarikh . '</p>
+                                    <small style="color: var(--medium-gray);">' . $sudah_dinilai . '/' . $jumlah_markah . ' dinilai</small>
                                 </div>
                                 <span class="exam-status ' . $status_class . '">' . $status_text . '</span>
                             </div>';
@@ -986,8 +989,8 @@ if (isset($_SESSION['guru_nama'])) {
                 </div>
                 <div class="class-list">
                     <?php
-                    if ($prestasi_kelas && $prestasi_kelas->num_rows > 0) {
-                        while ($class = $prestasi_kelas->fetch_assoc()) {
+                    if (!empty($prestasi_kelas)) {
+                        foreach ($prestasi_kelas as $class) {
                             $purata = number_format($class['purata_markah'], 1);
                             $color = ($purata >= 75) ? 'var(--success)' : (($purata >= 50) ? 'var(--warning)' : 'var(--danger)');
                             
@@ -1064,15 +1067,6 @@ if (isset($_SESSION['guru_nama'])) {
 </body>
 </html>
 <?php
-// Close database connections
-if (isset($stmt_verify)) $stmt_verify->close();
-if (isset($stmt_guru)) $stmt_guru->close();
-if (isset($stmt_kelas)) $stmt_kelas->close();
-if (isset($stmt_subjek)) $stmt_subjek->close();
-if (isset($stmt_pelajar)) $stmt_pelajar->close();
-if (isset($stmt_pelajar_list)) $stmt_pelajar_list->close();
-if (isset($stmt_unmarked)) $stmt_unmarked->close();
-if (isset($stmt_peperiksaan)) $stmt_peperiksaan->close();
-if (isset($stmt_prestasi)) $stmt_prestasi->close();
-$conn->close();
+// Tutup sambungan database
+if (isset($conn)) $conn->close();
 ?>
