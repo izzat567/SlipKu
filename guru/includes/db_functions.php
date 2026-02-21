@@ -66,8 +66,7 @@ function getSubjectsByGuru($guru_id) {
     if (empty($subjects)) return getAllSubjects();
     return $subjects;
 }
-    return $subjects;
-}
+
 
 function getAllSubjects() {
     global $conn;
