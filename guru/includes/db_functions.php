@@ -1,174 +1,45 @@
 <?php
-// includes/db_functions.php - FIXED VERSION
+/**
+ * db_functions.php — Fungsi-fungsi database untuk modul Guru
+ * Sync sepenuhnya dengan skema slipku_db
+ */
 
-function connectDB() {
-    $host = 'localhost';
-    $username = 'root';
-    $password = 'danialdev';
-    $database = 'slipku_db';
-    $conn = mysqli_connect($host, $username, $password, $database);
-    if (!$conn) die("Connection failed: " . mysqli_connect_error());
-    mysqli_set_charset($conn, 'utf8mb4');
-    return $conn;
-}
-
-// Get global $conn (from connect.php) - jangan buat connection baru
-function getConn() {
-    global $conn;
-    return $conn;
-}
-
-function checkGuruLogin() {
-    if (!isset($_SESSION['guru_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-        header('Location: ../login-guru.php');
-        exit();
-    }
-}
+// ─── GURU ─────────────────────────────────────────────────────────────────────
 
 function getGuruById($guru_id) {
     global $conn;
     $guru_id = intval($guru_id);
-    // DB baru: column 'id', status varchar 'aktif'
     $stmt = $conn->prepare("SELECT id, nama, email, no_telefon FROM guru WHERE id = ? LIMIT 1");
     if (!$stmt) return false;
     $stmt->bind_param("i", $guru_id);
     $stmt->execute();
-    $result = $stmt->get_result();
-    $guru = $result->fetch_assoc();
-    $stmt->close();
-    return $guru ?: false;
-}
-
-function getGuruInfo($guru_id) {
-    return getGuruById($guru_id);
-}
-
-// Get subjects taught by guru
-function getSubjectsByGuru($guru_id) {
-    global $conn;
-    $guru_id = intval($guru_id);
-    // DB baru: pengajar.id_guru, matapelajaran.status = 'aktif'
-    $sql = "SELECT DISTINCT m.id, m.nama, m.kod, m.tahun
-            FROM matapelajaran m
-            JOIN pengajar p ON m.id = p.id_matapelajaran
-            WHERE p.id_guru = ? AND p.status = 'aktif' AND m.status = 'aktif'
-            ORDER BY m.nama ASC";
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) {
-        // Fallback: semua subjek aktif
-        return getAllSubjects();
-    }
-    $stmt->bind_param("i", $guru_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $subjects = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    if (empty($subjects)) return getAllSubjects();
-    return $subjects;
-}
-
-function getAllSubjects() {
-    global $conn;
-    $sql = "SELECT id, nama, kod, tahun FROM matapelajaran WHERE status = 'aktif' ORDER BY nama ASC";
-    $result = $conn->query($sql);
-    return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
-}
-
-function getSubjectById($id) {
-    global $conn;
-    $id = intval($id);
-    $stmt = $conn->prepare("SELECT * FROM matapelajaran WHERE id = ? LIMIT 1");
-    if (!$stmt) return false;
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
+    $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     return $row ?: false;
 }
 
-// Get all exams
-function getAllExams() {
-    global $conn;
-    $sql = "SELECT * FROM peperiksaan WHERE status = 'aktif' ORDER BY tarikh_mula DESC";
-    $result = $conn->query($sql);
-    return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
-}
+// ─── KELAS ────────────────────────────────────────────────────────────────────
 
-// Get exams by guru (via matapelajaran yang diajar)
-function getExamsByGuru($guru_id) {
-    global $conn;
-    $guru_id = intval($guru_id);
-    // Cuba cari peperiksaan berkaitan subjek guru ini
-    $sql = "SELECT DISTINCT p.* FROM peperiksaan p
-            JOIN pengajar pj ON p.id_matapelajaran = pj.id_matapelajaran
-            WHERE pj.id_guru = ? AND pj.status = 'aktif' AND p.status = 'aktif'
-            ORDER BY p.tarikh_mula DESC";
-    $stmt = $conn->prepare($sql);
-    if ($stmt) {
-        $stmt->bind_param("i", $guru_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $exams = $result->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-        if (!empty($exams)) return $exams;
-    }
-    // Fallback: return semua peperiksaan aktif (jika id_matapelajaran NULL atau tiada match)
-    return getAllExams();
-}
-
-function getExamById($id) {
-    global $conn;
-    $id = intval($id);
-    $stmt = $conn->prepare("SELECT * FROM peperiksaan WHERE id = ? LIMIT 1");
-    if (!$stmt) return false;
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
-    return $row ?: false;
-}
-
-// Get classes by guru
 function getKelasByGuru($guru_id) {
     global $conn;
     $guru_id = intval($guru_id);
-    
-    // Kaedah 1: dari table pengajar
-    $sql = "SELECT DISTINCT k.id, k.nama, k.tahun FROM kelas k
-            JOIN pengajar p ON k.id = p.id_kelas
-            WHERE p.id_guru = ? AND p.status = 'aktif' AND k.status = 'aktif'
+    $sql = "SELECT DISTINCT k.id, k.nama, k.tahun
+            FROM kelas k
+            LEFT JOIN pengajar pj ON k.id = pj.id_kelas AND pj.id_guru = ? AND pj.status = 'aktif'
+            WHERE k.status = 'aktif' AND (k.id_guru = ? OR pj.id IS NOT NULL)
             ORDER BY k.tahun DESC, k.nama ASC";
     $stmt = $conn->prepare($sql);
-    if ($stmt) {
-        $stmt->bind_param("i", $guru_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $classes = $result->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-        if (!empty($classes)) return $classes;
-    }
-    
-    // Kaedah 2: dari kelas.id_guru terus
-    $sql2 = "SELECT id, nama, tahun FROM kelas WHERE id_guru = ? AND status = 'aktif' ORDER BY tahun DESC, nama ASC";
-    $stmt2 = $conn->prepare($sql2);
-    if ($stmt2) {
-        $stmt2->bind_param("i", $guru_id);
-        $stmt2->execute();
-        $result2 = $stmt2->get_result();
-        $classes2 = $result2->fetch_all(MYSQLI_ASSOC);
-        $stmt2->close();
-        if (!empty($classes2)) return $classes2;
-    }
-    
-    return [];
+    if (!$stmt) return [];
+    $stmt->bind_param("ii", $guru_id, $guru_id);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $rows;
 }
 
 function getAllKelas() {
     global $conn;
-    $sql = "SELECT * FROM kelas WHERE status = 'aktif' ORDER BY tahun DESC, nama ASC";
-    $result = $conn->query($sql);
+    $result = $conn->query("SELECT id, nama, tahun FROM kelas WHERE status = 'aktif' ORDER BY tahun DESC, nama ASC");
     return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
 }
 
@@ -179,281 +50,105 @@ function getKelasById($id) {
     if (!$stmt) return false;
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
+    $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     return $row ?: false;
 }
 
-// Get students by class ID
+// ─── PELAJAR ──────────────────────────────────────────────────────────────────
+
 function getStudentsByClass($kelas_id) {
     global $conn;
     $kelas_id = intval($kelas_id);
-    // pelajar.status boleh jadi 'aktif', 'tidak aktif', 'tamat', etc.
-    $sql = "SELECT * FROM pelajar WHERE id_kelas = ? ORDER BY nama ASC";
-    $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare("SELECT * FROM pelajar WHERE id_kelas = ? AND status = 'aktif' ORDER BY nama ASC");
     if (!$stmt) return [];
     $stmt->bind_param("i", $kelas_id);
     $stmt->execute();
-    $result = $stmt->get_result();
-    $students = $result->fetch_all(MYSQLI_ASSOC);
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-    return $students;
+    return $rows;
 }
 
-// Get students by class name
-function getStudentsByClassName($class_name) {
-    global $conn;
-    $sql = "SELECT p.* FROM pelajar p
-            JOIN kelas k ON p.id_kelas = k.id
-            WHERE k.nama = ? AND (p.status = 'aktif' OR p.status = '1')
-            ORDER BY p.nama ASC";
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) return [];
-    $stmt->bind_param("s", $class_name);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $students = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    return $students;
-}
-
-// Get students by guru
-function getPelajarByGuru($guru_id, $search = '', $kelas = '', $status = '') {
+function getPelajarByGuru($guru_id, $search = '', $kelas_filter = '', $status_filter = '') {
     global $conn;
     $guru_id = intval($guru_id);
-    
-    // Dapatkan senarai kelas_id untuk guru ini (dari pengajar DAN kelas.id_guru)
-    $kelas_ids = [];
-    
-    // Dari pengajar
-    $stmt_k = $conn->prepare("SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif'");
-    if ($stmt_k) {
-        $stmt_k->bind_param("i", $guru_id);
-        $stmt_k->execute();
-        $r = $stmt_k->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt_k->close();
-        foreach ($r as $row) if ($row['id_kelas']) $kelas_ids[] = $row['id_kelas'];
-    }
-    
-    // Dari kelas.id_guru
-    $stmt_k2 = $conn->prepare("SELECT id FROM kelas WHERE id_guru = ? AND status = 'aktif'");
-    if ($stmt_k2) {
-        $stmt_k2->bind_param("i", $guru_id);
-        $stmt_k2->execute();
-        $r2 = $stmt_k2->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt_k2->close();
-        foreach ($r2 as $row) if ($row['id']) $kelas_ids[] = $row['id'];
-    }
-    
-    $kelas_ids = array_unique(array_filter($kelas_ids));
-    
-    if (empty($kelas_ids)) return [];
-    
+
+    $sql_kelas = "SELECT DISTINCT k.id FROM kelas k
+                  LEFT JOIN pengajar pj ON k.id = pj.id_kelas AND pj.id_guru = ? AND pj.status = 'aktif'
+                  WHERE k.status = 'aktif' AND (k.id_guru = ? OR pj.id IS NOT NULL)";
+    $st = $conn->prepare($sql_kelas);
+    if (!$st) return [];
+    $st->bind_param("ii", $guru_id, $guru_id);
+    $st->execute();
+    $kelas_rows = $st->get_result()->fetch_all(MYSQLI_ASSOC);
+    $st->close();
+
+    if (empty($kelas_rows)) return [];
+    $kelas_ids   = array_column($kelas_rows, 'id');
     $placeholders = implode(',', array_fill(0, count($kelas_ids), '?'));
-    $sql = "SELECT DISTINCT p.*, k.nama as kelas_nama, k.tahun
-            FROM pelajar p
-            JOIN kelas k ON p.id_kelas = k.id
-            WHERE p.id_kelas IN ($placeholders)";
-    
+
+    $sql    = "SELECT DISTINCT p.*, k.nama AS kelas_nama, k.tahun
+               FROM pelajar p
+               JOIN kelas k ON p.id_kelas = k.id
+               WHERE p.id_kelas IN ($placeholders)";
     $params = $kelas_ids;
-    $types = str_repeat("i", count($kelas_ids));
-    
+    $types  = str_repeat('i', count($kelas_ids));
+
+    if ($status_filter === 'aktif')         { $sql .= " AND p.status = 'aktif'"; }
+    elseif ($status_filter === 'tidak aktif') { $sql .= " AND p.status = 'tidak aktif'"; }
+    elseif ($status_filter === 'tamat')     { $sql .= " AND p.status = 'tamat'"; }
+
     if (!empty($search)) {
-        $search_like = "%$search%";
+        $like = "%$search%";
         $sql .= " AND (p.nama LIKE ? OR p.no_kp LIKE ? OR k.nama LIKE ?)";
-        $params[] = $search_like;
-        $params[] = $search_like;
-        $params[] = $search_like;
-        $types .= "sss";
+        $params[] = $like; $params[] = $like; $params[] = $like;
+        $types .= 'sss';
     }
-    if (!empty($kelas)) {
+    if (!empty($kelas_filter)) {
         $sql .= " AND k.nama = ?";
-        $params[] = $kelas;
-        $types .= "s";
+        $params[] = $kelas_filter;
+        $types .= 's';
     }
-    if (!empty($status)) {
-        if ($status === 'aktif') {
-            $sql .= " AND (p.status = 'aktif' OR p.status = '1')";
-        } elseif ($status === 'tidak aktif') {
-            $sql .= " AND (p.status = 'tidak aktif' OR p.status = '0')";
-        } elseif ($status === 'tamat') {
-            $sql .= " AND p.status = 'tamat'";
-        }
-    }
-    
     $sql .= " ORDER BY p.nama ASC";
-    
+
     $stmt = $conn->prepare($sql);
     if (!$stmt) return [];
     $stmt->bind_param($types, ...$params);
     $stmt->execute();
-    $result = $stmt->get_result();
-    $students = $result->fetch_all(MYSQLI_ASSOC);
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-    return $students;
+    return $rows;
 }
 
 function getPelajarById($id) {
     global $conn;
     $id = intval($id);
-    $stmt = $conn->prepare("SELECT * FROM pelajar WHERE id = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT p.*, k.nama AS kelas_nama FROM pelajar p LEFT JOIN kelas k ON p.id_kelas = k.id WHERE p.id = ? LIMIT 1");
     if (!$stmt) return false;
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
+    $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     return $row ?: false;
-}
-
-function tambahPelajar($data) {
-    global $conn;
-    $nama = $data['nama'];
-    $no_ic = $data['no_ic'];
-    $jantina = $data['jantina'];
-    $id_kelas = !empty($data['id_kelas']) ? intval($data['id_kelas']) : null;
-    $status = $data['status'] ?? 'aktif';
-    
-    $stmt = $conn->prepare("INSERT INTO pelajar (nama, no_kp, jantina, id_kelas, status) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssss", $nama, $no_ic, $jantina, $id_kelas, $status);
-    return $stmt->execute();
-}
-
-function kemaskiniPelajar($id, $data) {
-    global $conn;
-    $id = intval($id);
-    $nama = $data['nama'];
-    $no_ic = $data['no_ic'];
-    $jantina = $data['jantina'];
-    $id_kelas = !empty($data['id_kelas']) ? intval($data['id_kelas']) : null;
-    $status = $data['status'] ?? 'aktif';
-    
-    $stmt = $conn->prepare("UPDATE pelajar SET nama=?, no_kp=?, jantina=?, id_kelas=?, status=? WHERE id=?");
-    $stmt->bind_param("sssssl", $nama, $no_ic, $jantina, $id_kelas, $status, $id);
-    return $stmt->execute();
-}
-
-function padamPelajar($id) {
-    global $conn;
-    $id = intval($id);
-    $stmt = $conn->prepare("DELETE FROM pelajar WHERE id=?");
-    $stmt->bind_param("i", $id);
-    return $stmt->execute();
-}
-
-// MARKAH FUNCTIONS - uses id_perperiksaan (correct DB column name)
-function addMark($data) {
-    global $conn;
-    $id_pelajar = intval($data['id_pelajar']);
-    // Sokong kedua-dua nama field
-    $id_perperiksaan = intval($data['id_perperiksaan'] ?? $data['id_peperiksaan'] ?? 0);
-    $markah = intval($data['markah']);
-    $gred = !empty($data['gred']) ? $data['gred'] : calculateGrade($markah);
-    $catatan = $data['catatan'] ?? '';
-    $today = date('Y-m-d');
-    
-    if (!$id_pelajar || !$id_perperiksaan) {
-        return ['success' => false, 'message' => 'ID pelajar atau peperiksaan tidak sah'];
-    }
-    
-    // Check if exists
-    $check = $conn->prepare("SELECT id FROM markah WHERE id_pelajar=? AND id_perperiksaan=?");
-    if (!$check) return ['success' => false, 'message' => 'Ralat prepare: ' . $conn->error];
-    $check->bind_param("ii", $id_pelajar, $id_perperiksaan);
-    $check->execute();
-    $exists = $check->get_result()->num_rows > 0;
-    $check->close();
-    
-    if ($exists) {
-        $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=?, status='aktif' WHERE id_pelajar=? AND id_perperiksaan=?");
-        if (!$stmt) return ['success' => false, 'message' => 'Ralat prepare update: ' . $conn->error];
-        $stmt->bind_param("isssii", $markah, $gred, $catatan, $today, $id_pelajar, $id_perperiksaan);
-    } else {
-        // 7 placeholder + 'aktif' hardcoded = betul
-        $stmt = $conn->prepare("INSERT INTO markah (id_pelajar, id_perperiksaan, markah, gred, catatan, tarikh_cipta, tarikh_kemaskini, status) VALUES (?,?,?,?,?,?,?,'aktif')");
-        if (!$stmt) return ['success' => false, 'message' => 'Ralat prepare insert: ' . $conn->error];
-        $stmt->bind_param("iiissss", $id_pelajar, $id_perperiksaan, $markah, $gred, $catatan, $today, $today);
-    }
-    
-    if ($stmt->execute()) {
-        $stmt->close();
-        return ['success' => true, 'message' => 'Markah berjaya disimpan'];
-    }
-    $err = $conn->error;
-    $stmt->close();
-    return ['success' => false, 'message' => 'Ralat: ' . $err];
-}
-
-function addMultipleMarks($marks_data) {
-    $success_count = 0;
-    $errors = [];
-    foreach ($marks_data as $data) {
-        $result = addMark($data);
-        if ($result['success']) $success_count++;
-        else $errors[] = $result['message'];
-    }
-    return [
-        'success' => $success_count > 0,
-        'message' => "$success_count markah berjaya disimpan",
-        'errors' => $errors
-    ];
-}
-
-function getMarksByExam($exam_id) {
-    global $conn;
-    $exam_id = intval($exam_id);
-    $sql = "SELECT m.*, p.nama as nama_pelajar, p.no_kp 
-            FROM markah m
-            JOIN pelajar p ON m.id_pelajar = p.id
-            WHERE m.id_perperiksaan = ? AND m.status = 'aktif'
-            ORDER BY p.nama ASC";
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) return [];
-    $stmt->bind_param("i", $exam_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $marks = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    return $marks;
-}
-
-function calculateGrade($mark, $full_marks = 100) {
-    if ($mark === null || $mark === '') return '';
-    $percentage = ($full_marks > 0) ? ($mark / $full_marks) * 100 : 0;
-    if ($percentage >= 90) return 'A+';
-    if ($percentage >= 80) return 'A';
-    if ($percentage >= 70) return 'B';
-    if ($percentage >= 60) return 'C';
-    if ($percentage >= 50) return 'D';
-    if ($percentage >= 40) return 'E';
-    return 'F';
 }
 
 function getStatistikPelajar($guru_id) {
     global $conn;
     $guru_id = intval($guru_id);
-    
-    // Kira pelajar dari kelas yang diajar guru (via pengajar DAN kelas.id_guru)
-    $total = 0;
-    
-    $sql = "SELECT 
-                COUNT(DISTINCT p.id) as total,
-                SUM(CASE WHEN p.status='aktif' OR p.status='1' THEN 1 ELSE 0 END) as aktif
+    $sql = "SELECT COUNT(DISTINCT p.id) AS total,
+                   SUM(CASE WHEN p.status = 'aktif' THEN 1 ELSE 0 END) AS aktif
             FROM pelajar p
             JOIN kelas k ON p.id_kelas = k.id
-            WHERE k.status = 'aktif'
-            AND (
-                k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
-                OR k.id_guru = ?
-            )";
+            LEFT JOIN pengajar pj ON k.id = pj.id_kelas AND pj.id_guru = ? AND pj.status = 'aktif'
+            WHERE k.status = 'aktif' AND (k.id_guru = ? OR pj.id IS NOT NULL)";
     $stmt = $conn->prepare($sql);
+    $total = 0; $aktif = 0;
     if ($stmt) {
         $stmt->bind_param("ii", $guru_id, $guru_id);
         $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $total = $row['total'] ?? 0;
-        $aktif = $row['aktif'] ?? 0;
+        $row   = $stmt->get_result()->fetch_assoc();
+        $total = intval($row['total'] ?? 0);
+        $aktif = intval($row['aktif'] ?? 0);
         $stmt->close();
     }
     return ['total_pelajar' => $total, 'pelajar_aktif' => $aktif];
@@ -461,9 +156,11 @@ function getStatistikPelajar($guru_id) {
 
 function checkStudentExists($no_ic, $exclude_id = null) {
     global $conn;
-    $sql = "SELECT id FROM pelajar WHERE no_kp = ?";
+    $no_ic = trim($no_ic);
+    $sql   = "SELECT id FROM pelajar WHERE no_kp = ?";
     if ($exclude_id) $sql .= " AND id != " . intval($exclude_id);
     $stmt = $conn->prepare($sql);
+    if (!$stmt) return false;
     $stmt->bind_param("s", $no_ic);
     $stmt->execute();
     $count = $stmt->get_result()->num_rows;
@@ -471,65 +168,260 @@ function checkStudentExists($no_ic, $exclude_id = null) {
     return $count > 0;
 }
 
-
-// Dapatkan prestasi pelajar (purata markah)
-function getStudentPerformance($student_id) {
+function tambahPelajar($data) {
     global $conn;
-    $student_id = intval($student_id);
-    $stmt = $conn->prepare("SELECT AVG(markah) as purata, COUNT(*) as jumlah FROM markah WHERE id_pelajar = ? AND status = 'aktif'");
-    if (!$stmt) return ['purata' => 0, 'jumlah' => 0];
-    $stmt->bind_param("i", $student_id);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
+    $nama     = trim($data['nama']);
+    $no_kp    = trim($data['no_ic']);
+    $jantina  = $data['jantina'];
+    $id_kelas = intval($data['id_kelas'] ?? 0);
+    $status   = $data['status'] ?? 'aktif';
+    $stmt = $conn->prepare("INSERT INTO pelajar (nama, no_kp, jantina, id_kelas, status) VALUES (?,?,?,?,?)");
+    if (!$stmt) return false;
+    $stmt->bind_param("sssis", $nama, $no_kp, $jantina, $id_kelas, $status);
+    $ok = $stmt->execute();
     $stmt->close();
-    return [
-        'purata' => round($row['purata'] ?? 0, 1),
-        'jumlah' => $row['jumlah'] ?? 0
-    ];
+    return $ok;
 }
 
-// Dapatkan kehadiran pelajar (fungsi asas)
-function getStudentAttendance($student_id) {
-    // Jika tiada jadual kehadiran, kembalikan data kosong
-    return ['hadir' => 0, 'jumlah' => 0, 'peratus' => 0];
-}
-
-// Kemaskini pelajar secara pukal
-function bulkUpdateStudents($student_ids, $data) {
+function kemaskiniPelajar($id, $data) {
     global $conn;
-    if (empty($student_ids) || empty($data)) return false;
-    
-    $placeholders = implode(',', array_fill(0, count($student_ids), '?'));
-    $sets = [];
-    $params = [];
-    $types = '';
-    
+    $id       = intval($id);
+    $nama     = trim($data['nama']);
+    $no_kp    = trim($data['no_ic']);
+    $jantina  = $data['jantina'];
+    $id_kelas = intval($data['id_kelas'] ?? 0);
+    $status   = $data['status'] ?? 'aktif';
+    $stmt = $conn->prepare("UPDATE pelajar SET nama=?, no_kp=?, jantina=?, id_kelas=?, status=? WHERE id=?");
+    if (!$stmt) return false;
+    $stmt->bind_param("sssisi", $nama, $no_kp, $jantina, $id_kelas, $status, $id);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
+function padamPelajar($id) {
+    global $conn;
+    $id   = intval($id);
+    $stmt = $conn->prepare("DELETE FROM pelajar WHERE id=?");
+    if (!$stmt) return false;
+    $stmt->bind_param("i", $id);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
+function bulkUpdateStudents($ids, $data) {
+    global $conn;
+    if (empty($ids) || empty($data)) return false;
+    $ids = array_map('intval', $ids);
+    $ph  = implode(',', array_fill(0, count($ids), '?'));
+    $sets = []; $params = []; $types = '';
     foreach ($data as $col => $val) {
-        // Whitelist kolum yang boleh dikemaskini
-        if (in_array($col, ['status', 'id_kelas'])) {
-            $sets[] = "$col = ?";
-            $params[] = $val;
-            $types .= 's';
+        if (in_array($col, ['status','id_kelas'])) {
+            $sets[] = "$col = ?"; $params[] = $val;
+            $types .= is_int($val) ? 'i' : 's';
         }
     }
-    
     if (empty($sets)) return false;
-    
-    $sql = "UPDATE pelajar SET " . implode(', ', $sets) . " WHERE id IN ($placeholders)";
-    $types .= str_repeat('i', count($student_ids));
-    $params = array_merge($params, $student_ids);
-    
+    $sql    = "UPDATE pelajar SET " . implode(', ', $sets) . " WHERE id IN ($ph)";
+    $types .= str_repeat('i', count($ids));
+    $params = array_merge($params, $ids);
     $stmt = $conn->prepare($sql);
     if (!$stmt) return false;
     $stmt->bind_param($types, ...$params);
-    $result = $stmt->execute();
+    $ok = $stmt->execute();
     $stmt->close();
-    return $result;
+    return $ok;
 }
 
-function ensureDemoGuruExists() {
+// ─── MATAPELAJARAN ────────────────────────────────────────────────────────────
+
+function getSubjectsByGuru($guru_id) {
     global $conn;
-    // Demo guru already in DB, skip
+    $guru_id = intval($guru_id);
+    $sql = "SELECT DISTINCT m.id, m.nama, m.kod, m.tahun
+            FROM matapelajaran m
+            JOIN pengajar pj ON m.id = pj.id_matapelajaran
+            WHERE pj.id_guru = ? AND pj.status = 'aktif' AND m.status = 'aktif'
+            ORDER BY m.nama ASC";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) return getAllSubjects();
+    $stmt->bind_param("i", $guru_id);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return !empty($rows) ? $rows : getAllSubjects();
 }
-ensureDemoGuruExists();
-?>
+
+function getAllSubjects() {
+    global $conn;
+    $result = $conn->query("SELECT id, nama, kod, tahun FROM matapelajaran WHERE status = 'aktif' ORDER BY nama ASC");
+    return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+}
+
+function getSubjectById($id) {
+    global $conn;
+    $id   = intval($id);
+    $stmt = $conn->prepare("SELECT * FROM matapelajaran WHERE id = ? LIMIT 1");
+    if (!$stmt) return false;
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row ?: false;
+}
+
+// ─── PEPERIKSAAN ──────────────────────────────────────────────────────────────
+
+function getAllExams() {
+    global $conn;
+    $sql = "SELECT p.*, COALESCE(m.nama, 'Semua Subjek') AS nama_subjek
+            FROM peperiksaan p LEFT JOIN matapelajaran m ON p.id_matapelajaran = m.id
+            WHERE p.status = 'aktif' ORDER BY p.tarikh_mula DESC";
+    $result = $conn->query($sql);
+    return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+}
+
+function getExamsByGuru($guru_id) {
+    global $conn;
+    $guru_id = intval($guru_id);
+    $sql = "SELECT DISTINCT p.*, COALESCE(m.nama, 'Semua Subjek') AS nama_subjek
+            FROM peperiksaan p LEFT JOIN matapelajaran m ON p.id_matapelajaran = m.id
+            WHERE p.status = 'aktif'
+              AND (p.id_matapelajaran IS NULL OR p.id_matapelajaran = 0
+                   OR p.id_matapelajaran IN (
+                       SELECT DISTINCT id_matapelajaran FROM pengajar
+                       WHERE id_guru = ? AND status = 'aktif' AND id_matapelajaran IS NOT NULL
+                   ))
+            ORDER BY p.tarikh_mula DESC";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) return getAllExams();
+    $stmt->bind_param("i", $guru_id);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return !empty($rows) ? $rows : getAllExams();
+}
+
+function getExamById($id) {
+    global $conn;
+    $id   = intval($id);
+    $stmt = $conn->prepare("SELECT p.*, COALESCE(m.nama,'-') AS nama_subjek FROM peperiksaan p LEFT JOIN matapelajaran m ON p.id_matapelajaran = m.id WHERE p.id = ? LIMIT 1");
+    if (!$stmt) return false;
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row ?: false;
+}
+
+// ─── MARKAH ───────────────────────────────────────────────────────────────────
+
+function calculateGrade($markah) {
+    $m = intval($markah);
+    if ($m >= 90) return 'A+';
+    if ($m >= 80) return 'A';
+    if ($m >= 70) return 'B';
+    if ($m >= 60) return 'C';
+    if ($m >= 50) return 'D';
+    if ($m >= 40) return 'E';
+    return 'F';
+}
+
+function addMark($data) {
+    global $conn;
+    $id_pelajar      = intval($data['id_pelajar'] ?? 0);
+    $id_perperiksaan = intval($data['id_perperiksaan'] ?? $data['id_peperiksaan'] ?? 0);
+    $markah_val      = intval($data['markah'] ?? 0);
+    $gred            = !empty($data['gred']) ? $data['gred'] : calculateGrade($markah_val);
+    $catatan         = trim($data['catatan'] ?? '');
+    $today           = date('Y-m-d');
+
+    if (!$id_pelajar || !$id_perperiksaan) {
+        return ['success' => false, 'message' => 'ID pelajar atau peperiksaan tidak sah'];
+    }
+
+    $chk = $conn->prepare("SELECT id FROM markah WHERE id_pelajar = ? AND id_perperiksaan = ?");
+    if (!$chk) return ['success' => false, 'message' => 'DB error: ' . $conn->error];
+    $chk->bind_param("ii", $id_pelajar, $id_perperiksaan);
+    $chk->execute();
+    $exists = $chk->get_result()->num_rows > 0;
+    $chk->close();
+
+    if ($exists) {
+        $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=? WHERE id_pelajar=? AND id_perperiksaan=?");
+        if (!$stmt) return ['success' => false, 'message' => 'DB error: ' . $conn->error];
+        $stmt->bind_param("isssii", $markah_val, $gred, $catatan, $today, $id_pelajar, $id_perperiksaan);
+    } else {
+        $stmt = $conn->prepare("INSERT INTO markah (id_pelajar, id_perperiksaan, markah, gred, catatan, tarikh_cipta, tarikh_kemaskini, status) VALUES (?,?,?,?,?,?,?,'aktif')");
+        if (!$stmt) return ['success' => false, 'message' => 'DB error: ' . $conn->error];
+        $stmt->bind_param("iiissss", $id_pelajar, $id_perperiksaan, $markah_val, $gred, $catatan, $today, $today);
+    }
+
+    if ($stmt->execute()) { $stmt->close(); return ['success' => true, 'message' => 'Markah berjaya disimpan']; }
+    $err = $conn->error; $stmt->close();
+    return ['success' => false, 'message' => 'Ralat: ' . $err];
+}
+
+function addMultipleMarks($marks_data) {
+    $ok = 0; $errors = [];
+    foreach ($marks_data as $d) { $r = addMark($d); if ($r['success']) $ok++; else $errors[] = $r['message']; }
+    return ['success' => $ok > 0, 'message' => "$ok markah berjaya disimpan", 'errors' => $errors];
+}
+
+function updateMark($mark_id, $data) {
+    global $conn;
+    $mark_id    = intval($mark_id);
+    $markah_val = intval($data['markah'] ?? 0);
+    $gred       = !empty($data['gred']) ? $data['gred'] : calculateGrade($markah_val);
+    $catatan    = trim($data['catatan'] ?? '');
+    $today      = date('Y-m-d');
+    $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=? WHERE id=?");
+    if (!$stmt) return ['success' => false, 'message' => 'DB error: ' . $conn->error];
+    $stmt->bind_param("isssi", $markah_val, $gred, $catatan, $today, $mark_id);
+    if ($stmt->execute()) { $stmt->close(); return ['success' => true, 'message' => 'Markah berjaya dikemaskini']; }
+    $err = $conn->error; $stmt->close();
+    return ['success' => false, 'message' => 'Ralat: ' . $err];
+}
+
+function getMarksByGuru($guru_id, $peperiksaan_id = 0, $kelas_id = 0) {
+    global $conn;
+    $guru_id        = intval($guru_id);
+    $peperiksaan_id = intval($peperiksaan_id);
+    $kelas_id       = intval($kelas_id);
+
+    $base = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                     p.nama AS nama_pelajar, p.no_kp,
+                     k.nama AS nama_kelas, k.id AS id_kelas,
+                     COALESCE(pp.nama_peperiksaan,'Tiada') AS nama_peperiksaan,
+                     COALESCE(pp.id,0) AS id_peperiksaan,
+                     COALESCE(mp.nama,'-') AS nama_subjek
+              FROM markah m
+              JOIN pelajar p ON m.id_pelajar = p.id
+              JOIN kelas k ON p.id_kelas = k.id
+              LEFT JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+              LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+              WHERE m.status = 'aktif'";
+
+    if ($peperiksaan_id) {
+        $sql  = $base . " AND m.id_perperiksaan = ? ORDER BY p.nama ASC";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) return [];
+        $stmt->bind_param("i", $peperiksaan_id);
+    } elseif ($kelas_id) {
+        $sql  = $base . " AND p.id_kelas = ? ORDER BY p.nama ASC";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) return [];
+        $stmt->bind_param("i", $kelas_id);
+    } else {
+        $sql  = $base . " AND (k.id_guru = ? OR k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')) ORDER BY p.nama ASC";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) return [];
+        $stmt->bind_param("ii", $guru_id, $guru_id);
+    }
+
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $rows;
+}
