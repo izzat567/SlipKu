@@ -1,200 +1,225 @@
 <?php
+/**
+ * tambah-markah.php
+ * Tab 1: Tambah Markah
+ * Tab 2: Kemaskini Markah
+ *
+ * FIX: AJAX handlers run FIRST before connect.php can emit any output/errors.
+ *      connect.php sets display_errors=1 which we override AFTER requiring it.
+ */
+
+// Buffer everything so stray output never reaches fetch()
 ob_start();
 session_start();
 
-// Suppress display errors so they don't pollute JSON responses
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
-
+// 1) Load DB — this may echo warnings if DB is down, but ob_start() captures them
 require_once __DIR__ . '/../../config/connect.php';
 
-// Auth check
+// 2) Override display_errors AFTER connect.php (connect.php sets it to 1)
+error_reporting(0);
+ini_set('display_errors', '0');
+
+// ── Helper: send clean JSON and die ─────────────────────────────────────────
+function jsonOut(array $data): void {
+    ob_clean();                          // discard any stray output / warnings
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data);
+    exit();
+}
+
+// 3) Auth check (works for both AJAX and normal page load)
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (isset($_GET['ajax']) || isset($_POST['ajax'])) {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Sesi tamat. Sila log masuk semula.']);
-        exit();
+        jsonOut(['success' => false, 'message' => 'Sesi tamat. Sila log masuk semula.']);
     }
     header('Location: ../login-guru.php');
     exit();
 }
 
-$guru_id = $_SESSION['guru_id'];
+$guru_id = (int)$_SESSION['guru_id'];
 
 require_once __DIR__ . '/../includes/db_functions.php';
 
-// =====================================================================
-// AJAX HANDLERS — must come BEFORE any HTML output or heavy queries
-// =====================================================================
-
-// --- GET AJAX ---
+// ════════════════════════════════════════════════════════════════════════════
+// AJAX  –  GET
+// ════════════════════════════════════════════════════════════════════════════
 if (isset($_GET['ajax'])) {
-    // Clear any buffered output to keep JSON clean
-    ob_clean();
-    header('Content-Type: application/json');
 
-    if ($_GET['ajax'] === 'get_students') {
-        $class   = $_GET['class'] ?? '';
-        $rows    = is_numeric($class)
-            ? getStudentsByClass((int)$class)
-            : getStudentsByClassName($class);
-        echo json_encode(['success' => true, 'students' => $rows]);
-        exit();
-    }
+    switch ($_GET['ajax']) {
 
-    if ($_GET['ajax'] === 'get_marks') {
-        $pep_id   = intval($_GET['peperiksaan_id'] ?? 0);
-        $kelas_id = intval($_GET['kelas_id']      ?? 0);
+        // ── get_students ────────────────────────────────────────────────────
+        case 'get_students':
+            $class = $_GET['class'] ?? '';
+            $rows  = is_numeric($class)
+                ? getStudentsByClass((int)$class)
+                : getStudentsByClassName($class);
+            jsonOut(['success' => true, 'students' => $rows]);
 
-        if (!$pep_id && !$kelas_id) {
-            $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
-                        p.nama AS nama_pelajar, p.no_kp,
-                        k.nama AS nama_kelas,   k.id AS id_kelas,
-                        COALESCE(pp.nama_peperiksaan,'Tidak Dikenal Pasti') AS nama_peperiksaan,
-                        COALESCE(pp.id,0)                                   AS id_peperiksaan,
-                        COALESCE(mp.nama,'-')                               AS nama_subjek
-                    FROM markah m
-                    JOIN pelajar p ON m.id_pelajar   = p.id
-                    JOIN kelas   k ON p.id_kelas     = k.id
-                    LEFT JOIN peperiksaan  pp ON m.id_perperiksaan  = pp.id
-                    LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                    WHERE m.status = 'aktif'
-                      AND (p.status = 'aktif' OR p.status = '1')
-                      AND (
-                          k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
-                          OR k.id_guru = ?
-                      )
-                    ORDER BY p.nama ASC";
-            $stmt = $conn->prepare($sql);
-            if (!$stmt) { echo json_encode(['success'=>false,'message'=>$conn->error]); exit(); }
-            $stmt->bind_param("ii", $guru_id, $guru_id);
+        // ── get_marks (Kemaskini tab) ────────────────────────────────────────
+        case 'get_marks':
+            $pep_id   = (int)($_GET['peperiksaan_id'] ?? 0);
+            $kelas_id = (int)($_GET['kelas_id']       ?? 0);
 
-        } elseif ($pep_id) {
-            $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
-                        p.nama AS nama_pelajar, p.no_kp,
-                        k.nama AS nama_kelas,   k.id AS id_kelas,
-                        COALESCE(pp.nama_peperiksaan,'Tidak Dikenal Pasti') AS nama_peperiksaan,
-                        COALESCE(pp.id,0)                                   AS id_peperiksaan,
-                        COALESCE(mp.nama,'-')                               AS nama_subjek
-                    FROM markah m
-                    JOIN pelajar p ON m.id_pelajar   = p.id
-                    JOIN kelas   k ON p.id_kelas     = k.id
-                    LEFT JOIN peperiksaan  pp ON m.id_perperiksaan  = pp.id
-                    LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                    WHERE m.id_perperiksaan = ? AND m.status = 'aktif'
-                    ORDER BY p.nama ASC";
-            $stmt = $conn->prepare($sql);
-            if (!$stmt) { echo json_encode(['success'=>false,'message'=>$conn->error]); exit(); }
-            $stmt->bind_param("i", $pep_id);
+            if (!$pep_id && !$kelas_id) {
+                $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                               p.nama  AS nama_pelajar, p.no_kp,
+                               k.nama  AS nama_kelas,   k.id AS id_kelas,
+                               COALESCE(pp.nama_peperiksaan,'Tidak Dikenal Pasti') AS nama_peperiksaan,
+                               COALESCE(pp.id,0)                                   AS id_peperiksaan,
+                               COALESCE(mp.nama,'-')                               AS nama_subjek
+                        FROM   markah m
+                        JOIN   pelajar       p  ON m.id_pelajar      = p.id
+                        JOIN   kelas         k  ON p.id_kelas        = k.id
+                        LEFT JOIN peperiksaan   pp ON m.id_perperiksaan  = pp.id
+                        LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                        WHERE  m.status = 'aktif'
+                          AND  (p.status = 'aktif' OR p.status = '1')
+                          AND  (
+                               k.id IN (SELECT DISTINCT id_kelas FROM pengajar
+                                        WHERE id_guru = ? AND status = 'aktif')
+                               OR k.id_guru = ?
+                          )
+                        ORDER BY p.nama ASC";
+                $stmt = $conn->prepare($sql);
+                if (!$stmt) jsonOut(['success' => false, 'message' => 'DB error: '.$conn->error]);
+                $stmt->bind_param('ii', $guru_id, $guru_id);
 
-        } else {
-            $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
-                        p.nama AS nama_pelajar, p.no_kp,
-                        k.nama AS nama_kelas,   k.id AS id_kelas,
-                        COALESCE(pp.nama_peperiksaan,'Tidak Dikenal Pasti') AS nama_peperiksaan,
-                        COALESCE(pp.id,0)                                   AS id_peperiksaan,
-                        COALESCE(mp.nama,'-')                               AS nama_subjek
-                    FROM markah m
-                    JOIN pelajar p ON m.id_pelajar = p.id
-                    JOIN kelas   k ON p.id_kelas   = k.id
-                    LEFT JOIN peperiksaan  pp ON m.id_perperiksaan  = pp.id
-                    LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
-                    WHERE p.id_kelas = ? AND m.status = 'aktif'
-                    ORDER BY p.nama ASC";
-            $stmt = $conn->prepare($sql);
-            if (!$stmt) { echo json_encode(['success'=>false,'message'=>$conn->error]); exit(); }
-            $stmt->bind_param("i", $kelas_id);
-        }
+            } elseif ($pep_id) {
+                $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                               p.nama  AS nama_pelajar, p.no_kp,
+                               k.nama  AS nama_kelas,   k.id AS id_kelas,
+                               COALESCE(pp.nama_peperiksaan,'Tidak Dikenal Pasti') AS nama_peperiksaan,
+                               COALESCE(pp.id,0)                                   AS id_peperiksaan,
+                               COALESCE(mp.nama,'-')                               AS nama_subjek
+                        FROM   markah m
+                        JOIN   pelajar       p  ON m.id_pelajar      = p.id
+                        JOIN   kelas         k  ON p.id_kelas        = k.id
+                        LEFT JOIN peperiksaan   pp ON m.id_perperiksaan  = pp.id
+                        LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                        WHERE  m.id_perperiksaan = ? AND m.status = 'aktif'
+                        ORDER BY p.nama ASC";
+                $stmt = $conn->prepare($sql);
+                if (!$stmt) jsonOut(['success' => false, 'message' => 'DB error: '.$conn->error]);
+                $stmt->bind_param('i', $pep_id);
 
-        $stmt->execute();
-        $marks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-        echo json_encode(['success' => true, 'marks' => $marks]);
-        exit();
-    }
+            } else {
+                $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
+                               p.nama  AS nama_pelajar, p.no_kp,
+                               k.nama  AS nama_kelas,   k.id AS id_kelas,
+                               COALESCE(pp.nama_peperiksaan,'Tidak Dikenal Pasti') AS nama_peperiksaan,
+                               COALESCE(pp.id,0)                                   AS id_peperiksaan,
+                               COALESCE(mp.nama,'-')                               AS nama_subjek
+                        FROM   markah m
+                        JOIN   pelajar       p  ON m.id_pelajar = p.id
+                        JOIN   kelas         k  ON p.id_kelas   = k.id
+                        LEFT JOIN peperiksaan   pp ON m.id_perperiksaan  = pp.id
+                        LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
+                        WHERE  p.id_kelas = ? AND m.status = 'aktif'
+                        ORDER BY p.nama ASC";
+                $stmt = $conn->prepare($sql);
+                if (!$stmt) jsonOut(['success' => false, 'message' => 'DB error: '.$conn->error]);
+                $stmt->bind_param('i', $kelas_id);
+            }
 
-    // Unknown GET ajax
-    echo json_encode(['success' => false, 'message' => 'Tindakan tidak dikenali']);
-    exit();
-}
-
-// --- POST AJAX ---
-if (isset($_POST['ajax'])) {
-    ob_clean();
-    header('Content-Type: application/json');
-
-    if ($_POST['ajax'] === 'add_single_mark') {
-        $data = [
-            'id_pelajar'    => intval($_POST['id_pelajar']    ?? 0),
-            'id_peperiksaan'=> intval($_POST['id_peperiksaan']?? 0),
-            'markah'        => intval($_POST['markah']        ?? 0),
-            'catatan'       => trim($_POST['catatan']         ?? ''),
-        ];
-        echo json_encode(addMark($data));
-        exit();
-    }
-
-    if ($_POST['ajax'] === 'add_bulk_marks') {
-        $marks_data = json_decode($_POST['marks_data'] ?? '[]', true);
-        if (!$marks_data) {
-            echo json_encode(['success' => false, 'message' => 'Tiada data markah yang valid']);
-            exit();
-        }
-        echo json_encode(addMultipleMarks($marks_data));
-        exit();
-    }
-
-    if ($_POST['ajax'] === 'update_mark') {
-        $mark_id     = intval($_POST['mark_id']    ?? 0);
-        $markah_baru = intval($_POST['markah_baru']?? 0);
-        $catatan     = trim($_POST['catatan']      ?? '');
-        $today       = date('Y-m-d');
-        $gred        = calculateGrade($markah_baru);
-
-        if (!$mark_id) {
-            echo json_encode(['success' => false, 'message' => 'ID markah tidak sah']);
-            exit();
-        }
-        $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=? WHERE id=?");
-        $stmt->bind_param("isssi", $markah_baru, $gred, $catatan, $today, $mark_id);
-        if ($stmt->execute())
-            echo json_encode(['success' => true, 'message' => 'Markah dikemaskini', 'gred' => $gred]);
-        else
-            echo json_encode(['success' => false, 'message' => 'Ralat: ' . $conn->error]);
-        $stmt->close();
-        exit();
-    }
-
-    if ($_POST['ajax'] === 'update_bulk') {
-        $updates = json_decode($_POST['updates'] ?? '[]', true);
-        $today   = date('Y-m-d');
-        $count   = 0;
-        foreach ($updates as $u) {
-            $mid  = intval($u['mark_id']    ?? 0);
-            $mb   = intval($u['markah_baru']?? 0);
-            $cat  = trim($u['catatan']      ?? '');
-            $gred = calculateGrade($mb);
-            $stmt = $conn->prepare("UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=? WHERE id=?");
-            $stmt->bind_param("isssi", $mb, $gred, $cat, $today, $mid);
-            if ($stmt->execute()) $count++;
+            $stmt->execute();
+            $marks = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
-        }
-        echo json_encode(['success' => true, 'message' => "$count markah berjaya dikemaskini"]);
-        exit();
-    }
+            jsonOut(['success' => true, 'marks' => $marks]);
 
-    echo json_encode(['success' => false, 'message' => 'Tindakan tidak dikenali']);
-    exit();
+        default:
+            jsonOut(['success' => false, 'message' => 'Tindakan tidak dikenali']);
+    }
 }
 
-// =====================================================================
-// PAGE LOAD — load dropdown data only when rendering HTML
-// =====================================================================
-$current_page = 'tambah-markah.php';
-$guru_info    = getGuruById($guru_id);
-$subjects     = getSubjectsByGuru($guru_id);
-$classes      = getKelasByGuru($guru_id);
-$exams        = getExamsByGuru($guru_id);
+// ════════════════════════════════════════════════════════════════════════════
+// AJAX  –  POST
+// ════════════════════════════════════════════════════════════════════════════
+if (isset($_POST['ajax'])) {
+
+    switch ($_POST['ajax']) {
+
+        // ── add_single_mark ─────────────────────────────────────────────────
+        case 'add_single_mark':
+            // addMark() expects 'id_perperiksaan' (with double r)
+            $data = [
+                'id_pelajar'     => (int)($_POST['id_pelajar']     ?? 0),
+                'id_perperiksaan'=> (int)($_POST['id_peperiksaan'] ?? 0),  // normalise field name
+                'markah'         => (int)($_POST['markah']         ?? 0),
+                'catatan'        => trim($_POST['catatan']         ?? ''),
+            ];
+            jsonOut(addMark($data));
+
+        // ── add_bulk_marks ──────────────────────────────────────────────────
+        case 'add_bulk_marks':
+            $raw = json_decode($_POST['marks_data'] ?? '[]', true);
+            if (!is_array($raw) || empty($raw))
+                jsonOut(['success' => false, 'message' => 'Tiada data markah yang valid']);
+
+            // normalise field names for every record
+            $marks_data = array_map(function($d) {
+                return [
+                    'id_pelajar'     => (int)($d['id_pelajar']      ?? 0),
+                    'id_perperiksaan'=> (int)($d['id_peperiksaan']   ?? $d['id_perperiksaan'] ?? 0),
+                    'markah'         => (int)($d['markah']           ?? 0),
+                    'catatan'        => trim($d['catatan']           ?? ''),
+                ];
+            }, $raw);
+
+            jsonOut(addMultipleMarks($marks_data));
+
+        // ── update_mark (single) ─────────────────────────────────────────────
+        case 'update_mark':
+            $mark_id     = (int)($_POST['mark_id']    ?? 0);
+            $markah_baru = (int)($_POST['markah_baru']?? 0);
+            $catatan     = trim($_POST['catatan']     ?? '');
+            $today       = date('Y-m-d');
+            $gred        = calculateGrade($markah_baru);
+
+            if (!$mark_id) jsonOut(['success' => false, 'message' => 'ID markah tidak sah']);
+
+            $stmt = $conn->prepare('UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=? WHERE id=?');
+            if (!$stmt) jsonOut(['success' => false, 'message' => 'DB error: '.$conn->error]);
+            $stmt->bind_param('isssi', $markah_baru, $gred, $catatan, $today, $mark_id);
+            $ok = $stmt->execute();
+            $stmt->close();
+            jsonOut($ok
+                ? ['success' => true,  'message' => 'Markah dikemaskini', 'gred' => $gred]
+                : ['success' => false, 'message' => 'Ralat DB: '.$conn->error]
+            );
+
+        // ── update_bulk ──────────────────────────────────────────────────────
+        case 'update_bulk':
+            $updates = json_decode($_POST['updates'] ?? '[]', true);
+            if (!is_array($updates)) jsonOut(['success' => false, 'message' => 'Data tidak valid']);
+
+            $today = date('Y-m-d');
+            $count = 0;
+            foreach ($updates as $u) {
+                $mid  = (int)($u['mark_id']    ?? 0);
+                $mb   = (int)($u['markah_baru']?? 0);
+                $cat  = trim($u['catatan']     ?? '');
+                $gred = calculateGrade($mb);
+                $stmt = $conn->prepare('UPDATE markah SET markah=?, gred=?, catatan=?, tarikh_kemaskini=? WHERE id=?');
+                if (!$stmt) continue;
+                $stmt->bind_param('isssi', $mb, $gred, $cat, $today, $mid);
+                if ($stmt->execute()) $count++;
+                $stmt->close();
+            }
+            jsonOut(['success' => true, 'message' => "$count markah berjaya dikemaskini"]);
+
+        default:
+            jsonOut(['success' => false, 'message' => 'Tindakan tidak dikenali']);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// NORMAL PAGE LOAD  –  prepare data for HTML render
+// ════════════════════════════════════════════════════════════════════════════
+$current_page     = 'tambah-markah.php';
+$guru_info        = getGuruById($guru_id);
+$subjects         = getSubjectsByGuru($guru_id);
+$classes          = getKelasByGuru($guru_id);
+$exams            = getExamsByGuru($guru_id);
 
 $students         = [];
 $selected_subject = '';
@@ -267,8 +292,8 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
 .form-group{margin-bottom:16px}
 .form-label{display:block;font-size:13px;font-weight:600;color:var(--dark-gray);margin-bottom:6px}
 .form-label.required::after{content:' *';color:var(--danger)}
-.form-input,.form-select,.form-date,.form-textarea{width:100%;padding:10px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:'Poppins',sans-serif;background:var(--white);transition:var(--transition)}
-.form-input:focus,.form-select:focus,.form-date:focus,.form-textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.1)}
+.form-input,.form-select,.form-date{width:100%;padding:10px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:'Poppins',sans-serif;background:var(--white);transition:var(--transition)}
+.form-input:focus,.form-select:focus,.form-date:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.1)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .btn{padding:11px 22px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;transition:var(--transition);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;font-family:'Poppins',sans-serif;white-space:nowrap}
 .btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary));color:var(--white);box-shadow:0 6px 20px rgba(79,70,229,.3)}
@@ -346,19 +371,12 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
 .loading-wrap{text-align:center;padding:40px}
 .spinner{width:36px;height:36px;border:4px solid #e5e7eb;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.toast{position:fixed;top:100px;right:28px;padding:12px 20px;border-radius:12px;box-shadow:0 8px 25px rgba(0,0,0,.2);z-index:99999;animation:slideIn .3s ease;display:flex;align-items:center;gap:10px;font-family:'Poppins',sans-serif;font-size:13px;font-weight:500;color:white;max-width:320px}
+.toast{position:fixed;top:100px;right:28px;padding:12px 20px;border-radius:12px;box-shadow:0 8px 25px rgba(0,0,0,.2);z-index:99999;animation:tIn .3s ease;display:flex;align-items:center;gap:10px;font-family:'Poppins',sans-serif;font-size:13px;font-weight:500;color:white;max-width:340px}
 .toast-success{background:var(--success)}.toast-error{background:var(--danger)}.toast-warning{background:var(--warning)}.toast-info{background:var(--info)}
-@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes tIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
 .actions-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px}
-@media(max-width:1024px){
-  .sidebar{transform:translateX(-100%)}.sidebar.sidebar-active{transform:translateX(0)}
-  .main-content{margin-left:0}.menu-toggle{display:block}
-}
-@media(max-width:768px){
-  .header{padding:0 16px}.main-content{padding:16px;margin-top:75px}
-  .form-row{grid-template-columns:1fr}.tab-btn{font-size:13px;padding:13px 10px}
-  .marks-table{min-width:820px}.page-title h2{font-size:24px}
-}
+@media(max-width:1024px){.sidebar{transform:translateX(-100%)}.sidebar.sidebar-active{transform:translateX(0)}.main-content{margin-left:0}.menu-toggle{display:block}}
+@media(max-width:768px){.header{padding:0 16px}.main-content{padding:16px;margin-top:75px}.form-row{grid-template-columns:1fr}.tab-btn{font-size:13px;padding:13px 10px}.marks-table{min-width:820px}.page-title h2{font-size:24px}}
 </style>
 </head>
 <body>
@@ -370,9 +388,9 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
       <h3>Pengesahan</h3>
       <button class="modal-close" onclick="closeModal('confirmModal')"><i class="fas fa-times"></i></button>
     </div>
-    <div class="modal-body" style="text-align:center;">
-      <i class="fas fa-question-circle" style="font-size:40px;color:var(--warning);margin-bottom:12px;display:block;"></i>
-      <p id="confirmMsg" style="font-size:15px;color:var(--dark-gray);"></p>
+    <div class="modal-body" style="text-align:center">
+      <i class="fas fa-question-circle" style="font-size:40px;color:var(--warning);margin-bottom:12px;display:block"></i>
+      <p id="confirmMsg" style="font-size:15px;color:var(--dark-gray)"></p>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Batal</button>
@@ -403,10 +421,8 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
   </div>
 </header>
 
-<!-- Sidebar -->
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-<!-- Main Content -->
 <main class="main-content" id="mainContent">
   <div class="page-title">
     <h2>Pengurusan Markah ✏️</h2>
@@ -423,7 +439,7 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
       </button>
     </div>
 
-    <!-- ======== TAB: TAMBAH MARKAH ======== -->
+    <!-- ═══ TAB: TAMBAH ═══ -->
     <div id="tab-tambah" class="tab-content <?php echo $active_tab==='tambah'?'active':''; ?>">
 
       <div class="section-card">
@@ -483,88 +499,83 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
                      value="<?php echo $markah_lulus; ?>" min="0" max="200" required>
             </div>
           </div>
-          <div style="text-align:right;margin-top:8px;">
+          <div style="text-align:right;margin-top:8px">
             <button type="submit" class="btn btn-primary"><i class="fas fa-users"></i> Muatkan Pelajar</button>
           </div>
         </form>
       </div>
 
       <?php if (!empty($students)): ?>
-      <!-- Summary -->
       <div class="summary-grid">
         <div class="summary-stat">
-          <div class="stat-icon" style="background:linear-gradient(135deg,var(--primary),var(--secondary));color:white;"><i class="fas fa-calculator"></i></div>
-          <div class="stat-value" id="avgMark">0.0</div><div class="stat-label">Purata Markah</div>
+          <div class="stat-icon" style="background:linear-gradient(135deg,var(--primary),var(--secondary));color:white"><i class="fas fa-calculator"></i></div>
+          <div class="stat-value" id="avgMark">0.0</div><div class="stat-label">Purata</div>
         </div>
         <div class="summary-stat">
-          <div class="stat-icon" style="background:linear-gradient(135deg,var(--success),#34d399);color:white;"><i class="fas fa-trophy"></i></div>
+          <div class="stat-icon" style="background:linear-gradient(135deg,var(--success),#34d399);color:white"><i class="fas fa-trophy"></i></div>
           <div class="stat-value" id="highMark">0</div><div class="stat-label">Tertinggi</div>
         </div>
         <div class="summary-stat">
-          <div class="stat-icon" style="background:linear-gradient(135deg,var(--danger),#f87171);color:white;"><i class="fas fa-arrow-down"></i></div>
+          <div class="stat-icon" style="background:linear-gradient(135deg,var(--danger),#f87171);color:white"><i class="fas fa-arrow-down"></i></div>
           <div class="stat-value" id="lowMark">0</div><div class="stat-label">Terendah</div>
         </div>
         <div class="summary-stat">
-          <div class="stat-icon" style="background:linear-gradient(135deg,var(--info),#60a5fa);color:white;"><i class="fas fa-check-circle"></i></div>
-          <div class="stat-value" id="completedCount">0/<?php echo count($students); ?></div><div class="stat-label">Pelajar Selesai</div>
+          <div class="stat-icon" style="background:linear-gradient(135deg,var(--info),#60a5fa);color:white"><i class="fas fa-check-circle"></i></div>
+          <div class="stat-value" id="doneCount">0/<?php echo count($students); ?></div><div class="stat-label">Selesai</div>
         </div>
       </div>
 
       <div class="actions-bar">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <button class="action-btn danger" onclick="kosongkanSemua()"><i class="fas fa-eraser"></i> Kosongkan Semua</button>
-          <span id="marksStatusText" style="font-size:12px;color:var(--medium-gray);"><?php echo count($students); ?> pelajar. Belum ada markah.</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="action-btn danger" onclick="kosongkanSemua()"><i class="fas fa-eraser"></i> Kosongkan</button>
+          <span id="statusTxt" style="font-size:12px;color:var(--medium-gray)"><?php echo count($students); ?> pelajar. Belum ada markah.</span>
         </div>
-        <button class="btn btn-success" onclick="simpanSemuaMarkah()"><i class="fas fa-save"></i> Simpan Semua</button>
+        <button class="btn btn-success" onclick="simpanSemua()"><i class="fas fa-save"></i> Simpan Semua</button>
       </div>
 
-      <div style="overflow-x:auto;">
+      <div style="overflow-x:auto">
         <table class="marks-table">
           <thead>
             <tr>
-              <th>BIL</th><th>PELAJAR</th><th>NO. KP</th>
-              <th>MARKAH (0–<span id="fullMarksDisplay"><?php echo $markah_penuh; ?></span>)</th>
-              <th>GRED</th><th>STATUS</th><th>CATATAN</th><th>SIMPAN</th>
+              <th>#</th><th>Pelajar</th><th>No. KP</th>
+              <th>Markah (0–<span id="fmDisp"><?php echo $markah_penuh; ?></span>)</th>
+              <th>Gred</th><th>Status</th><th>Catatan</th><th>Simpan</th>
             </tr>
           </thead>
           <tbody>
-            <?php foreach ($students as $i => $st): ?>
-              <?php
-              $names = explode(' ', $st['nama']);
-              $ini   = count($names) >= 2
-                ? $names[0][0] . $names[count($names)-1][0]
-                : substr($st['nama'], 0, 2);
-              ?>
-              <tr>
-                <td><?php echo $i + 1; ?></td>
-                <td>
-                  <div class="student-row">
-                    <div class="student-avatar"><?php echo strtoupper($ini); ?></div>
-                    <div class="student-info">
-                      <h4><?php echo htmlspecialchars($st['nama']); ?></h4>
-                      <p><?php echo htmlspecialchars($selected_class); ?></p>
-                    </div>
+          <?php foreach ($students as $i => $st):
+            $names = explode(' ', $st['nama']);
+            $ini   = count($names) >= 2 ? $names[0][0].$names[count($names)-1][0] : substr($st['nama'],0,2);
+          ?>
+            <tr>
+              <td><?php echo $i+1; ?></td>
+              <td>
+                <div class="student-row">
+                  <div class="student-avatar"><?php echo strtoupper($ini); ?></div>
+                  <div class="student-info">
+                    <h4><?php echo htmlspecialchars($st['nama']); ?></h4>
+                    <p><?php echo htmlspecialchars($selected_class); ?></p>
                   </div>
-                </td>
-                <td><?php echo htmlspecialchars($st['no_kp']); ?></td>
-                <td>
-                  <input type="number" class="mark-input" id="mark-<?php echo $st['id']; ?>"
-                    min="0" max="<?php echo $markah_penuh; ?>"
-                    placeholder="0–<?php echo $markah_penuh; ?>"
-                    oninput="onMarkInput(<?php echo $st['id']; ?>, this.value)"
-                    onblur="validateMI(<?php echo $st['id']; ?>, <?php echo $markah_penuh; ?>)">
-                </td>
-                <td><span class="grade-badge" id="grade-<?php echo $st['id']; ?>">–</span></td>
-                <td><span class="status-badge status-warning" id="status-<?php echo $st['id']; ?>">BELUM DIISI</span></td>
-                <td><input type="text" class="notes-input" id="notes-<?php echo $st['id']; ?>" placeholder="Catatan..."></td>
-                <td>
-                  <button class="action-btn primary" id="savebtn-<?php echo $st['id']; ?>"
-                    onclick="simpanSatu(<?php echo $st['id']; ?>, <?php echo (int)$selected_exam; ?>, this)">
-                    <i class="fas fa-save"></i> Simpan
-                  </button>
-                </td>
-              </tr>
-            <?php endforeach; ?>
+                </div>
+              </td>
+              <td><?php echo htmlspecialchars($st['no_kp']); ?></td>
+              <td>
+                <input type="number" class="mark-input" id="mk-<?php echo $st['id']; ?>"
+                  min="0" max="<?php echo $markah_penuh; ?>" placeholder="0–<?php echo $markah_penuh; ?>"
+                  oninput="onMkInput(<?php echo $st['id']; ?>,this.value)"
+                  onblur="chkMk(<?php echo $st['id']; ?>,<?php echo $markah_penuh; ?>)">
+              </td>
+              <td><span class="grade-badge" id="gr-<?php echo $st['id']; ?>">–</span></td>
+              <td><span class="status-badge status-warning" id="st-<?php echo $st['id']; ?>">BELUM DIISI</span></td>
+              <td><input type="text" class="notes-input" id="nt-<?php echo $st['id']; ?>" placeholder="Catatan..."></td>
+              <td>
+                <button class="action-btn primary" id="btn-<?php echo $st['id']; ?>"
+                  onclick="simpanSatu(<?php echo $st['id']; ?>,<?php echo (int)$selected_exam; ?>,this)">
+                  <i class="fas fa-save"></i> Simpan
+                </button>
+              </td>
+            </tr>
+          <?php endforeach; ?>
           </tbody>
         </table>
       </div>
@@ -579,33 +590,31 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
 
     </div><!-- /tab-tambah -->
 
-    <!-- ======== TAB: KEMASKINI MARKAH ======== -->
+    <!-- ═══ TAB: KEMASKINI ═══ -->
     <div id="tab-kemaskini" class="tab-content <?php echo $active_tab==='kemaskini'?'active':''; ?>">
 
-      <div class="section-card" style="margin-bottom:15px;">
+      <div class="section-card" style="margin-bottom:15px">
         <div class="search-bar">
           <div class="search-wrap">
             <i class="fas fa-search"></i>
             <input type="text" class="search-field" id="kmSearch"
-                   placeholder="Cari nama, No. KP, kelas..." oninput="filterKmTable()">
+              placeholder="Cari nama, No. KP, kelas…" oninput="filterKm()">
           </div>
-          <button class="btn btn-primary btn-sm" onclick="loadKemaskiniData()"><i class="fas fa-sync"></i> Muat Semula</button>
+          <button class="btn btn-primary btn-sm" onclick="loadKm()"><i class="fas fa-sync"></i> Muat Semula</button>
         </div>
         <div class="filter-row">
           <div class="filter-group">
             <label>Peperiksaan:</label>
-            <select class="filter-select" id="kmFilterPep" onchange="filterKmTable()">
+            <select class="filter-select" id="kmFPep" onchange="filterKm()">
               <option value="">Semua</option>
               <?php foreach ($exams as $e): ?>
-                <option value="<?php echo htmlspecialchars($e['nama_peperiksaan']); ?>">
-                  <?php echo htmlspecialchars($e['nama_peperiksaan']); ?>
-                </option>
+                <option value="<?php echo htmlspecialchars($e['nama_peperiksaan']); ?>"><?php echo htmlspecialchars($e['nama_peperiksaan']); ?></option>
               <?php endforeach; ?>
             </select>
           </div>
           <div class="filter-group">
             <label>Kelas:</label>
-            <select class="filter-select" id="kmFilterKelas" onchange="filterKmTable()">
+            <select class="filter-select" id="kmFKelas" onchange="filterKm()">
               <option value="">Semua</option>
               <?php foreach ($classes as $c): ?>
                 <option value="<?php echo htmlspecialchars($c['nama']); ?>"><?php echo htmlspecialchars($c['nama']); ?></option>
@@ -614,7 +623,7 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
           </div>
           <div class="filter-group">
             <label>Status:</label>
-            <select class="filter-select" id="kmFilterStatus" onchange="filterKmTable()">
+            <select class="filter-select" id="kmFStatus" onchange="filterKm()">
               <option value="">Semua</option>
               <option value="lulus">Lulus</option>
               <option value="gagal">Gagal</option>
@@ -625,389 +634,309 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
       </div>
 
       <div class="actions-bar">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button class="action-btn secondary" onclick="batalkanSemua()"><i class="fas fa-undo"></i> Batal Perubahan</button>
-          <span id="changesBadge" style="display:none;background:var(--warning);color:white;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;"></span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="action-btn secondary" onclick="batalSemua()"><i class="fas fa-undo"></i> Batal Perubahan</button>
+          <span id="chgBadge" style="display:none;background:var(--warning);color:white;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700"></span>
         </div>
-        <button class="btn btn-success" onclick="simpanSemuaKemaskini()"><i class="fas fa-save"></i> Simpan Semua Perubahan</button>
+        <button class="btn btn-success" onclick="simpanKm()"><i class="fas fa-save"></i> Simpan Semua Perubahan</button>
       </div>
 
-      <div id="kmTableWrap" style="overflow-x:auto;">
-        <div class="loading-wrap"><div class="spinner"></div><p>Memuatkan data markah...</p></div>
+      <div id="kmWrap" style="overflow-x:auto">
+        <div class="loading-wrap"><div class="spinner"></div><p style="color:var(--medium-gray)">Memuatkan data markah…</p></div>
       </div>
 
     </div><!-- /tab-kemaskini -->
-  </div>
+  </div><!-- /tab-container -->
 </main>
 
 <script>
-// ===================== STATE =====================
-const FULL_MARKS   = <?php echo (int)$markah_penuh; ?>;
-const PASS_MARKS   = <?php echo (int)$markah_lulus; ?>;
-const EXAM_ID      = <?php echo (int)$selected_exam; ?>;
-const ALL_STUDENTS = <?php echo json_encode($students); ?>;
+// ── Constants ─────────────────────────────────────────────────────────────
+const FM        = <?php echo (int)$markah_penuh; ?>;
+const PM        = <?php echo (int)$markah_lulus; ?>;
+const EXAM_ID   = <?php echo (int)$selected_exam; ?>;
+const STUDENTS  = <?php echo json_encode($students); ?>;
+const BASE_URL  = 'tambah-markah.php';
 
-let tambahMarks = {};
-let kmData      = [];
-let kmChanges   = {};
+// ── State ─────────────────────────────────────────────────────────────────
+let addedMarks = {};   // sid -> {markah}
+let kmData     = [];
+let kmChanges  = {};
 
-// ===================== TAB =====================
+// ── Tab ───────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add('active');
-  document.getElementById(`tab-${tab}`).classList.add('active');
-  if (tab === 'kemaskini' && kmData.length === 0) loadKemaskiniData();
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'kemaskini' && kmData.length === 0) loadKm();
 }
 
-// ===================== TAMBAH =====================
-function onMarkInput(sid, val) {
-  const fm = parseInt(document.getElementById('fullMarks').value) || FULL_MARKS;
-  const pm = parseInt(document.getElementById('passingMarks').value) || PASS_MARKS;
+// ── TAMBAH helpers ─────────────────────────────────────────────────────────
+function onMkInput(sid, val) {
+  const fm = parseInt(document.getElementById('fullMarks').value) || FM;
+  const pm = parseInt(document.getElementById('passingMarks').value) || PM;
   const mv = val === '' ? null : parseInt(val);
 
-  if (mv !== null) tambahMarks[sid] = { markah: mv };
-  else delete tambahMarks[sid];
+  if (mv !== null) addedMarks[sid] = { markah: mv };
+  else delete addedMarks[sid];
 
-  const ge = document.getElementById(`grade-${sid}`);
-  const se = document.getElementById(`status-${sid}`);
-
+  const ge = document.getElementById('gr-' + sid);
+  const se = document.getElementById('st-' + sid);
   if (mv !== null && !isNaN(mv)) {
-    const g = gradeOf(mv, fm);
-    ge.textContent = g; ge.className = `grade-badge ${gradeClass(g)}`;
-    const pass = mv >= pm;
-    se.textContent = pass ? 'LULUS' : 'GAGAL';
-    se.className = `status-badge ${pass ? 'status-success' : 'status-danger'}`;
+    const g = grade(mv, fm);
+    ge.textContent = g; ge.className = 'grade-badge ' + gClass(g);
+    const ok = mv >= pm;
+    se.textContent = ok ? 'LULUS' : 'GAGAL';
+    se.className = 'status-badge ' + (ok ? 'status-success' : 'status-danger');
   } else {
     ge.textContent = '–'; ge.className = 'grade-badge';
     se.textContent = 'BELUM DIISI'; se.className = 'status-badge status-warning';
   }
-  updateTambahSummary();
-  updateTambahStatus();
+  refreshSummary(); refreshStatusTxt();
 }
 
-function validateMI(sid, fm) {
-  const inp = document.getElementById(`mark-${sid}`);
+function chkMk(sid, fm) {
+  const inp = document.getElementById('mk-' + sid);
   const v = parseInt(inp.value);
-  if (!isNaN(v) && (v < 0 || v > fm)) {
-    inp.classList.add('out-of-range');
-    toast(`Markah mesti antara 0 dan ${fm}`, 'warning');
-  } else {
-    inp.classList.remove('out-of-range');
-  }
+  if (!isNaN(v) && (v < 0 || v > fm)) { inp.classList.add('out-of-range'); toast('Markah mesti 0–' + fm, 'warning'); }
+  else inp.classList.remove('out-of-range');
 }
 
-function updateTambahSummary() {
-  const vals = Object.values(tambahMarks).map(m => m.markah).filter(m => !isNaN(m));
-  const total = ALL_STUDENTS.length;
-  const avg  = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '0.0';
-  const high = vals.length ? Math.max(...vals) : 0;
-  const low  = vals.length ? Math.min(...vals) : 0;
-  const a = document.getElementById('avgMark'); if (a) a.textContent = avg;
-  const h = document.getElementById('highMark'); if (h) h.textContent = high;
-  const l = document.getElementById('lowMark'); if (l) l.textContent = low;
-  const c = document.getElementById('completedCount'); if (c) c.textContent = `${vals.length}/${total}`;
+function refreshSummary() {
+  const vals = Object.values(addedMarks).map(x => x.markah).filter(x => !isNaN(x));
+  const n = STUDENTS.length;
+  const avg = vals.length ? (vals.reduce((a,b) => a+b,0) / vals.length).toFixed(1) : '0.0';
+  const hi  = vals.length ? Math.max(...vals) : 0;
+  const lo  = vals.length ? Math.min(...vals) : 0;
+  const a = document.getElementById('avgMark');  if(a) a.textContent = avg;
+  const h = document.getElementById('highMark'); if(h) h.textContent = hi;
+  const l = document.getElementById('lowMark');  if(l) l.textContent = lo;
+  const d = document.getElementById('doneCount');if(d) d.textContent = vals.length + '/' + n;
 }
 
-function updateTambahStatus() {
-  const total  = ALL_STUDENTS.length;
-  const filled = Object.keys(tambahMarks).length;
-  const el = document.getElementById('marksStatusText'); if (!el) return;
-  if (filled === 0) { el.textContent = 'Belum ada markah dimasukkan.'; el.style.color = 'var(--danger)'; }
-  else if (filled < total) { el.textContent = `${filled} daripada ${total} pelajar dimasukkan.`; el.style.color = 'var(--warning)'; }
-  else { el.textContent = `Semua ${total} pelajar siap dimasukkan.`; el.style.color = 'var(--success)'; }
+function refreshStatusTxt() {
+  const total  = STUDENTS.length;
+  const filled = Object.keys(addedMarks).length;
+  const el = document.getElementById('statusTxt'); if (!el) return;
+  if (!filled)           { el.textContent = 'Belum ada markah dimasukkan.'; el.style.color = 'var(--danger)'; }
+  else if (filled<total) { el.textContent = filled + ' daripada ' + total + ' pelajar dimasukkan.'; el.style.color = 'var(--warning)'; }
+  else                   { el.textContent = 'Semua ' + total + ' pelajar siap.'; el.style.color = 'var(--success)'; }
 }
 
 function kosongkanSemua() {
   confirm2('Kosongkan semua markah yang dimasukkan?', () => {
-    ALL_STUDENTS.forEach(s => {
-      const inp = document.getElementById(`mark-${s.id}`);
-      if (inp) { inp.value = ''; inp.classList.remove('out-of-range', 'saved'); }
-      onMarkInput(s.id, '');
+    STUDENTS.forEach(s => {
+      const inp = document.getElementById('mk-' + s.id);
+      if (inp) { inp.value = ''; inp.classList.remove('out-of-range','saved'); }
+      onMkInput(s.id, '');
     });
-    tambahMarks = {};
-    updateTambahSummary(); updateTambahStatus();
+    addedMarks = {};
+    refreshSummary(); refreshStatusTxt();
     toast('Semua markah dikosongkan', 'info');
   });
 }
 
 function simpanSatu(sid, examId, btn) {
-  const inp = document.getElementById(`mark-${sid}`);
+  const inp = document.getElementById('mk-' + sid);
   if (!inp || inp.value === '') { toast('Sila masukkan markah terlebih dahulu', 'warning'); return; }
-  const fm  = parseInt(document.getElementById('fullMarks').value) || FULL_MARKS;
-  const mv  = parseInt(inp.value);
-  if (mv < 0 || mv > fm) { toast(`Markah mesti antara 0 dan ${fm}`, 'warning'); return; }
+  const fm = parseInt(document.getElementById('fullMarks').value) || FM;
+  const mv = parseInt(inp.value);
+  if (isNaN(mv) || mv < 0 || mv > fm) { toast('Markah mesti 0–' + fm, 'warning'); return; }
   if (!examId) { toast('Sila pilih peperiksaan', 'warning'); return; }
 
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  const notes = (document.getElementById('nt-' + sid) || {}).value || '';
 
-  const notes = (document.getElementById(`notes-${sid}`) || {}).value || '';
-
-  fetch('tambah-markah.php', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      ajax: 'add_single_mark',
-      id_pelajar: sid,
-      id_peperiksaan: examId,
-      markah: mv,
-      catatan: notes
+  ajaxPost({ ajax: 'add_single_mark', id_pelajar: sid, id_peperiksaan: examId, markah: mv, catatan: notes })
+    .then(d => {
+      btn.disabled = false;
+      if (d.success) {
+        toast('Markah berjaya disimpan!', 'success');
+        btn.className = 'action-btn success';
+        btn.innerHTML = '<i class="fas fa-check"></i> Tersimpan';
+        inp.classList.add('saved');
+      } else {
+        toast(d.message || 'Gagal menyimpan', 'error');
+        btn.innerHTML = '<i class="fas fa-save"></i> Simpan';
+      }
     })
-  })
-  .then(r => {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  })
-  .then(d => {
-    btn.disabled = false;
-    if (d.success) {
-      toast('Markah berjaya disimpan!', 'success');
-      btn.className = 'action-btn success';
-      btn.innerHTML = '<i class="fas fa-check"></i> Tersimpan';
-      inp.classList.add('saved');
-    } else {
-      toast(d.message || 'Gagal menyimpan', 'error');
-      btn.innerHTML = '<i class="fas fa-save"></i> Simpan';
-    }
-  })
-  .catch(err => {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-save"></i> Simpan';
-    console.error('Fetch error:', err);
-    toast('Gagal menyambung ke pelayan. Semak konsol untuk butiran.', 'error');
-  });
+    .catch(e => { btn.disabled=false; btn.innerHTML='<i class="fas fa-save"></i> Simpan'; toast('Ralat: ' + e.message, 'error'); });
 }
 
-function simpanSemuaMarkah() {
-  const keys = Object.keys(tambahMarks);
+function simpanSemua() {
+  const keys = Object.keys(addedMarks);
   if (!keys.length) { toast('Tiada markah untuk disimpan', 'warning'); return; }
   if (!EXAM_ID)     { toast('Sila pilih peperiksaan dahulu', 'warning'); return; }
 
-  confirm2(`Simpan markah untuk ${keys.length} pelajar?`, () => {
+  confirm2('Simpan markah untuk ' + keys.length + ' pelajar?', () => {
     const data = keys.map(sid => ({
       id_pelajar:     parseInt(sid),
       id_peperiksaan: EXAM_ID,
-      markah:         tambahMarks[sid].markah,
-      catatan:        (document.getElementById(`notes-${sid}`) || {}).value || ''
+      markah:         addedMarks[sid].markah,
+      catatan:        (document.getElementById('nt-' + sid) || {}).value || ''
     }));
-
-    fetch('tambah-markah.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ ajax: 'add_bulk_marks', marks_data: JSON.stringify(data) })
-    })
-    .then(r => {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(d => {
-      if (d.success) toast(d.message || `${keys.length} markah disimpan!`, 'success');
-      else toast(d.message || 'Gagal menyimpan', 'error');
-    })
-    .catch(err => { console.error(err); toast('Gagal menyambung ke pelayan', 'error'); });
+    ajaxPost({ ajax: 'add_bulk_marks', marks_data: JSON.stringify(data) })
+      .then(d => { toast(d.success ? (d.message||keys.length+' markah disimpan!') : (d.message||'Gagal'), d.success?'success':'error'); })
+      .catch(e => toast('Ralat: ' + e.message, 'error'));
   });
 }
 
-// ===================== KEMASKINI =====================
-function loadKemaskiniData() {
-  const wrap = document.getElementById('kmTableWrap');
-  wrap.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><p>Memuatkan data markah...</p></div>';
+// ── KEMASKINI helpers ──────────────────────────────────────────────────────
+function loadKm() {
+  const wrap = document.getElementById('kmWrap');
+  wrap.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><p style="color:var(--medium-gray)">Memuatkan data markah…</p></div>';
 
-  fetch('tambah-markah.php?ajax=get_marks')
-    .then(r => {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text(); // read as text first to debug
+  ajaxGet('get_marks')
+    .then(d => {
+      if (!d.success) { wrap.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><h3>' + (d.message||'Tiada data') + '</h3></div>'; return; }
+      kmData = d.marks.map(m => ({
+        id: m.id, name: m.nama_pelajar, ic: m.no_kp,
+        kelas: m.nama_kelas, pep: m.nama_peperiksaan,
+        orig: parseInt(m.markah), grade0: m.gred||'', cat: m.catatan||''
+      }));
+      kmChanges = {};
+      renderKm(kmData);
     })
-    .then(text => {
-      let d;
-      try { d = JSON.parse(text); }
-      catch(e) {
-        console.error('JSON parse error. Raw response:', text);
-        wrap.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><h3>Ralat respons pelayan</h3><p>Semak konsol untuk butiran.</p></div>';
-        return;
-      }
-      if (d.success) {
-        kmData = d.marks.map(m => ({
-          id: m.id, studentName: m.nama_pelajar, studentIC: m.no_kp,
-          studentClass: m.nama_kelas, peperiksaan: m.nama_peperiksaan,
-          originalMark: parseInt(m.markah), catatan: m.catatan || '',
-          originalGrade: m.gred || ''
-        }));
-        kmChanges = {};
-        renderKmTable(kmData);
-      } else {
-        wrap.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-circle"></i><h3>Tiada data</h3><p>${d.message||'Tiada markah dijumpai'}</p></div>`;
-      }
-    })
-    .catch(err => {
-      console.error('Kemaskini load error:', err);
-      wrap.innerHTML = '<div class="empty-state"><i class="fas fa-wifi"></i><h3>Ralat sambungan</h3><p>Pastikan anda telah log masuk</p></div>';
-    });
+    .catch(e => { wrap.innerHTML = '<div class="empty-state"><i class="fas fa-wifi"></i><h3>Ralat sambungan</h3><p>' + e.message + '</p></div>'; });
 }
 
-function renderKmTable(data) {
-  const wrap = document.getElementById('kmTableWrap');
+function renderKm(data) {
+  const wrap = document.getElementById('kmWrap');
   if (!data.length) {
-    wrap.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><h3>Tiada markah dijumpai</h3><p>Tiada data. Sila tambah markah pelajar melalui tab <strong>Tambah Markah</strong> terlebih dahulu.</p></div>';
+    wrap.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><h3>Tiada markah dijumpai</h3><p>Tambah markah pelajar melalui tab <strong>Tambah Markah</strong> terlebih dahulu.</p></div>';
     return;
   }
-  let html = `<table class="marks-table" id="kmTable">
-    <thead><tr>
-      <th>BIL</th><th>PELAJAR</th><th>PEPERIKSAAN / KELAS</th>
-      <th>MARKAH ASAL</th><th>MARKAH BARU</th>
-      <th>GRED ASAL</th><th>GRED BARU</th><th>STATUS</th><th>CATATAN</th>
-    </tr></thead><tbody>`;
-
+  let h = `<table class="marks-table" id="kmTbl">
+    <thead><tr><th>#</th><th>Pelajar</th><th>Peperiksaan / Kelas</th><th>Asal</th><th>Baru (0–100)</th><th>Gred Asal</th><th>Gred Baru</th><th>Status</th><th>Catatan</th></tr></thead><tbody>`;
   data.forEach((m, i) => {
-    const names = m.studentName.split(' ');
-    const ini   = names.length >= 2 ? names[0].charAt(0) + names[names.length-1].charAt(0) : names[0].substring(0, 2);
-    const chg   = kmChanges[m.id] !== undefined;
-    const disp  = chg ? kmChanges[m.id].markah_baru : m.originalMark;
-    const cat   = chg ? kmChanges[m.id].catatan : m.catatan;
-    const ng    = gradeOf(disp, 100);
-    const pass  = disp >= 40;
-
-    html += `<tr class="${chg?'row-changed':''}" id="kmrow-${m.id}"
-      data-name="${esc(m.studentName).toLowerCase()}"
-      data-ic="${esc(m.studentIC)}"
-      data-kelas="${esc(m.studentClass).toLowerCase()}"
-      data-pep="${esc(m.peperiksaan).toLowerCase()}"
-      data-status="${pass?'lulus':'gagal'}">
+    const nm = m.name.split(' ');
+    const ini = nm.length>=2 ? nm[0][0]+nm[nm.length-1][0] : nm[0].substring(0,2);
+    const chg  = kmChanges[m.id] !== undefined;
+    const disp = chg ? kmChanges[m.id].mv : m.orig;
+    const cat  = chg ? kmChanges[m.id].cat : m.cat;
+    const ng   = grade(disp, 100);
+    const ok   = disp >= 40;
+    h += `<tr class="${chg?'row-changed':''}" id="kmr-${m.id}"
+      data-n="${esc(m.name).toLowerCase()}" data-ic="${esc(m.ic)}"
+      data-k="${esc(m.kelas).toLowerCase()}" data-p="${esc(m.pep).toLowerCase()}"
+      data-s="${ok?'lulus':'gagal'}">
       <td>${i+1}</td>
-      <td>
-        <div class="student-row">
-          <div class="student-avatar">${ini.toUpperCase()}</div>
-          <div class="student-info"><h4>${esc(m.studentName)}</h4><p>${esc(m.studentIC)}</p></div>
-        </div>
-      </td>
-      <td>
-        <div style="font-size:12px;font-weight:600;">${esc(m.peperiksaan)}</div>
-        <div style="font-size:11px;color:var(--medium-gray);">${esc(m.studentClass)}</div>
-      </td>
-      <td style="font-weight:700;">${m.originalMark}</td>
-      <td>
-        <input type="number" class="mark-input ${chg?'changed':''}" id="km-${m.id}"
-          min="0" max="100" value="${disp}"
-          oninput="onKmInput(${m.id}, this.value)" placeholder="0–100">
-      </td>
-      <td><span class="grade-badge ${gradeClass(m.originalGrade)}">${m.originalGrade||'–'}</span></td>
-      <td><span class="grade-badge ${gradeClass(ng)}" id="km-grade-${m.id}">${ng}</span></td>
-      <td><span class="status-badge ${pass?'status-success':'status-danger'}" id="km-status-${m.id}">${pass?'LULUS':'GAGAL'}</span></td>
-      <td><input type="text" class="notes-input" id="km-notes-${m.id}" value="${esc(cat)}" placeholder="Catatan..." oninput="onKmNotes(${m.id}, this.value)"></td>
+      <td><div class="student-row">
+        <div class="student-avatar">${ini.toUpperCase()}</div>
+        <div class="student-info"><h4>${esc(m.name)}</h4><p>${esc(m.ic)}</p></div>
+      </div></td>
+      <td><div style="font-size:12px;font-weight:600">${esc(m.pep)}</div><div style="font-size:11px;color:var(--medium-gray)">${esc(m.kelas)}</div></td>
+      <td style="font-weight:700">${m.orig}</td>
+      <td><input type="number" class="mark-input ${chg?'changed':''}" id="kmi-${m.id}" min="0" max="100" value="${disp}" oninput="onKmIn(${m.id},this.value)" placeholder="0–100"></td>
+      <td><span class="grade-badge ${gClass(m.grade0)}">${m.grade0||'–'}</span></td>
+      <td><span class="grade-badge ${gClass(ng)}" id="kmg-${m.id}">${ng}</span></td>
+      <td><span class="status-badge ${ok?'status-success':'status-danger'}" id="kms-${m.id}">${ok?'LULUS':'GAGAL'}</span></td>
+      <td><input type="text" class="notes-input" id="kmn-${m.id}" value="${esc(cat)}" placeholder="Catatan…" oninput="onKmNt(${m.id},this.value)"></td>
     </tr>`;
   });
-  html += '</tbody></table>';
-  wrap.innerHTML = html;
-  updateChangesBadge();
+  h += '</tbody></table>';
+  wrap.innerHTML = h;
+  updChgBadge();
 }
 
-function onKmInput(mid, val) {
-  const m  = kmData.find(x => x.id == mid); if (!m) return;
-  const nv = val === '' ? m.originalMark : parseInt(val);
-  const chg = nv !== m.originalMark;
-  if (chg) kmChanges[mid] = { markah_baru: nv, catatan: (document.getElementById(`km-notes-${mid}`) || {}).value || m.catatan };
-  else delete kmChanges[mid];
-
-  const ng   = gradeOf(nv, 100);
-  const pass = nv >= 40;
-  const ge   = document.getElementById(`km-grade-${mid}`);
-  const se   = document.getElementById(`km-status-${mid}`);
-  const inp  = document.getElementById(`km-${mid}`);
-  const row  = document.getElementById(`kmrow-${mid}`);
-  if (ge) { ge.textContent = ng; ge.className = `grade-badge ${gradeClass(ng)}`; }
-  if (se) { se.textContent = pass?'LULUS':'GAGAL'; se.className = `status-badge ${pass?'status-success':'status-danger'}`; }
-  if (inp) inp.className = `mark-input ${chg?'changed':''}`;
-  if (row) { row.className = chg ? 'row-changed' : ''; row.dataset.status = pass ? 'lulus' : 'gagal'; }
-  updateChangesBadge();
+function onKmIn(mid, val) {
+  const m = kmData.find(x => x.id==mid); if(!m) return;
+  const nv  = val==='' ? m.orig : parseInt(val);
+  const chg = nv !== m.orig;
+  if (chg) kmChanges[mid] = { mv: nv, cat: (document.getElementById('kmn-'+mid)||{}).value||m.cat };
+  else     delete kmChanges[mid];
+  const ng = grade(nv,100); const ok = nv>=40;
+  const ge = document.getElementById('kmg-'+mid); if(ge){ge.textContent=ng;ge.className='grade-badge '+gClass(ng);}
+  const se = document.getElementById('kms-'+mid); if(se){se.textContent=ok?'LULUS':'GAGAL';se.className='status-badge '+(ok?'status-success':'status-danger');}
+  const ie = document.getElementById('kmi-'+mid); if(ie) ie.className='mark-input '+(chg?'changed':'');
+  const re = document.getElementById('kmr-'+mid); if(re){re.className=chg?'row-changed':'';re.dataset.s=ok?'lulus':'gagal';}
+  updChgBadge();
 }
 
-function onKmNotes(mid, val) {
-  const m = kmData.find(x => x.id == mid); if (!m) return;
-  const curMark = kmChanges[mid] !== undefined ? kmChanges[mid].markah_baru : m.originalMark;
-  kmChanges[mid] = { markah_baru: curMark, catatan: val };
+function onKmNt(mid, val) {
+  const m = kmData.find(x=>x.id==mid); if(!m) return;
+  const cur = kmChanges[mid]!==undefined ? kmChanges[mid].mv : m.orig;
+  kmChanges[mid] = { mv: cur, cat: val };
 }
 
-function updateChangesBadge() {
-  const cnt = Object.keys(kmChanges).length;
-  const el  = document.getElementById('changesBadge');
-  if (el) { el.style.display = cnt > 0 ? 'inline-block' : 'none'; el.textContent = `${cnt} perubahan`; }
+function updChgBadge() {
+  const n = Object.keys(kmChanges).length;
+  const el = document.getElementById('chgBadge');
+  if(el){ el.style.display=n?'inline-block':'none'; el.textContent=n+' perubahan'; }
 }
 
-function filterKmTable() {
-  const s   = (document.getElementById('kmSearch').value || '').toLowerCase();
-  const pep = (document.getElementById('kmFilterPep').value || '').toLowerCase();
-  const kel = (document.getElementById('kmFilterKelas').value || '').toLowerCase();
-  const sta = (document.getElementById('kmFilterStatus').value || '').toLowerCase();
-  document.querySelectorAll('#kmTable tbody tr').forEach(r => {
-    const ok = (!s   || r.dataset.name.includes(s) || r.dataset.ic.includes(s) || r.dataset.kelas.includes(s))
-            && (!pep || r.dataset.pep.includes(pep))
-            && (!kel || r.dataset.kelas.includes(kel))
-            && (!sta || (sta==='berubah' ? r.classList.contains('row-changed') : r.dataset.status===sta));
+function filterKm() {
+  const s   = (document.getElementById('kmSearch').value||'').toLowerCase();
+  const pep = (document.getElementById('kmFPep').value||'').toLowerCase();
+  const kel = (document.getElementById('kmFKelas').value||'').toLowerCase();
+  const sta = (document.getElementById('kmFStatus').value||'').toLowerCase();
+  document.querySelectorAll('#kmTbl tbody tr').forEach(r => {
+    const ok = (!s  ||r.dataset.n.includes(s)||r.dataset.ic.includes(s)||r.dataset.k.includes(s))
+            && (!pep||r.dataset.p.includes(pep))
+            && (!kel||r.dataset.k.includes(kel))
+            && (!sta||(sta==='berubah'?r.classList.contains('row-changed'):r.dataset.s===sta));
     r.style.display = ok ? '' : 'none';
   });
 }
 
-function batalkanSemua() {
-  if (!Object.keys(kmChanges).length) { toast('Tiada perubahan untuk dibatalkan', 'info'); return; }
-  confirm2('Batalkan semua perubahan yang belum disimpan?', () => {
-    kmChanges = {};
-    renderKmTable(kmData);
-    toast('Semua perubahan dibatalkan', 'info');
-  });
+function batalSemua() {
+  if (!Object.keys(kmChanges).length) { toast('Tiada perubahan untuk dibatalkan','info'); return; }
+  confirm2('Batalkan semua perubahan yang belum disimpan?', () => { kmChanges={}; renderKm(kmData); toast('Perubahan dibatalkan','info'); });
 }
 
-function simpanSemuaKemaskini() {
+function simpanKm() {
   const keys = Object.keys(kmChanges);
-  if (!keys.length) { toast('Tiada perubahan untuk disimpan', 'warning'); return; }
-  confirm2(`Simpan ${keys.length} perubahan markah?`, () => {
-    const updates = keys.map(mid => ({
-      mark_id:     parseInt(mid),
-      markah_baru: kmChanges[mid].markah_baru,
-      catatan:     kmChanges[mid].catatan || ''
-    }));
-    fetch('tambah-markah.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ ajax: 'update_bulk', updates: JSON.stringify(updates) })
-    })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(d => {
-      if (d.success) {
-        toast(d.message || 'Markah berjaya dikemaskini!', 'success');
-        kmData.forEach(m => {
-          if (kmChanges[m.id]) {
-            m.originalMark  = kmChanges[m.id].markah_baru;
-            m.originalGrade = gradeOf(m.originalMark, 100);
-            m.catatan       = kmChanges[m.id].catatan;
-          }
-        });
-        kmChanges = {};
-        renderKmTable(kmData);
-      } else toast(d.message || 'Gagal menyimpan', 'error');
-    })
-    .catch(err => { console.error(err); toast('Gagal menyambung ke pelayan', 'error'); });
+  if (!keys.length) { toast('Tiada perubahan untuk disimpan','warning'); return; }
+  confirm2('Simpan ' + keys.length + ' perubahan markah?', () => {
+    const updates = keys.map(mid => ({ mark_id: parseInt(mid), markah_baru: kmChanges[mid].mv, catatan: kmChanges[mid].cat||'' }));
+    ajaxPost({ ajax: 'update_bulk', updates: JSON.stringify(updates) })
+      .then(d => {
+        toast(d.success ? (d.message||'Markah dikemaskini!') : (d.message||'Gagal'), d.success?'success':'error');
+        if (d.success) { kmData.forEach(m => { if(kmChanges[m.id]){ m.orig=kmChanges[m.id].mv; m.grade0=grade(m.orig,100); m.cat=kmChanges[m.id].cat; } }); kmChanges={}; renderKm(kmData); }
+      })
+      .catch(e => toast('Ralat: '+e.message,'error'));
   });
 }
 
-// ===================== HELPERS =====================
-function gradeOf(m, fm) {
-  fm = fm || 100;
-  const p = (parseInt(m) / fm) * 100;
-  if (p >= 90) return 'A+'; if (p >= 80) return 'A'; if (p >= 70) return 'B';
-  if (p >= 60) return 'C';  if (p >= 50) return 'D'; if (p >= 40) return 'E';
-  return 'F';
+// ── Core fetch wrappers ───────────────────────────────────────────────────
+async function ajaxGet(action, params = {}) {
+  const qs = new URLSearchParams({ ajax: action, ...params });
+  const r  = await fetch(BASE_URL + '?' + qs.toString());
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch(e) { console.error('Bad JSON from server:', text); throw new Error('Respons tidak valid dari pelayan'); }
 }
-function gradeClass(g) {
-  return { 'A+':'grade-aplus','A':'grade-a','B':'grade-b','C':'grade-c','D':'grade-d','E':'grade-e','F':'grade-f' }[g] || 'grade-f';
+
+async function ajaxPost(data) {
+  const r = await fetch(BASE_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    new URLSearchParams(data)
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch(e) { console.error('Bad JSON from server:', text); throw new Error('Respons tidak valid dari pelayan'); }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function grade(m, fm) {
+  const p = (parseInt(m) / (fm||100)) * 100;
+  if (p>=90) return 'A+'; if(p>=80) return 'A'; if(p>=70) return 'B';
+  if (p>=60) return 'C';  if(p>=50) return 'D'; if(p>=40) return 'E'; return 'F';
+}
+function gClass(g) {
+  return ({'A+':'grade-aplus','A':'grade-a','B':'grade-b','C':'grade-c','D':'grade-d','E':'grade-e','F':'grade-f'}[g]||'grade-f');
 }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function toast(msg, type = 'info') {
+function toast(msg, type='info') {
   const t = document.createElement('div');
-  const icons = { success:'check-circle', error:'exclamation-circle', warning:'exclamation-triangle', info:'info-circle' };
-  t.className = `toast toast-${type}`;
-  t.innerHTML = `<i class="fas fa-${icons[type]||'info-circle'}"></i> <span>${msg}</span>`;
+  const icons = {success:'check-circle',error:'exclamation-circle',warning:'exclamation-triangle',info:'info-circle'};
+  t.className = 'toast toast-' + type;
+  t.innerHTML = '<i class="fas fa-'+icons[type]+'"></i> <span>'+msg+'</span>';
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3500);
 }
@@ -1016,28 +945,28 @@ function confirm2(msg, onOk) {
   document.getElementById('confirmMsg').textContent = msg;
   const modal = document.getElementById('confirmModal');
   modal.classList.add('active');
-  const btn    = document.getElementById('confirmOkBtn');
-  const newBtn = btn.cloneNode(true);
-  btn.parentNode.replaceChild(newBtn, btn);
-  newBtn.onclick = () => { modal.classList.remove('active'); onOk(); };
+  const old = document.getElementById('confirmOkBtn');
+  const btn = old.cloneNode(true);
+  old.replaceWith(btn);
+  btn.onclick = () => { modal.classList.remove('active'); onOk(); };
 }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
-// Sidebar
-const menuToggle = document.getElementById('menuToggle');
-const sidebar    = document.getElementById('sidebar');
-const so         = document.getElementById('sidebarOverlay');
-if (menuToggle) menuToggle.addEventListener('click', () => { sidebar.classList.toggle('sidebar-active'); so.classList.toggle('active'); });
-if (so) so.addEventListener('click', () => { sidebar.classList.remove('sidebar-active'); so.classList.remove('active'); });
-document.getElementById('confirmModal').addEventListener('click', function(e) { if (e.target === this) closeModal('confirmModal'); });
+// ── Sidebar ───────────────────────────────────────────────────────────────
+const tog = document.getElementById('menuToggle');
+const sb  = document.getElementById('sidebar');
+const sbo = document.getElementById('sidebarOverlay');
+if (tog) tog.addEventListener('click', () => { sb.classList.toggle('sidebar-active'); sbo.classList.toggle('active'); });
+if (sbo) sbo.addEventListener('click', () => { sb.classList.remove('sidebar-active'); sbo.classList.remove('active'); });
+document.getElementById('confirmModal').addEventListener('click', function(e){ if(e.target===this) closeModal('confirmModal'); });
 
-// Sync fullMarks display
-const fmInp  = document.getElementById('fullMarks');
-const fmDisp = document.getElementById('fullMarksDisplay');
-if (fmInp && fmDisp) fmInp.addEventListener('input', () => fmDisp.textContent = fmInp.value);
+// Sync markah penuh display
+const fm = document.getElementById('fullMarks');
+const fd = document.getElementById('fmDisp');
+if (fm && fd) fm.addEventListener('input', () => fd.textContent = fm.value);
 
 <?php if ($active_tab === 'kemaskini'): ?>
-loadKemaskiniData();
+loadKm();
 <?php endif; ?>
 </script>
 </body>
