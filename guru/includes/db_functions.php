@@ -189,8 +189,8 @@ function getKelasById($id) {
 function getStudentsByClass($kelas_id) {
     global $conn;
     $kelas_id = intval($kelas_id);
-    // pelajar.status boleh jadi 'aktif' atau '1' - cari kedua-dua
-    $sql = "SELECT * FROM pelajar WHERE id_kelas = ? AND (status = 'aktif' OR status = '1') ORDER BY nama ASC";
+    // pelajar.status boleh jadi 'aktif', 'tidak aktif', 'tamat', etc.
+    $sql = "SELECT * FROM pelajar WHERE id_kelas = ? ORDER BY nama ASC";
     $stmt = $conn->prepare($sql);
     if (!$stmt) return [];
     $stmt->bind_param("i", $kelas_id);
@@ -254,23 +254,32 @@ function getPelajarByGuru($guru_id, $search = '', $kelas = '', $status = '') {
     $sql = "SELECT DISTINCT p.*, k.nama as kelas_nama, k.tahun
             FROM pelajar p
             JOIN kelas k ON p.id_kelas = k.id
-            WHERE p.id_kelas IN ($placeholders)
-            AND (p.status = 'aktif' OR p.status = '1')";
+            WHERE p.id_kelas IN ($placeholders)";
     
     $params = $kelas_ids;
     $types = str_repeat("i", count($kelas_ids));
     
     if (!empty($search)) {
         $search_like = "%$search%";
-        $sql .= " AND (p.nama LIKE ? OR p.no_kp LIKE ?)";
+        $sql .= " AND (p.nama LIKE ? OR p.no_kp LIKE ? OR k.nama LIKE ?)";
         $params[] = $search_like;
         $params[] = $search_like;
-        $types .= "ss";
+        $params[] = $search_like;
+        $types .= "sss";
     }
     if (!empty($kelas)) {
         $sql .= " AND k.nama = ?";
         $params[] = $kelas;
         $types .= "s";
+    }
+    if (!empty($status)) {
+        if ($status === 'aktif') {
+            $sql .= " AND (p.status = 'aktif' OR p.status = '1')";
+        } elseif ($status === 'tidak aktif') {
+            $sql .= " AND (p.status = 'tidak aktif' OR p.status = '0')";
+        } elseif ($status === 'tamat') {
+            $sql .= " AND p.status = 'tamat'";
+        }
     }
     
     $sql .= " ORDER BY p.nama ASC";
@@ -428,9 +437,12 @@ function getStatistikPelajar($guru_id) {
     // Kira pelajar dari kelas yang diajar guru (via pengajar DAN kelas.id_guru)
     $total = 0;
     
-    $sql = "SELECT COUNT(DISTINCT p.id) as total FROM pelajar p
+    $sql = "SELECT 
+                COUNT(DISTINCT p.id) as total,
+                SUM(CASE WHEN p.status='aktif' OR p.status='1' THEN 1 ELSE 0 END) as aktif
+            FROM pelajar p
             JOIN kelas k ON p.id_kelas = k.id
-            WHERE k.status = 'aktif' AND (p.status = 'aktif' OR p.status = '1')
+            WHERE k.status = 'aktif'
             AND (
                 k.id IN (SELECT DISTINCT id_kelas FROM pengajar WHERE id_guru = ? AND status = 'aktif')
                 OR k.id_guru = ?
@@ -441,9 +453,10 @@ function getStatistikPelajar($guru_id) {
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
         $total = $row['total'] ?? 0;
+        $aktif = $row['aktif'] ?? 0;
         $stmt->close();
     }
-    return ['total_pelajar' => $total, 'pelajar_aktif' => $total];
+    return ['total_pelajar' => $total, 'pelajar_aktif' => $aktif];
 }
 
 function checkStudentExists($no_ic, $exclude_id = null) {

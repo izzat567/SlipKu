@@ -50,9 +50,7 @@ if (isset($_GET['ajax'])) {
         // ── get_students ────────────────────────────────────────────────────
         case 'get_students':
             $class = $_GET['class'] ?? '';
-            $rows  = is_numeric($class)
-                ? getStudentsByClass((int)$class)
-                : getStudentsByClassName($class);
+            $rows  = getStudentsByClass((int)$class);
             jsonOut(['success' => true, 'students' => $rows]);
 
         // ── get_marks (Kemaskini tab) ────────────────────────────────────────
@@ -236,9 +234,7 @@ if (isset($_GET['markah_penuh'])) $markah_penuh     = (int)$_GET['markah_penuh']
 if (isset($_GET['markah_lulus'])) $markah_lulus     = (int)$_GET['markah_lulus'];
 
 if ($selected_class && $active_tab === 'tambah') {
-    $students = is_numeric($selected_class)
-        ? getStudentsByClass((int)$selected_class)
-        : getStudentsByClassName($selected_class);
+    $students = getStudentsByClass((int)$selected_class);
 }
 ?>
 <!DOCTYPE html>
@@ -463,7 +459,7 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
               <select class="form-select" name="class" required>
                 <option value="">Pilih Kelas</option>
                 <?php foreach ($classes as $c): ?>
-                  <option value="<?php echo htmlspecialchars($c['nama']); ?>" <?php echo $selected_class==$c['nama']?'selected':''; ?>>
+                  <option value="<?php echo $c['id']; ?>" <?php echo $selected_class==$c['id']?'selected':''; ?>>
                     Tahun <?php echo $c['tahun'].' '.htmlspecialchars($c['nama']); ?>
                   </option>
                 <?php endforeach; ?>
@@ -554,7 +550,14 @@ body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#f8fafc 
                   <div class="student-avatar"><?php echo strtoupper($ini); ?></div>
                   <div class="student-info">
                     <h4><?php echo htmlspecialchars($st['nama']); ?></h4>
-                    <p><?php echo htmlspecialchars($selected_class); ?></p>
+                    <p><?php
+                      // Get class name from classes array
+                      $kelas_nama = '';
+                      foreach ($classes as $c) {
+                          if ($c['id'] == $selected_class) { $kelas_nama = $c['nama']; break; }
+                      }
+                      echo htmlspecialchars($kelas_nama);
+                    ?></p>
                   </div>
                 </div>
               </td>

@@ -38,10 +38,6 @@ if (!isset($current_page)) {
             <i class="fas fa-plus-circle"></i>
             Tambah Markah
         </a>
-        <a href="laporan-prestasi.php" class="sidebar-item <?php echo ($current_page == 'laporan-prestasi.php') ? 'active' : ''; ?>">
-            <i class="fas fa-chart-bar"></i>
-            Laporan Prestasi
-        </a>
     </div>
 
     <div class="sidebar-section">
