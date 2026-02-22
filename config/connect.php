@@ -9,7 +9,7 @@ error_reporting(E_ALL);
 
 $host = 'localhost';
 $user = 'root';
-$password = 'danialdev';
+$password = '';
 $dbname = 'slipku_db';
 
 // Create connection

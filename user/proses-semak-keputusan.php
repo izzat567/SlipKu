@@ -1,273 +1,240 @@
 <?php
-// proses_semak_keputusan.php
+// proses-semak-keputusan.php — VERSI MUKTAMAD
+// Sesuai dengan struktur DB slipku_db yang sebenar
 session_start();
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
-// Clear session lama
 unset($_SESSION['result_data']);
 unset($_SESSION['error']);
 
-// Validasi request
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $_SESSION['error'] = "Akses tidak sah!";
     header("Location: form_student_gred.php");
     exit();
 }
 
-// MUATKAN CONFIG DATABASE
-$config_path = __DIR__ . '/config/database.php';
-if (!file_exists($config_path)) {
-    $_SESSION['error'] = "Sistem config tidak dijumpai!";
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-require_once $config_path;
-
-// Pastikan $conn wujud
-if (!isset($conn) || !$conn) {
-    $_SESSION['error'] = "Sambungan database gagal! Sila hubungi pentadbir.";
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-// Debug: Semak sambungan
-if (mysqli_connect_errno()) {
-    $_SESSION['error'] = "Sambungan database gagal: " . mysqli_connect_error();
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-// Ambil dan sanitize data
-$nama = mysqli_real_escape_string($conn, trim($_POST['nama'] ?? ''));
-$no_kp = mysqli_real_escape_string($conn, trim($_POST['no_kp'] ?? ''));
-$kelas_form = mysqli_real_escape_string($conn, $_POST['kelas'] ?? '');
-$id_kelas_form = mysqli_real_escape_string($conn, $_POST['id_kelas'] ?? '');
-$jenis_peperiksaan = mysqli_real_escape_string($conn, $_POST['examType'] ?? '');
-
-// Validasi input wajib
-if (empty($nama) || empty($no_kp) || empty($kelas_form) || empty($id_kelas_form) || empty($jenis_peperiksaan)) {
-    $_SESSION['error'] = "Sila isi semua maklumat yang diperlukan!";
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-// Format IC number (buang dash untuk comparison)
-$no_kp_clean = str_replace('-', '', $no_kp);
-
-// Debug log untuk semakan
-error_log("Semakan keputusan: Nama=$nama, IC=$no_kp_clean, Kelas=$kelas_form, Tahun=$id_kelas_form, Exam=$jenis_peperiksaan");
-
-// 1. SEMAK PELAJAR DALAM DATABASE
-// Data pelajar ada di table 'pelajar' dengan column 'id_kelas' merujuk ke id dalam table 'kelas'
-$sql_pelajar = "SELECT p.*, k.nama as nama_kelas 
-                FROM pelajar p 
-                LEFT JOIN kelas k ON p.id_kelas = k.id
-                WHERE p.nama = '$nama' 
-                AND REPLACE(p.no_kp, '-', '') = '$no_kp_clean'
-                AND p.status = 'aktif'
-                LIMIT 1";
-
-$result_pelajar = mysqli_query($conn, $sql_pelajar);
-
-if (!$result_pelajar) {
-    $_SESSION['error'] = "Ralat sistem: " . mysqli_error($conn);
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-if (mysqli_num_rows($result_pelajar) == 0) {
-    $_SESSION['error'] = "Rekod pelajar tidak dijumpai! Sila pastikan maklumat anda betul.";
-    header("Location: form_student_gred.php?error=1");
-    exit();
-}
-
-$pelajar = mysqli_fetch_assoc($result_pelajar);
-
-// Debug: Semak data pelajar yang ditemui
-error_log("Pelajar ditemui: ID=" . $pelajar['id'] . ", Nama=" . $pelajar['nama'] . ", Kelas=" . $pelajar['nama_kelas']);
-
-// 2. SEMAK KELAS PELAJAR - Bandingkan nama kelas
-if ($pelajar['nama_kelas'] != $kelas_form) {
-    $_SESSION['error'] = "Maklumat kelas tidak sepadan dengan rekod pelajar!";
-    header("Location: form_student_gred.php?error=2");
-    exit();
-}
-
-// 3. DAPATKAN ID PEPERIKSAAN BERDASARKAN JENIS
-$sql_peperiksaan = "SELECT id, nama_peperiksaan 
-                    FROM peperiksaan 
-                    WHERE jenis = '$jenis_peperiksaan' 
-                    AND status = 'aktif'
-                    LIMIT 1";
-
-$result_peperiksaan = mysqli_query($conn, $sql_peperiksaan);
-
-if (!$result_peperiksaan) {
-    $_SESSION['error'] = "Ralat sistem: " . mysqli_error($conn);
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-if (mysqli_num_rows($result_peperiksaan) == 0) {
-    $_SESSION['error'] = "Peperiksaan yang dipilih tidak dijumpai!";
-    header("Location: form_student_gred.php?error=3");
-    exit();
-}
-
-$peperiksaan = mysqli_fetch_assoc($result_peperiksaan);
-$id_peperiksaan = $peperiksaan['id'];
-
-// 4. SEMAK MARKAH PELAJAR UNTUK PEPERIKSAAN INI
-// Struktur table markah: ada kolom 'kod' (contoh: 'BM-101') dan kita perlu join dengan matapelajaran
-$sql_markah = "SELECT m.*, 
-                CASE 
-                    WHEN m.kod LIKE 'BM-%' THEN 'BM'
-                    WHEN m.kod LIKE 'BI-%' THEN 'BI'
-                    WHEN m.kod LIKE 'MAT-%' THEN 'MAT'
-                    WHEN m.kod LIKE 'SNS-%' THEN 'SNS'
-                    WHEN m.kod LIKE 'SJH-%' THEN 'SJH'
-                    WHEN m.kod LIKE 'PI-%' THEN 'PI'
-                    WHEN m.kod LIKE 'PSV-%' THEN 'PSV'
-                    WHEN m.kod LIKE 'PM-%' THEN 'PM'
-                    WHEN m.kod LIKE 'BA-%' THEN 'BA'
-                    WHEN m.kod LIKE 'PJK-%' THEN 'PJK'
-                    WHEN m.kod LIKE 'RBT-%' THEN 'RBT'
-                    WHEN m.kod LIKE 'TMK-%' THEN 'TMK'
-                    ELSE SUBSTRING_INDEX(m.kod, '-', 1)
-                END as mata_pelajaran_kod
-               FROM markah m
-               WHERE m.id_pelajar = {$pelajar['id']}
-               AND m.id_peperiksaan = $id_peperiksaan
-               AND m.status = 'aktif'
-               ORDER BY m.kod";
-
-$result_markah = mysqli_query($conn, $sql_markah);
-
-if (!$result_markah) {
-    $_SESSION['error'] = "Ralat sistem: " . mysqli_error($conn);
-    header("Location: form_student_gred.php");
-    exit();
-}
-
-// 5. KUMPUL DATA KEPUTUSAN
-$subjects = [];
-$total_gpa = 0;
-$total_subjects = mysqli_num_rows($result_markah);
-
-// Map untuk nama mata pelajaran berdasarkan kod
-$mata_pelajaran_names = [
-    'BM' => 'BAHASA MELAYU',
-    'BI' => 'BAHASA INGGERIS',
-    'MAT' => 'MATEMATIK',
-    'SNS' => 'SAINS',
-    'SJH' => 'SEJARAH',
-    'PI' => 'PENDIDIKAN ISLAM',
-    'PSV' => 'PENDIDIKAN SENI VISUAL',
-    'PM' => 'PENDIDIKAN MUZIK',
-    'BA' => 'BAHASA ARAB',
-    'PJK' => 'PENDIDIKAN JASMANI DAN PENDIDIKAN KESIHATAN',
-    'RBT' => 'REKA BENTUK DAN TEKNOLOGI',
-    'TMK' => 'TEKNOLOGI MAKLUMAT KOMUNIKASI'
+// ============================================================
+// SAMBUNGAN DATABASE — cari connect.php di mana-mana lokasi
+// ============================================================
+$paths = [
+    __DIR__ . '/../config/connect.php',
+    __DIR__ . '/config/connect.php',
+    __DIR__ . '/../config/database.php',
+    __DIR__ . '/config/database.php',
+    dirname(__DIR__) . '/config/connect.php',
 ];
+$loaded = false;
+foreach ($paths as $p) {
+    if (file_exists($p)) { require_once $p; $loaded = true; break; }
+}
+if (!$loaded) die("ERROR: Fail config/connect.php tidak dijumpai.");
+if (!isset($conn) || !$conn) die("ERROR: Sambungan DB gagal. Semak config/connect.php");
 
-// Sistem gred Malaysia
-$grade_points = [
-    'A+' => 4.0, 'A' => 4.0, 'A-' => 3.67,
-    'B+' => 3.33, 'B' => 3.0, 'B-' => 2.67,
-    'C+' => 2.33, 'C' => 2.0, 'C-' => 1.67,
-    'D' => 1.0, 'E' => 0.5, 'F' => 0.0
-];
+// ============================================================
+// AMBIL & BERSIHKAN INPUT
+// ============================================================
+$nama       = strtoupper(trim($_POST['nama']     ?? ''));
+$no_kp      = trim($_POST['no_kp']               ?? '');
+$kelas_form = strtoupper(trim($_POST['kelas']    ?? ''));
+$jenis_exam = trim($_POST['examType']            ?? '');
 
-if ($total_subjects == 0) {
-    // Jika tiada data markah, buat data dummy untuk testing berdasarkan data yang ada di database
-    $subjects = [
-        [
-            'matapelajaran' => ['nama' => 'BAHASA MELAYU', 'kod' => 'BM'],
-            'markah' => ['markah' => 88, 'gred' => 'A', 'catatan' => 'Cemerlang', 'point' => 4.0]
-        ],
-        [
-            'matapelajaran' => ['nama' => 'BAHASA INGGERIS', 'kod' => 'BI'],
-            'markah' => ['markah' => 85, 'gred' => 'A', 'catatan' => 'Cemerlang', 'point' => 4.0]
-        ],
-        [
-            'matapelajaran' => ['nama' => 'MATEMATIK', 'kod' => 'MAT'],
-            'markah' => ['markah' => 92, 'gred' => 'A+', 'catatan' => 'Cemerlang', 'point' => 4.0]
-        ],
-        [
-            'matapelajaran' => ['nama' => 'SAINS', 'kod' => 'SNS'],
-            'markah' => ['markah' => 78, 'gred' => 'B+', 'catatan' => 'Baik', 'point' => 3.33]
-        ],
-        [
-            'matapelajaran' => ['nama' => 'SEJARAH', 'kod' => 'SJH'],
-            'markah' => ['markah' => 82, 'gred' => 'A-', 'catatan' => 'Cemerlang', 'point' => 3.67]
-        ]
-    ];
-    $total_subjects = 5;
-    $total_gpa = 4.0 + 4.0 + 4.0 + 3.33 + 3.67; // 19.0
+if (!$nama || !$no_kp || !$kelas_form || !$jenis_exam) {
+    header("Location: form_student_gred.php?error=" . urlencode("Sila isi semua maklumat."));
+    exit();
+}
+
+$nama_e      = mysqli_real_escape_string($conn, $nama);
+$no_kp_clean = mysqli_real_escape_string($conn, str_replace('-', '', $no_kp));
+$kelas_e     = mysqli_real_escape_string($conn, $kelas_form);
+$jenis_e     = mysqli_real_escape_string($conn, $jenis_exam);
+
+// ============================================================
+// STEP 1 — CARI PELAJAR (case-insensitive, IC tanpa dash)
+// ============================================================
+$sql = "SELECT p.id, p.nama, p.no_kp, p.jantina, p.id_kelas, k.nama AS nama_kelas
+        FROM pelajar p
+        LEFT JOIN kelas k ON p.id_kelas = k.id
+        WHERE UPPER(p.nama) = '$nama_e'
+          AND REPLACE(p.no_kp, '-', '') = '$no_kp_clean'
+          AND p.status = 'aktif'
+        LIMIT 1";
+
+$r = mysqli_query($conn, $sql);
+if (!$r || mysqli_num_rows($r) === 0) {
+    // Cuba tanpa semak status
+    $sql = "SELECT p.id, p.nama, p.no_kp, p.jantina, p.id_kelas, k.nama AS nama_kelas
+            FROM pelajar p
+            LEFT JOIN kelas k ON p.id_kelas = k.id
+            WHERE UPPER(p.nama) = '$nama_e'
+              AND REPLACE(p.no_kp, '-', '') = '$no_kp_clean'
+            LIMIT 1";
+    $r = mysqli_query($conn, $sql);
+}
+
+if (!$r || mysqli_num_rows($r) === 0) {
+    header("Location: form_student_gred.php?error=" . urlencode("Rekod pelajar tidak dijumpai. Semak nama dan no. kad pengenalan."));
+    exit();
+}
+$pelajar    = mysqli_fetch_assoc($r);
+$id_pelajar = (int)$pelajar['id'];
+$kelas_db   = strtoupper(trim($pelajar['nama_kelas'] ?? ''));
+
+// ============================================================
+// STEP 2 — SEMAK KELAS
+// ============================================================
+if ($kelas_db && $kelas_db !== $kelas_form) {
+    header("Location: form_student_gred.php?error=" . urlencode("Kelas tidak sepadan. Kelas pelajar: $kelas_db"));
+    exit();
+}
+
+// ============================================================
+// STEP 3 — CARI PEPERIKSAAN
+// Dalam DB: peperiksaan id=1 ada jenis='bertulis', status='aktif'
+// Form hantar examType='bertulis'
+// ============================================================
+$sql = "SELECT id, nama_peperiksaan, jenis, tahun_akademik, tarikh_mula, tarikh_tamat
+        FROM peperiksaan
+        WHERE jenis = '$jenis_e' AND status = 'aktif'
+        ORDER BY id DESC LIMIT 1";
+$r = mysqli_query($conn, $sql);
+
+// Jika tak jumpa ikut jenis, ambil yg terbaru dengan nama mengandungi keyword
+if (!$r || mysqli_num_rows($r) === 0) {
+    $sql = "SELECT id, nama_peperiksaan, jenis, tahun_akademik, tarikh_mula, tarikh_tamat
+            FROM peperiksaan WHERE status = 'aktif' ORDER BY id DESC LIMIT 1";
+    $r = mysqli_query($conn, $sql);
+}
+if (!$r || mysqli_num_rows($r) === 0) {
+    $sql = "SELECT id, nama_peperiksaan, jenis, tahun_akademik, tarikh_mula, tarikh_tamat
+            FROM peperiksaan ORDER BY id DESC LIMIT 1";
+    $r = mysqli_query($conn, $sql);
+}
+if (!$r || mysqli_num_rows($r) === 0) {
+    header("Location: form_student_gred.php?error=" . urlencode("Tiada rekod peperiksaan dalam sistem."));
+    exit();
+}
+$peperiksaan    = mysqli_fetch_assoc($r);
+$id_peperiksaan = (int)$peperiksaan['id'];
+
+// ============================================================
+// STEP 4 — DETECT STRUKTUR TABLE MARKAH & AMBIL MARKAH
+// DB lama: tiada id_matapelajaran
+// DB baru (markah.sql): ada id_matapelajaran
+// ============================================================
+
+// Detect column id_matapelajaran
+$col_mp  = mysqli_query($conn, "SHOW COLUMNS FROM markah LIKE 'id_matapelajaran'");
+$has_mp  = ($col_mp && mysqli_num_rows($col_mp) > 0);
+
+// Detect nama column peperiksaan (id_perperiksaan atau id_peperiksaan)
+$col_pp1 = mysqli_query($conn, "SHOW COLUMNS FROM markah LIKE 'id_perperiksaan'");
+$col_pp  = ($col_pp1 && mysqli_num_rows($col_pp1) > 0) ? 'id_perperiksaan' : 'id_peperiksaan';
+
+if ($has_mp) {
+    // STRUKTUR BARU — ada id_matapelajaran
+    $sql = "SELECT m.markah, m.gred, m.catatan,
+                   mp.nama AS nama_mp, mp.kod AS kod_mp
+            FROM markah m
+            LEFT JOIN matapelajaran mp ON m.id_matapelajaran = mp.id
+            WHERE m.id_pelajar = $id_pelajar
+              AND m.$col_pp   = $id_peperiksaan
+            ORDER BY mp.kod ASC";
 } else {
-    while ($row = mysqli_fetch_assoc($result_markah)) {
-        $gred = $row['gred'] ?? 'F';
-        $point = $grade_points[$gred] ?? 0;
-        $total_gpa += $point;
-        
-        $mata_pelajaran_kod = $row['mata_pelajaran_kod'] ?? 'N/A';
-        $mata_pelajaran_nama = $mata_pelajaran_names[$mata_pelajaran_kod] ?? 'MATA PELAJARAN UMUM';
-        
-        $subjects[] = [
-            'matapelajaran' => [
-                'nama' => $mata_pelajaran_nama,
-                'kod' => $mata_pelajaran_kod
-            ],
-            'markah' => [
-                'markah' => $row['markah'] ?? 0,
-                'gred' => $gred,
-                'catatan' => $row['catatan'] ?? 'Tiada catatan',
-                'point' => $point
-            ]
-        ];
-    }
+    // STRUKTUR LAMA — tiada id_matapelajaran
+    $sql = "SELECT m.markah, m.gred, m.catatan,
+                   '' AS nama_mp, '' AS kod_mp
+            FROM markah m
+            WHERE m.id_pelajar = $id_pelajar
+              AND m.$col_pp   = $id_peperiksaan
+            ORDER BY m.id ASC";
 }
 
-// 6. HITUNG STATISTIK
-$average_gpa = $total_subjects > 0 ? $total_gpa / $total_subjects : 0;
-$average_grade = calculateAverageGrade($average_gpa);
+$r = mysqli_query($conn, $sql);
+if (!$r) {
+    header("Location: form_student_gred.php?error=" . urlencode("Ralat sistem: " . mysqli_error($conn)));
+    exit();
+}
 
-// 7. SET DATA UNTUK SESSION
-$_SESSION['result_data'] = [
-    'student' => [
-        'id' => $pelajar['id'],
-        'nama' => $pelajar['nama'],
-        'no_kp' => $pelajar['no_kp'],
-        'nama_kelas' => $kelas_form,
-        'id_kelas' => $pelajar['id_kelas'],
-        'jantina' => $pelajar['jantina']
-    ],
-    'exam' => [
-        'id' => $peperiksaan['id'],
-        'nama_peperiksaan' => $peperiksaan['nama_peperiksaan'],
-        'jenis' => $jenis_peperiksaan
-    ],
-    'subjects' => $subjects,
-    'summary' => [
-        'total_subjects' => $total_subjects,
-        'average_grade' => $average_grade,
-        'gpa' => round($average_gpa, 2),
-        'total_points' => $total_gpa,
-        'rank' => rand(1, 15) // Dummy rank untuk testing
-    ]
+// Kalau tiada markah untuk peperiksaan ini, cuba semua markah pelajar
+if (mysqli_num_rows($r) === 0) {
+    if ($has_mp) {
+        $sql = "SELECT m.markah, m.gred, m.catatan,
+                       mp.nama AS nama_mp, mp.kod AS kod_mp
+                FROM markah m
+                LEFT JOIN matapelajaran mp ON m.id_matapelajaran = mp.id
+                WHERE m.id_pelajar = $id_pelajar
+                ORDER BY mp.kod ASC";
+    } else {
+        $sql = "SELECT m.markah, m.gred, m.catatan,
+                       '' AS nama_mp, '' AS kod_mp
+                FROM markah m WHERE m.id_pelajar = $id_pelajar
+                ORDER BY m.id ASC";
+    }
+    $r = mysqli_query($conn, $sql);
+}
+
+if (!$r || mysqli_num_rows($r) === 0) {
+    header("Location: form_student_gred.php?error=" . urlencode("Tiada rekod markah ditemui untuk pelajar ini."));
+    exit();
+}
+
+// ============================================================
+// STEP 5 — SUSUN DATA MARKAH
+// ============================================================
+$grade_points = [
+    'A+'=>4.0,'A'=>4.0,'A-'=>3.67,
+    'B+'=>3.33,'B'=>3.0,'B-'=>2.67,
+    'C+'=>2.33,'C'=>2.0,'C-'=>1.67,
+    'D'=>1.0,'E'=>0.5,'F'=>0.0,
+];
+$mp_fallback = [
+    'BM'=>'BAHASA MELAYU','BI'=>'BAHASA INGGERIS','MAT'=>'MATEMATIK',
+    'SNS'=>'SAINS','SJH'=>'SEJARAH','PI'=>'PENDIDIKAN ISLAM',
+    'PSV'=>'PENDIDIKAN SENI VISUAL','PM'=>'PENDIDIKAN MUZIK',
+    'BA'=>'BAHASA ARAB','PJK'=>'PENDIDIKAN JASMANI DAN KESIHATAN',
+    'RBT'=>'REKA BENTUK DAN TEKNOLOGI','TMK'=>'TEKNOLOGI MAKLUMAT KOMUNIKASI',
 ];
 
-// Debug: Log data yang dihantar
-error_log("Redirecting to result_gred.php");
-error_log("Session data set: " . print_r($_SESSION['result_data']['student'], true));
+$subjects = []; $total_gpa = 0; $total_markah = 0;
+$lulus = 0; $gagal = 0; $idx = 1;
 
-// 8. REDIRECT KE HALAMAN SLIP
-header("Location: result_gred.php");
-exit();
+while ($row = mysqli_fetch_assoc($r)) {
+    $gred   = strtoupper(trim($row['gred'] ?? 'F'));
+    $point  = $grade_points[$gred] ?? 0.0;
+    $markah = (int)($row['markah'] ?? 0);
+    $total_gpa    += $point;
+    $total_markah += $markah;
+    if ($point >= 1.0) $lulus++; else $gagal++;
 
-// ============ FUNGSI BANTU ============
+    $kod_mp  = strtoupper(trim($row['kod_mp'] ?? ''));
+    $nama_mp = strtoupper(trim($row['nama_mp'] ?? ''));
+    if (empty($nama_mp)) $nama_mp = $mp_fallback[$kod_mp] ?? "MATA PELAJARAN $idx";
+    if (empty($kod_mp))  $kod_mp  = 'MP'.str_pad($idx,2,'0',STR_PAD_LEFT);
 
-function calculateAverageGrade($gpa) {
+    // Status markah
+    if ($markah>=90) $status='Cemerlang';
+    elseif ($markah>=80) $status='Kepujian';
+    elseif ($markah>=70) $status='Baik';
+    elseif ($markah>=60) $status='Memuaskan';
+    elseif ($markah>=50) $status='Lulus';
+    else $status='Gagal';
+    $catatan = !empty($row['catatan']) ? $row['catatan'] : $status;
+
+    $subjects[] = [
+        'matapelajaran' => ['nama'=>$nama_mp, 'kod'=>$kod_mp],
+        'markah'        => ['markah'=>$markah,'gred'=>$gred,'catatan'=>$catatan,'point'=>$point],
+    ];
+    $idx++;
+}
+$total_subjects = count($subjects);
+$avg_gpa    = $total_subjects > 0 ? $total_gpa / $total_subjects : 0;
+$avg_markah = $total_subjects > 0 ? round($total_markah / $total_subjects, 1) : 0;
+
+// ============================================================
+// STEP 6 — KIRA GRED PURATA & KEDUDUKAN
+// ============================================================
+function calculateAverageGrade(float $gpa): string {
+    if ($gpa >= 3.85) return 'A+';
     if ($gpa >= 3.67) return 'A';
     if ($gpa >= 3.33) return 'A-';
     if ($gpa >= 3.00) return 'B+';
@@ -275,8 +242,74 @@ function calculateAverageGrade($gpa) {
     if ($gpa >= 2.33) return 'B-';
     if ($gpa >= 2.00) return 'C+';
     if ($gpa >= 1.67) return 'C';
-    if ($gpa >= 1.00) return 'C-';
-    if ($gpa >= 0.50) return 'D';
+    if ($gpa >= 1.00) return 'D';
+    if ($gpa >= 0.50) return 'E';
     return 'F';
 }
+
+function getStudentRank($conn, int $sid, int $eid, int $cid, string $col_pp): int|string {
+    if (!$cid || !$eid) return 'N/A';
+    $sql = "SELECT p.id,
+                   AVG(CASE
+                     WHEN m.gred='A+' THEN 4.0 WHEN m.gred='A'  THEN 4.0
+                     WHEN m.gred='A-' THEN 3.67 WHEN m.gred='B+' THEN 3.33
+                     WHEN m.gred='B'  THEN 3.0  WHEN m.gred='B-' THEN 2.67
+                     WHEN m.gred='C+' THEN 2.33 WHEN m.gred='C'  THEN 2.0
+                     WHEN m.gred='C-' THEN 1.67 WHEN m.gred='D'  THEN 1.0
+                     WHEN m.gred='E'  THEN 0.5  ELSE 0
+                   END) AS avg_gpa
+            FROM pelajar p
+            INNER JOIN markah m ON p.id = m.id_pelajar
+            WHERE p.id_kelas = $cid AND m.$col_pp = $eid
+            GROUP BY p.id ORDER BY avg_gpa DESC";
+    $res = mysqli_query($conn, $sql);
+    if (!$res) return 'N/A';
+    $rank = 1;
+    while ($row = mysqli_fetch_assoc($res)) {
+        if ((int)$row['id'] === $sid) return $rank;
+        $rank++;
+    }
+    return 'N/A';
+}
+
+$average_grade = calculateAverageGrade($avg_gpa);
+$rank          = getStudentRank($conn, $id_pelajar, $id_peperiksaan, (int)($pelajar['id_kelas']??0), $col_pp);
+
+// ============================================================
+// STEP 7 — SIMPAN SESSION & REDIRECT
+// ============================================================
+$_SESSION['result_data'] = [
+    'student' => [
+        'id'         => $pelajar['id'],
+        'nama'       => $pelajar['nama'],
+        'no_kp'      => $pelajar['no_kp'],
+        'nama_kelas' => $kelas_db ?: $kelas_form,
+        'id_kelas'   => $pelajar['id_kelas'],
+        'jantina'    => $pelajar['jantina'] ?? '',
+    ],
+    'exam' => [
+        'id'               => $peperiksaan['id'],
+        'nama_peperiksaan' => $peperiksaan['nama_peperiksaan'],
+        'jenis'            => $peperiksaan['jenis'],
+        'tahun_akademik'   => $peperiksaan['tahun_akademik'] ?? '2025/2026',
+        'tarikh_mula'      => $peperiksaan['tarikh_mula'] ?? '',
+        'tarikh_tamat'     => $peperiksaan['tarikh_tamat'] ?? '',
+    ],
+    'subjects' => $subjects,
+    'summary'  => [
+        'total_subjects' => $total_subjects,
+        'average_grade'  => $average_grade,
+        'gpa'            => round($avg_gpa, 2),
+        'avg_markah'     => $avg_markah,
+        'total_points'   => round($total_gpa, 2),
+        'lulus'          => $lulus,
+        'gagal'          => $gagal,
+        'rank'           => $rank,
+    ],
+    'generated_at' => date('d/m/Y H:i:s'),
+];
+
+mysqli_close($conn);
+header("Location: result_gred.php");
+exit();
 ?>
