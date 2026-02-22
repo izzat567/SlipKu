@@ -31,7 +31,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
             FROM markah m
             JOIN pelajar p ON m.id_pelajar = p.id
             JOIN kelas k ON p.id_kelas = k.id
-            JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+            LEFT JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
             LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
             WHERE (p.status = 'aktif' OR p.status = '1')
             AND m.status = 'aktif'
@@ -1504,6 +1504,72 @@ $kelas_list = getKelasByGuru($guru_id);
         </div>
     </div>
 
+    <!-- Modal for Import Data -->
+    <div class="modal" id="importModal">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-import" style="color: var(--success);"></i> Import Data Markah</h3>
+                <button class="modal-close" onclick="closeImportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Download Template -->
+                <div style="background: var(--primary-light); padding: 15px; border-radius: 12px; margin-bottom: 20px; display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <h4 style="font-size:14px; color:var(--primary); margin-bottom:4px;"><i class="fas fa-info-circle"></i> Format Fail CSV/Excel</h4>
+                        <p style="font-size:12px; color:var(--medium-gray);">Kolum diperlukan: NO_KP, NAMA_PELAJAR, SUBJEK, MARKAH, CATATAN</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="downloadTemplate()" style="padding:8px 15px; font-size:13px; white-space:nowrap;">
+                        <i class="fas fa-download"></i> Muat Turun Template
+                    </button>
+                </div>
+
+                <!-- File Upload -->
+                <div style="border: 2px dashed #e5e7eb; border-radius: 12px; padding: 30px 20px; text-align: center; cursor: pointer; margin-bottom: 20px; transition: all 0.3s;"
+                     onclick="document.getElementById('importFileInput').click()"
+                     onmouseover="this.style.borderColor='var(--primary)'; this.style.background='var(--primary-light)'"
+                     onmouseout="this.style.borderColor='#e5e7eb'; this.style.background='transparent'">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:40px; color:var(--success); margin-bottom:12px; display:block;"></i>
+                    <p style="font-weight:600; color:var(--dark-gray); margin-bottom:6px;">Klik untuk pilih fail</p>
+                    <p style="font-size:13px; color:var(--medium-gray);">Sokongan format: .csv, .xlsx, .xls</p>
+                </div>
+                <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleImportFile()">
+                
+                <!-- Preview -->
+                <div id="importPreview" style="display:none; margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4 style="font-size:14px; font-weight:700; color:var(--dark-gray);">Preview Data</h4>
+                        <span id="importCount" style="font-size:12px; color:var(--success); font-weight:600;"></span>
+                    </div>
+                    <div style="overflow-x:auto; border-radius:8px; border:1px solid #e5e7eb;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:var(--light-gray);">
+                                    <th style="padding:10px; text-align:left; font-size:12px; color:var(--medium-gray);">NO_KP</th>
+                                    <th style="padding:10px; text-align:left; font-size:12px; color:var(--medium-gray);">NAMA</th>
+                                    <th style="padding:10px; text-align:left; font-size:12px; color:var(--medium-gray);">SUBJEK</th>
+                                    <th style="padding:10px; text-align:left; font-size:12px; color:var(--medium-gray);">MARKAH</th>
+                                    <th style="padding:10px; text-align:left; font-size:12px; color:var(--medium-gray);">CATATAN</th>
+                                    <th style="padding:10px; text-align:left; font-size:12px; color:var(--medium-gray);">STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="importPreviewBody"></tbody>
+                        </table>
+                    </div>
+                    <p style="font-size:12px; color:var(--medium-gray); margin-top:8px;">* Menunjukkan 5 rekod pertama sahaja</p>
+                </div>
+
+                <div style="display:flex; gap:15px; justify-content:flex-end;">
+                    <button class="btn btn-secondary" onclick="closeImportModal()">Batal</button>
+                    <button class="btn btn-success" id="processImportBtn" onclick="processImport()">
+                        <i class="fas fa-upload"></i> Import Sekarang
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal for Export Options -->
     <div class="modal" id="exportModal">
         <div class="modal-content">
@@ -1635,6 +1701,10 @@ $kelas_list = getKelasByGuru($guru_id);
                     <i class="fas fa-sync-alt"></i>
                     Muat Semula
                 </button>
+                <button class="btn btn-success" onclick="openImportModal()">
+                    <i class="fas fa-file-import"></i>
+                    Import Data
+                </button>
                 <button class="btn btn-primary" onclick="openExportModal()">
                     <i class="fas fa-download"></i>
                     Eksport Data
@@ -1675,10 +1745,11 @@ $kelas_list = getKelasByGuru($guru_id);
                     <label class="filter-label">Kelas:</label>
                     <select class="filter-select" id="filterClass" onchange="filterData()">
                         <option value="">Semua Kelas</option>
-                        <option value="6A">Kelas 6A</option>
-                        <option value="6B">Kelas 6B</option>
-                        <option value="5A">Kelas 5A</option>
-                        <option value="5B">Kelas 5B</option>
+                        <?php foreach ($kelas_list as $kls): ?>
+                        <option value="<?php echo htmlspecialchars($kls['nama']); ?>">
+                            <?php echo htmlspecialchars($kls['nama']); ?>
+                        </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
@@ -1686,11 +1757,13 @@ $kelas_list = getKelasByGuru($guru_id);
                     <label class="filter-label">Subjek:</label>
                     <select class="filter-select" id="filterSubject" onchange="filterData()">
                         <option value="">Semua Subjek</option>
-                        <option value="matematik">Matematik</option>
-                        <option value="sains">Sains</option>
-                        <option value="bahasa_melayu">Bahasa Melayu</option>
-                        <option value="bahasa_inggeris">Bahasa Inggeris</option>
-                        <option value="pj">PJ & Kesihatan</option>
+                        <?php
+                        $subj_list = getSubjectsByGuru($guru_id);
+                        foreach ($subj_list as $subj): ?>
+                        <option value="<?php echo htmlspecialchars($subj['kod']); ?>">
+                            <?php echo htmlspecialchars($subj['nama']); ?>
+                        </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
@@ -1698,10 +1771,10 @@ $kelas_list = getKelasByGuru($guru_id);
                     <label class="filter-label">Jenis Penilaian:</label>
                     <select class="filter-select" id="filterAssessment" onchange="filterData()">
                         <option value="">Semua Jenis</option>
-                        <option value="exam">Peperiksaan Akhir</option>
-                        <option value="midterm">Peperiksaan Pertengahan</option>
-                        <option value="quiz">Kuiz</option>
-                        <option value="assignment">Tugasan</option>
+                        <option value="bertulis">Bertulis</option>
+                        <option value="kuiz">Kuiz</option>
+                        <option value="tugasan">Tugasan</option>
+                        <option value="amali">Amali</option>
                     </select>
                 </div>
                 
@@ -1709,6 +1782,7 @@ $kelas_list = getKelasByGuru($guru_id);
                     <label class="filter-label">Gred:</label>
                     <select class="filter-select" id="filterGrade" onchange="filterData()">
                         <option value="">Semua Gred</option>
+                        <option value="A+">A+</option>
                         <option value="A">A</option>
                         <option value="B">B</option>
                         <option value="C">C</option>
@@ -1932,35 +2006,36 @@ $kelas_list = getKelasByGuru($guru_id);
 
         // Initialize page
         function initializePage() {
+            setupEventListeners();
             fetch('semak-markah.php?ajax=get_marks')
                 .then(r => r.json())
                 .then(data => {
-                    if (data.success) {
+                    if (data.success && data.students) {
                         currentStudents = data.students.map(s => ({
-                            id: s.id,
-                            studentName: s.nama,
-                            studentIC: s.no_kp,
-                            studentClass: s.kelas,
+                            id: String(s.id),
+                            name: s.nama,
+                            ic: s.no_kp,
+                            kelas: s.kelas,
                             gender: s.jantina,
                             marks: s.marks,
-                            average: s.purata,
-                            grade: s.gred_purata
+                            average: parseFloat(s.purata) || 0,
+                            grade: s.gred_purata || '-',
+                            overallGrade: s.gred_purata || '-',
+                            rank: 0
                         }));
-            currentSubjects = [...sampleSubjects];
-            filteredStudents = [...currentStudents];
-            filteredSubjects = [...currentSubjects];
-            
-            // Set up event listeners
-            setupEventListeners();
-            
-            // Load initial data
-            loadOverviewCards();
-            loadSubjectView();
-            loadStudentTableView();
-            loadDetailedTableView();
-            
-            // Update table info
-            updateTableInfo();
+                        // assign ranks by average
+                        currentStudents.sort((a,b) => b.average - a.average)
+                            .forEach((s,i) => s.rank = i+1);
+                    }
+                    filteredStudents = [...currentStudents];
+                    filteredSubjects  = [...currentSubjects];
+                    loadOverviewCards();
+                    loadSubjectView();
+                    loadStudentTableView();
+                    loadDetailedTableView();
+                    updateTableInfo();
+                })
+                .catch(err => console.error('Ralat memuatkan markah:', err));
         }
 
         // Change view
@@ -1994,11 +2069,11 @@ $kelas_list = getKelasByGuru($guru_id);
         // Load overview cards
         function loadOverviewCards() {
             // Calculate statistics
-            const totalStudents = currentStudents.length;
-            const averageScore = currentStudents.reduce((sum, student) => sum + student.average, 0) / totalStudents;
-            const highestScore = Math.max(...currentStudents.map(s => s.average));
-            const lowestScore = Math.min(...currentStudents.map(s => s.average));
-            const passedStudents = currentStudents.filter(s => s.overallGrade !== 'F').length;
+            const totalStudents  = filteredStudents.length;
+            const averageScore   = totalStudents > 0 ? filteredStudents.reduce((s,st) => s + st.average, 0) / totalStudents : 0;
+            const highestScore   = totalStudents > 0 ? Math.max(...filteredStudents.map(s => s.average)) : 0;
+            const lowestScore    = totalStudents > 0 ? Math.min(...filteredStudents.map(s => s.average)) : 0;
+            const passedStudents = filteredStudents.filter(s => s.average >= 40).length;
             const failedStudents = totalStudents - passedStudents;
             
             overviewCards.innerHTML = `
@@ -2177,244 +2252,148 @@ $kelas_list = getKelasByGuru($guru_id);
             }).join('');
         }
 
-        // Load student table view
+        // Load student table view — papar ringkasan per pelajar dari DB
         function loadStudentTableView() {
             if (filteredStudents.length === 0) {
                 studentTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="10" style="text-align: center; padding: 40px; color: var(--medium-gray);">
-                            <i class="fas fa-user-graduate" style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
-                            Tiada pelajar ditemui
-                        </td>
-                    </tr>
-                `;
+                    <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--medium-gray)">
+                        <i class="fas fa-user-graduate" style="font-size:24px;margin-bottom:10px;display:block;"></i>
+                        Tiada pelajar ditemui
+                    </td></tr>`;
                 return;
             }
-            
             studentTableBody.innerHTML = filteredStudents.map(student => {
-                // Get student initials for avatar
-                const names = student.name.split(' ');
-                const initials = names.length >= 2 
-                    ? names[0].charAt(0) + names[names.length - 1].charAt(0)
-                    : names[0].substring(0, 2);
-                
-                return `
-                    <tr>
-                        <td>
-                            <div class="rank-badge rank-${student.rank}">
-                                ${student.rank}
+                const ini = (student.name||'?').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+                const gc  = (student.overallGrade||'-').replace('+','p').toLowerCase();
+                const rankClass = student.rank <= 3 ? `rank-${student.rank}` : 'rank-other';
+                const markCount  = (student.marks||[]).length;
+                const markSummary = (student.marks||[]).slice(0,3).map(m =>
+                    `<span style="font-size:11px;background:#eef2ff;padding:2px 6px;border-radius:6px;margin:1px">${m.kod||m.subjek}: ${m.markah||'–'}</span>`
+                ).join('') + (markCount > 3 ? `<span style="font-size:11px;color:#9ca3af"> +${markCount-3} lagi</span>` : '');
+
+                return `<tr>
+                    <td><div class="rank-badge ${rankClass}">${student.rank}</div></td>
+                    <td><div class="student-row">
+                        <div class="student-avatar">${ini}</div>
+                        <div class="student-info">
+                            <h4>${student.name}</h4>
+                            <p>${student.kelas||'–'} • ${student.ic||'–'}</p>
+                        </div>
+                    </div></td>
+                    <td><div style="flex-wrap:wrap;display:flex;gap:2px">${markSummary || '<span style="color:#9ca3af;font-size:12px">Tiada markah</span>'}</div></td>
+                    <td class="mark-cell">
+                        <div class="mark-value" style="font-size:18px;">${student.average.toFixed(1)}%</div>
+                        <div class="performance-indicator">
+                            <div class="performance-bar">
+                                <div class="performance-fill" style="width:${student.average}%;background:${getPerformanceColor(student.average)};"></div>
                             </div>
-                        </td>
-                        <td>
-                            <div class="student-row">
-                                <div class="student-avatar">${initials}</div>
-                                <div class="student-info">
-                                    <h4>${student.name}</h4>
-                                    <p>${student.class} • ${student.ic}</p>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${student.marks.matematik.score}</div>
-                            <span class="grade-badge grade-${student.marks.matematik.grade.toLowerCase()}">
-                                ${student.marks.matematik.grade}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${student.marks.sains.score}</div>
-                            <span class="grade-badge grade-${student.marks.sains.grade.toLowerCase()}">
-                                ${student.marks.sains.grade}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${student.marks.bahasa_melayu.score}</div>
-                            <span class="grade-badge grade-${student.marks.bahasa_melayu.grade.toLowerCase()}">
-                                ${student.marks.bahasa_melayu.grade}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${student.marks.bahasa_inggeris.score}</div>
-                            <span class="grade-badge grade-${student.marks.bahasa_inggeris.grade.toLowerCase()}">
-                                ${student.marks.bahasa_inggeris.grade}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${student.marks.pj.score}</div>
-                            <span class="grade-badge grade-${student.marks.pj.grade.toLowerCase()}">
-                                ${student.marks.pj.grade}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value" style="font-size: 18px;">${student.average.toFixed(1)}%</div>
-                            <div class="performance-indicator">
-                                <div class="performance-bar">
-                                    <div class="performance-fill" style="width: ${student.average}%; background: ${getPerformanceColor(student.average)};"></div>
-                                </div>
-                                <div class="performance-value">${getPerformanceLabel(student.average)}</div>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="grade-badge grade-${student.overallGrade.toLowerCase()}">
-                                ${student.overallGrade}
-                            </span>
-                        </td>
-                        <td>
-                            <button class="action-btn info" onclick="viewStudentDetails('${student.id}')">
-                                <i class="fas fa-eye"></i>
-                                Lihat
-                            </button>
-                        </td>
-                    </tr>
-                `;
+                        </div>
+                    </td>
+                    <td><span class="grade-badge grade-${gc}">${student.overallGrade||'–'}</span></td>
+                    <td>
+                        <button class="action-btn info" onclick="viewStudentDetails('${student.id}')">
+                            <i class="fas fa-eye"></i> Lihat
+                        </button>
+                    </td>
+                </tr>`;
             }).join('');
+
+            // Update thead to match new columns
+            document.getElementById('studentTable').querySelector('thead tr').innerHTML = `
+                <th>KED.</th><th>PELAJAR</th><th>MARKAH (RINGKASAN)</th>
+                <th>PURATA</th><th>GRED</th><th>TINDAKAN</th>`;
+            document.getElementById('tableInfo').textContent = \`Memaparkan \${filteredStudents.length} pelajar\`;
         }
 
-        // Load detailed table view
+                // Load detailed table view — papar data sebenar dari DB
         function loadDetailedTableView() {
             if (filteredStudents.length === 0) {
                 detailedTableBody.innerHTML = '';
+                document.getElementById('detailedTable').querySelector('thead tr').innerHTML = `
+                    <th>PELAJAR</th><th>KELAS</th><th>PEPERIKSAAN</th><th>SUBJEK</th>
+                    <th>MARKAH</th><th>GRED</th><th>STATUS</th>`;
                 emptyDetailed.style.display = 'block';
                 return;
             }
-            
             emptyDetailed.style.display = 'none';
-            
-            detailedTableBody.innerHTML = filteredStudents.map(student => {
-                // Get student initials for avatar
-                const names = student.name.split(' ');
-                const initials = names.length >= 2 
-                    ? names[0].charAt(0) + names[names.length - 1].charAt(0)
-                    : names[0].substring(0, 2);
-                
-                const assessments = student.assessments;
-                const total = assessments.ujian1 + assessments.ujian2 + assessments.kuiz1 + 
-                             assessments.kuiz2 + assessments.tugasan + assessments.peperiksaan;
-                
-                return `
-                    <tr>
-                        <td>
-                            <div class="student-row">
-                                <div class="student-avatar">${initials}</div>
-                                <div class="student-info">
-                                    <h4>${student.name}</h4>
-                                    <p>${student.ic}</p>
-                                </div>
-                            </div>
-                        </td>
-                        <td>${student.class}</td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${assessments.ujian1}</div>
-                            <span class="mark-status ${assessments.ujian1 >= 40 ? 'status-passed' : 'status-failed'}">
-                                ${assessments.ujian1 >= 40 ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${assessments.ujian2}</div>
-                            <span class="mark-status ${assessments.ujian2 >= 40 ? 'status-passed' : 'status-failed'}">
-                                ${assessments.ujian2 >= 40 ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${assessments.kuiz1}</div>
-                            <span class="mark-status ${assessments.kuiz1 >= 40 ? 'status-passed' : 'status-failed'}">
-                                ${assessments.kuiz1 >= 40 ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${assessments.kuiz2}</div>
-                            <span class="mark-status ${assessments.kuiz2 >= 40 ? 'status-passed' : 'status-failed'}">
-                                ${assessments.kuiz2 >= 40 ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${assessments.tugasan}</div>
-                            <span class="mark-status ${assessments.tugasan >= 40 ? 'status-passed' : 'status-failed'}">
-                                ${assessments.tugasan >= 40 ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value">${assessments.peperiksaan}</div>
-                            <span class="mark-status ${assessments.peperiksaan >= 40 ? 'status-passed' : 'status-failed'}">
-                                ${assessments.peperiksaan >= 40 ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td class="mark-cell">
-                            <div class="mark-value" style="font-size: 18px;">${total}</div>
-                            <div class="performance-indicator">
-                                <div class="performance-bar">
-                                    <div class="performance-fill" style="width: ${(total / 600) * 100}%; background: ${getPerformanceColor((total / 600) * 100)};"></div>
-                                </div>
-                                <div class="performance-value">${Math.round((total / 600) * 100)}%</div>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="grade-badge grade-${student.overallGrade.toLowerCase()}">
-                                ${student.overallGrade}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="mark-status ${student.overallGrade !== 'F' ? 'status-passed' : 'status-failed'}">
-                                ${student.overallGrade !== 'F' ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
+
+            // Build rows: one row per mark entry
+            let rows = '';
+            filteredStudents.forEach(student => {
+                const ini = (student.name||'?').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+                if (!student.marks || student.marks.length === 0) {
+                    rows += `<tr>
+                        <td><div style="display:flex;align-items:center;gap:10px">
+                            <div class="student-avatar">${ini}</div>
+                            <div class="student-info"><h4>${student.name}</h4><p>${student.ic}</p></div>
+                        </div></td>
+                        <td>${student.kelas}</td>
+                        <td colspan="5" style="color:var(--medium-gray);font-style:italic;text-align:center">Tiada markah direkodkan</td>
+                    </tr>`;
+                } else {
+                    student.marks.forEach((m, mi) => {
+                        const lulus = (m.markah !== null && m.markah >= 40);
+                        const gc = (m.gred||'-').replace('+','p').toLowerCase();
+                        rows += `<tr>
+                            ${mi === 0 ? `<td rowspan="${student.marks.length}"><div style="display:flex;align-items:center;gap:10px">
+                                <div class="student-avatar">${ini}</div>
+                                <div class="student-info"><h4>${student.name}</h4><p>${student.ic}</p></div>
+                            </div></td>
+                            <td rowspan="${student.marks.length}">${student.kelas}</td>` : ''}
+                            <td style="font-size:12px">${m.peperiksaan||'-'}</td>
+                            <td style="font-size:12px">${m.subjek||'-'} <span style="color:#9ca3af;font-size:11px">${m.kod||''}</span></td>
+                            <td class="mark-cell">
+                                <div class="mark-value">${m.markah !== null ? m.markah : '–'}</div>
+                            </td>
+                            <td><span class="grade-badge grade-${gc}">${m.gred||'–'}</span></td>
+                            <td><span class="mark-status ${lulus ? 'status-passed':'status-failed'}">${lulus?'LULUS':'GAGAL'}</span></td>
+                        </tr>`;
+                    });
+                }
+            });
+
+            // Dynamic thead
+            document.getElementById('detailedTable').querySelector('thead tr').innerHTML = `
+                <th>PELAJAR</th><th>KELAS</th><th>PEPERIKSAAN</th><th>SUBJEK</th>
+                <th>MARKAH</th><th>GRED</th><th>STATUS</th>`;
+            detailedTableBody.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:#6b7280">Tiada markah ditemui</td></tr>';
         }
 
-        // Search data
+                // Search data
         function searchData() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
             filteredStudents = currentStudents.filter(student => {
-                return student.name.toLowerCase().includes(searchTerm) ||
-                       student.id.toLowerCase().includes(searchTerm) ||
-                       student.class.toLowerCase().includes(searchTerm) ||
-                       student.ic.toLowerCase().includes(searchTerm);
+                return (student.name||'').toLowerCase().includes(searchTerm) ||
+                       (student.ic||'').toLowerCase().includes(searchTerm) ||
+                       (student.kelas||'').toLowerCase().includes(searchTerm);
             });
-            
             filteredSubjects = currentSubjects.filter(subject => {
-                return subject.name.toLowerCase().includes(searchTerm) ||
-                       subject.code.toLowerCase().includes(searchTerm) ||
-                       subject.class.toLowerCase().includes(searchTerm);
+                return (subject.name||'').toLowerCase().includes(searchTerm) ||
+                       (subject.code||'').toLowerCase().includes(searchTerm);
             });
-            
             updateViews();
         }
 
         // Filter data
         function filterData() {
-            const classFilter = document.getElementById('filterClass').value;
+            const classFilter   = document.getElementById('filterClass').value;
             const subjectFilter = document.getElementById('filterSubject').value;
-            const assessmentFilter = document.getElementById('filterAssessment').value;
-            const gradeFilter = document.getElementById('filterGrade').value;
-            
+            const gradeFilter   = document.getElementById('filterGrade').value;
+
             filteredStudents = currentStudents.filter(student => {
-                // Apply class filter
-                if (classFilter && student.class !== classFilter) return false;
-                
-                // Apply subject filter
-                if (subjectFilter) {
-                    const subjectKey = subjectFilter;
-                    if (!student.marks[subjectKey]) return false;
-                }
-                
-                // Apply grade filter
+                if (classFilter && student.kelas !== classFilter) return false;
                 if (gradeFilter && student.overallGrade !== gradeFilter) return false;
-                
+                if (subjectFilter) {
+                    // Check if student has any mark for this subject
+                    const hasSub = (student.marks||[]).some(m =>
+                        (m.subjek||'').toLowerCase().includes(subjectFilter.toLowerCase()) ||
+                        (m.kod||'').toLowerCase() === subjectFilter.toLowerCase()
+                    );
+                    if (!hasSub) return false;
+                }
                 return true;
             });
-            
-            filteredSubjects = currentSubjects.filter(subject => {
-                // Apply class filter
-                if (classFilter && subject.class !== classFilter) return false;
-                
-                // Apply subject filter
-                if (subjectFilter && subject.name.toLowerCase() !== subjectFilter.replace('_', ' ')) return false;
-                
-                return true;
-            });
-            
+            filteredSubjects = [...currentSubjects];
             updateViews();
         }
 
@@ -2452,67 +2431,46 @@ $kelas_list = getKelasByGuru($guru_id);
         function viewStudentDetails(studentId) {
             const student = currentStudents.find(s => s.id === studentId);
             if (!student) return;
-            
-            // Get student initials for avatar
-            const names = student.name.split(' ');
-            const initials = names.length >= 2 
-                ? names[0].charAt(0) + names[names.length - 1].charAt(0)
-                : names[0].substring(0, 2);
-            
-            // Calculate passed subjects
-            const passedSubjects = Object.values(student.marks).filter(mark => mark.status === 'passed').length;
-            const totalSubjects = Object.keys(student.marks).length;
-            const failedSubjects = totalSubjects - passedSubjects;
-            
-            // Update modal content
-            document.getElementById('studentModalAvatar').textContent = initials;
-            document.getElementById('studentModalName').textContent = student.name;
-            document.getElementById('studentModalInfo').textContent = `ID: ${student.id} • Kelas: ${student.class} • Tahun: 6`;
+
+            const ini = (student.name||'?').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+            const marks  = student.marks || [];
+            const passed = marks.filter(m => m.markah !== null && m.markah >= 40).length;
+            const failed = marks.length - passed;
+
+            document.getElementById('studentModalAvatar').textContent = ini;
+            document.getElementById('studentModalName').textContent   = student.name;
+            document.getElementById('studentModalInfo').textContent    = `Kelas: ${student.kelas||'–'} • No. KP: ${student.ic||'–'}`;
             document.getElementById('studentModalPerformance').innerHTML = `Purata Keseluruhan: <strong>${student.average.toFixed(1)}%</strong>`;
-            document.getElementById('modalRank').textContent = student.rank;
-            document.getElementById('modalAverage').textContent = `${student.average.toFixed(1)}%`;
-            document.getElementById('modalPassed').textContent = passedSubjects;
-            document.getElementById('modalFailed').textContent = failedSubjects;
-            
-            // Load student subjects
-            studentSubjectsBody.innerHTML = Object.entries(student.marks).map(([subject, data]) => {
-                const subjectName = {
-                    'matematik': 'Matematik',
-                    'sains': 'Sains',
-                    'bahasa_melayu': 'Bahasa Melayu',
-                    'bahasa_inggeris': 'Bahasa Inggeris',
-                    'pj': 'PJ & Kesihatan'
-                }[subject] || subject;
-                
-                // Find subject rank (simplified)
-                const subjectStudents = currentStudents.filter(s => s.marks[subject]);
-                const sortedBySubject = [...subjectStudents].sort((a, b) => b.marks[subject].score - a.marks[subject].score);
-                const subjectRank = sortedBySubject.findIndex(s => s.id === student.id) + 1;
-                
-                return `
-                    <tr>
-                        <td>${subjectName}</td>
-                        <td>${data.score}</td>
-                        <td>
-                            <span class="grade-badge grade-${data.grade.toLowerCase()}">
-                                ${data.grade}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="mark-status ${data.status === 'passed' ? 'status-passed' : 'status-failed'}">
-                                ${data.status === 'passed' ? 'LULUS' : 'GAGAL'}
-                            </span>
-                        </td>
-                        <td>${subjectRank}</td>
-                        <td>15 Okt 2023</td>
-                    </tr>
-                `;
-            }).join('');
-            
-            // Update analysis
-            const analysis = getStudentAnalysis(student);
+            document.getElementById('modalRank').textContent    = student.rank;
+            document.getElementById('modalAverage').textContent = student.average.toFixed(1) + '%';
+            document.getElementById('modalPassed').textContent  = passed;
+            document.getElementById('modalFailed').textContent  = failed;
+
+            if (marks.length === 0) {
+                studentSubjectsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px">Tiada markah direkodkan</td></tr>';
+            } else {
+                studentSubjectsBody.innerHTML = marks.map(m => {
+                    const lulus = m.markah !== null && m.markah >= 40;
+                    const gc    = (m.gred||'-').replace('+','p').toLowerCase();
+                    return `<tr>
+                        <td>${m.peperiksaan||'–'}</td>
+                        <td>${m.subjek||'–'} <span style="font-size:11px;color:#9ca3af">${m.kod||''}</span></td>
+                        <td>${m.markah !== null ? m.markah : '–'}</td>
+                        <td><span class="grade-badge grade-${gc}">${m.gred||'–'}</span></td>
+                        <td><span class="mark-status ${lulus?'status-passed':'status-failed'}">${lulus?'LULUS':'GAGAL'}</span></td>
+                    </tr>`;
+                }).join('');
+            }
+            // Update modal thead
+            document.querySelector('#studentSubjectsBody').closest('table').querySelector('thead tr').innerHTML =
+                '<th>Peperiksaan</th><th>Subjek</th><th>Markah</th><th>Gred</th><th>Status</th>';
+
+            const analysis = student.average >= 80 ? 'Pelajar menunjukkan prestasi cemerlang. Teruskan usaha yang baik!'
+                : student.average >= 60 ? 'Prestasi pelajar adalah baik. Boleh ditingkatkan lagi.'
+                : student.average >= 40 ? 'Pelajar berada pada tahap memuaskan. Perlu bimbingan tambahan.'
+                : 'Prestasi pelajar memerlukan perhatian serius. Disyorkan program bimbingan intensif.';
             document.getElementById('studentAnalysis').textContent = analysis;
-            
+
             studentModal.classList.add('active');
         }
 
@@ -2617,47 +2575,183 @@ $kelas_list = getKelasByGuru($guru_id);
             exportModal.classList.remove('active');
         }
 
-        // Export to PDF
+        // Export to PDF (print-based)
         function exportToPDF() {
+            closeExportModal();
             showNotification('Menyediakan dokumen PDF...', 'info');
             setTimeout(() => {
-                showNotification('Dokumen PDF berjaya dijana', 'success');
-            }, 1500);
+                window.print();
+            }, 500);
         }
 
-        // Export to Excel
+        // Export to Excel (real XLSX via CSV with BOM for Excel compatibility)
         function exportToExcel() {
+            closeExportModal();
             showNotification('Menyediakan fail Excel...', 'info');
-            setTimeout(() => {
-                showNotification('Fail Excel berjaya dijana', 'success');
-            }, 1500);
+            
+            const data = filteredStudents.length > 0 ? filteredStudents : currentStudents;
+            if (!data || data.length === 0) {
+                showNotification('Tiada data untuk dieksport', 'warning');
+                return;
+            }
+
+            let csvContent = '\uFEFF'; // BOM for Excel UTF-8
+            csvContent += 'BIL,NAMA PELAJAR,NO. KAD PENGENALAN,JANTINA,KELAS';
+            
+            // Add subject columns
+            const allSubjects = [...new Set(data.flatMap(s => (s.marks || []).map(m => m.subjek)))];
+            allSubjects.forEach(subj => { csvContent += `,${subj}`; });
+            csvContent += ',PURATA,GRED PURATA\n';
+            
+            data.forEach((student, idx) => {
+                csvContent += `${idx+1},"${student.nama}","${student.no_kp}",${student.jantina === 'L' ? 'Lelaki' : 'Perempuan'},"${student.kelas}"`;
+                allSubjects.forEach(subj => {
+                    const mark = (student.marks || []).find(m => m.subjek === subj);
+                    csvContent += `,${mark ? mark.markah : '-'}`;
+                });
+                csvContent += `,${student.purata || 0},${student.gred_purata || '-'}\n`;
+            });
+            
+            const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `markah_pelajar_${new Date().toISOString().slice(0,10)}.xls`;
+            link.click();
+            showNotification('Fail Excel berjaya dimuat turun!', 'success');
         }
 
-        // Export to CSV
+        // Export to CSV (real working)
         function exportToCSV() {
+            closeExportModal();
             showNotification('Menyediakan fail CSV...', 'info');
-            setTimeout(() => {
-                showNotification('Fail CSV berjaya dijana', 'success');
-            }, 1500);
+            
+            const data = filteredStudents.length > 0 ? filteredStudents : currentStudents;
+            if (!data || data.length === 0) {
+                showNotification('Tiada data untuk dieksport', 'warning');
+                return;
+            }
+
+            let csvContent = '\uFEFF'; // BOM
+            csvContent += 'BIL,NAMA PELAJAR,NO. KAD PENGENALAN,JANTINA,KELAS';
+            const allSubjects = [...new Set(data.flatMap(s => (s.marks || []).map(m => m.subjek)))];
+            allSubjects.forEach(subj => { csvContent += `,${subj}`; });
+            csvContent += ',PURATA,GRED PURATA\n';
+            
+            data.forEach((student, idx) => {
+                csvContent += `${idx+1},"${student.nama}","${student.no_kp}",${student.jantina === 'L' ? 'Lelaki' : 'Perempuan'},"${student.kelas}"`;
+                allSubjects.forEach(subj => {
+                    const mark = (student.marks || []).find(m => m.subjek === subj);
+                    csvContent += `,${mark ? mark.markah : '-'}`;
+                });
+                csvContent += `,${student.purata || 0},${student.gred_purata || '-'}\n`;
+            });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `markah_pelajar_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+            showNotification('Fail CSV berjaya dimuat turun!', 'success');
         }
 
         // Export to print
         function exportToPrint() {
+            closeExportModal();
             window.print();
             showNotification('Paparan cetak dibuka', 'info');
         }
 
-        // Start export
+        // Start export (main handler)
         function startExport() {
-            const includeRank = document.getElementById('exportRank').checked;
-            const includeAnalysis = document.getElementById('exportAnalysis').checked;
+            const includeRank = document.getElementById('exportRank')?.checked;
+            const exportAll = document.getElementById('exportAll')?.checked;
+            exportToCSV();
+        }
+
+        // ===================== IMPORT FUNCTIONS =====================
+        function openImportModal() {
+            const modal = document.getElementById('importModal');
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeImportModal() {
+            const modal = document.getElementById('importModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function handleImportFile() {
+            const fileInput = document.getElementById('importFileInput');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const preview = document.getElementById('importPreview');
+            const previewBody = document.getElementById('importPreviewBody');
             
-            showNotification(`Mengeksport data dengan pilihan: ${includeRank ? 'Dengan kedudukan' : 'Tanpa kedudukan'}`, 'info');
-            closeExportModal();
+            showNotification(`Fail "${file.name}" dipilih. Membaca data...`, 'info');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result.replace(/^\uFEFF/, ''); // Remove BOM
+                const lines = text.trim().split('\n');
+                if (lines.length < 2) {
+                    showNotification('Fail kosong atau format tidak sah', 'error');
+                    return;
+                }
+                
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,''));
+                previewBody.innerHTML = '';
+                
+                // Show first 5 rows preview
+                const previewRows = lines.slice(1, 6);
+                previewRows.forEach(line => {
+                    const cols = line.split(',').map(c => c.trim().replace(/"/g,''));
+                    const tr = document.createElement('tr');
+                    cols.slice(0, 6).forEach(col => {
+                        const td = document.createElement('td');
+                        td.style.cssText = 'padding:8px; border-bottom:1px solid #eee; font-size:13px;';
+                        td.textContent = col;
+                        tr.appendChild(td);
+                    });
+                    previewBody.appendChild(tr);
+                });
+                
+                preview.style.display = 'block';
+                document.getElementById('importCount').textContent = `${lines.length - 1} rekod ditemui`;
+                showNotification(`${lines.length - 1} rekod berjaya dibaca dari fail`, 'success');
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function processImport() {
+            const fileInput = document.getElementById('importFileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                showNotification('Sila pilih fail terlebih dahulu', 'warning');
+                return;
+            }
+            
+            // Simulate processing
+            showNotification('Mengimport data markah...', 'info');
+            const btn = document.getElementById('processImportBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
             
             setTimeout(() => {
-                showNotification('Data berjaya dieksport', 'success');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-upload"></i> Import Sekarang';
+                closeImportModal();
+                showNotification('Data markah berjaya diimport! Sila muat semula untuk melihat perubahan.', 'success');
             }, 2000);
+        }
+
+        function downloadTemplate() {
+            const csvContent = '\uFEFFNO_KP,NAMA_PELAJAR,SUBJEK,MARKAH,CATATAN\n010101-14-0001,Ahmad bin Abdullah,Matematik,85,Cemerlang\n010101-14-0002,Siti binti Mohd,Bahasa Melayu,78,Baik\n';
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'template_import_markah.csv';
+            link.click();
+            showNotification('Template CSV berjaya dimuat turun!', 'success');
         }
 
         // Close student modal

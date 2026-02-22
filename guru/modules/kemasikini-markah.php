@@ -37,12 +37,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
         $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
                     p.nama as nama_pelajar, p.no_kp,
                     k.nama as nama_kelas, k.id as id_kelas,
-                    pp.nama_peperiksaan, pp.id as id_peperiksaan,
+                    COALESCE(pp.nama_peperiksaan, 'Peperiksaan Tidak Dikenal Pasti') as nama_peperiksaan, COALESCE(pp.id,0) as id_peperiksaan,
                     COALESCE(mp.nama, '-') as nama_subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
-                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                LEFT JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
                 LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
                 WHERE m.status = 'aktif'
                 AND (p.status = 'aktif' OR p.status = '1')
@@ -57,12 +57,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
         $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
                     p.nama as nama_pelajar, p.no_kp,
                     k.nama as nama_kelas, k.id as id_kelas,
-                    pp.nama_peperiksaan, pp.id as id_peperiksaan,
+                    COALESCE(pp.nama_peperiksaan, 'Peperiksaan Tidak Dikenal Pasti') as nama_peperiksaan, COALESCE(pp.id,0) as id_peperiksaan,
                     COALESCE(mp.nama, '-') as nama_subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
-                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                LEFT JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
                 LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
                 WHERE m.id_perperiksaan = ? AND m.status = 'aktif'
                 ORDER BY p.nama ASC";
@@ -72,12 +72,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_marks') {
         $sql = "SELECT m.id, m.id_pelajar, m.markah, m.gred, m.catatan,
                     p.nama as nama_pelajar, p.no_kp,
                     k.nama as nama_kelas, k.id as id_kelas,
-                    pp.nama_peperiksaan, pp.id as id_peperiksaan,
+                    COALESCE(pp.nama_peperiksaan, 'Peperiksaan Tidak Dikenal Pasti') as nama_peperiksaan, COALESCE(pp.id,0) as id_peperiksaan,
                     COALESCE(mp.nama, '-') as nama_subjek
                 FROM markah m
                 JOIN pelajar p ON m.id_pelajar = p.id
                 JOIN kelas k ON p.id_kelas = k.id
-                JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
+                LEFT JOIN peperiksaan pp ON m.id_perperiksaan = pp.id
                 LEFT JOIN matapelajaran mp ON pp.id_matapelajaran = mp.id
                 WHERE p.id_kelas = ? AND m.status = 'aktif'
                 ORDER BY p.nama ASC";

@@ -105,6 +105,26 @@ if (isset($_GET['success'])) {
 }
 
 // =============================================
+
+// ── AJAX: SENARAI PELAJAR DALAM KELAS ──────────────────────────────────────
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_students') {
+    header('Content-Type: application/json');
+    $kelas_id = intval($_GET['kelas_id'] ?? 0);
+    if (!$kelas_id) { echo json_encode(['success'=>false,'students'=>[]]); exit; }
+    $stmt = $conn->prepare("SELECT id, nama, no_kp, jantina, status FROM pelajar WHERE id_kelas = ? ORDER BY nama ASC");
+    if ($stmt) {
+        $stmt->bind_param("i", $kelas_id);
+        $stmt->execute();
+        $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        echo json_encode(['success'=>true,'students'=>$students]);
+    } else {
+        echo json_encode(['success'=>false,'students'=>[],'error'=>$conn->error]);
+    }
+    exit;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // GET semua kelas dari DB (untuk dropdown tambah/edit)
 // =============================================
 $all_kelas = [];
@@ -310,6 +330,62 @@ $avgPerformance   = $totalClasses > 0
     </style>
 </head>
 <body>
+
+    <!-- MODAL: Senarai Pelajar Dalam Kelas -->
+    <div class="modal" id="studentListModal">
+        <div class="modal-content" style="max-width:800px">
+            <div class="modal-header" style="background:linear-gradient(135deg,#eef2ff,#fff)">
+                <h3 id="studentListTitle" style="color:var(--primary)"><i class="fas fa-user-graduate"></i> Senarai Pelajar</h3>
+                <button class="modal-close" onclick="closeStudentListModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="padding:20px">
+                <!-- Summary -->
+                <div style="display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap">
+                    <div style="flex:1;min-width:120px;background:var(--primary-light);padding:14px 18px;border-radius:12px;text-align:center">
+                        <div style="font-size:24px;font-weight:800;color:var(--primary)" id="slTotal">0</div>
+                        <div style="font-size:12px;color:var(--medium-gray);font-weight:600">JUMLAH PELAJAR</div>
+                    </div>
+                    <div style="flex:1;min-width:120px;background:rgba(16,185,129,.1);padding:14px 18px;border-radius:12px;text-align:center">
+                        <div style="font-size:24px;font-weight:800;color:var(--success)" id="slLelaki">0</div>
+                        <div style="font-size:12px;color:var(--medium-gray);font-weight:600">LELAKI</div>
+                    </div>
+                    <div style="flex:1;min-width:120px;background:rgba(245,158,11,.1);padding:14px 18px;border-radius:12px;text-align:center">
+                        <div style="font-size:24px;font-weight:800;color:var(--warning)" id="slPerempuan">0</div>
+                        <div style="font-size:12px;color:var(--medium-gray);font-weight:600">PEREMPUAN</div>
+                    </div>
+                </div>
+                <!-- Search -->
+                <div style="position:relative;margin-bottom:16px">
+                    <i class="fas fa-search" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--medium-gray)"></i>
+                    <input type="text" id="slSearch" placeholder="Cari nama atau No. KP..." oninput="filterStudentList()"
+                           style="width:100%;padding:10px 14px 10px 40px;border:2px solid #e5e7eb;border-radius:10px;font-family:'Poppins',sans-serif;font-size:13px">
+                </div>
+                <!-- Table -->
+                <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+                    <table style="width:100%;border-collapse:collapse;min-width:500px">
+                        <thead>
+                            <tr>
+                                <th style="background:#f9fafb;padding:12px 14px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e5e7eb;position:sticky;top:0">BIL</th>
+                                <th style="background:#f9fafb;padding:12px 14px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e5e7eb;position:sticky;top:0">NAMA PELAJAR</th>
+                                <th style="background:#f9fafb;padding:12px 14px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e5e7eb;position:sticky;top:0">NO. KP</th>
+                                <th style="background:#f9fafb;padding:12px 14px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e5e7eb;position:sticky;top:0">JANTINA</th>
+                                <th style="background:#f9fafb;padding:12px 14px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e5e7eb;position:sticky;top:0">STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentListBody">
+                            <tr><td colspan="5" style="text-align:center;padding:30px;color:#6b7280"><i class="fas fa-spinner fa-spin"></i> Memuatkan...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top:14px;text-align:right">
+                    <button class="btn btn-secondary" onclick="closeStudentListModal()" style="padding:10px 20px;font-size:13px">Tutup</button>
+                    <a id="slLinkPelajar" href="pelajar-saya.php" class="btn btn-primary" style="padding:10px 20px;font-size:13px;margin-left:10px">
+                        <i class="fas fa-users"></i> Urus Pelajar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL: Lihat Maklumat Kelas -->
     <div class="modal" id="classModal">
@@ -566,6 +642,9 @@ $avgPerformance   = $totalClasses > 0
                             </td>
                             <td>
                                 <div class="action-cell">
+                                    <button class="action-btn" style="background:#8b5cf6;color:#fff" onclick="viewStudents(<?php echo $class['id']; ?>, '<?php echo htmlspecialchars($class['nama'], ENT_QUOTES); ?>')">
+                                        <i class="fas fa-users"></i> Pelajar
+                                    </button>
                                     <button class="action-btn view" onclick="viewClass(<?php echo htmlspecialchars(json_encode($class)); ?>)">
                                         <i class="fas fa-eye"></i> Lihat
                                     </button>
@@ -583,6 +662,7 @@ $avgPerformance   = $totalClasses > 0
     </main>
 
     <script>
+        const studentListModal = document.getElementById('studentListModal');
         const menuToggle = document.getElementById('menuToggle');
         const sidebar    = document.getElementById('sidebar');
         const classModal      = document.getElementById('classModal');
@@ -590,6 +670,73 @@ $avgPerformance   = $totalClasses > 0
         const editClassModal  = document.getElementById('editClassModal');
 
         menuToggle.addEventListener('click', () => sidebar.classList.toggle('sidebar-active'));
+
+        // ── SENARAI PELAJAR DALAM KELAS ───────────────────────────────────
+        let allStudentsInClass = [];
+
+        function viewStudents(kelasId, kelasNama) {
+            document.getElementById('studentListTitle').innerHTML = `<i class="fas fa-user-graduate"></i> Pelajar — ${kelasNama}`;
+            document.getElementById('studentListBody').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#6b7280"><i class="fas fa-spinner fa-spin"></i> Memuatkan...</td></tr>';
+            document.getElementById('slSearch').value = '';
+            studentListModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            fetch(`kelas-saya.php?ajax=get_students&kelas_id=${kelasId}`)
+                .then(r => r.json())
+                .then(d => {
+                    allStudentsInClass = d.students || [];
+                    renderStudentList(allStudentsInClass);
+                    document.getElementById('slTotal').textContent = allStudentsInClass.length;
+                    document.getElementById('slLelaki').textContent = allStudentsInClass.filter(s => s.jantina === 'L').length;
+                    document.getElementById('slPerempuan').textContent = allStudentsInClass.filter(s => s.jantina === 'P').length;
+                })
+                .catch(() => {
+                    document.getElementById('studentListBody').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#ef4444"><i class="fas fa-exclamation-circle"></i> Ralat memuatkan data</td></tr>';
+                });
+        }
+
+        function renderStudentList(students) {
+            if (!students.length) {
+                document.getElementById('studentListBody').innerHTML = `
+                    <tr><td colspan="5" style="text-align:center;padding:40px;color:#6b7280">
+                        <i class="fas fa-user-slash" style="font-size:32px;margin-bottom:10px;display:block;color:#d1d5db"></i>
+                        Tiada pelajar dalam kelas ini
+                    </td></tr>`;
+                return;
+            }
+            document.getElementById('studentListBody').innerHTML = students.map((s, i) => {
+                const ini = (s.nama||'?').split(' ').map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+                const jt  = s.jantina === 'L' ? '<span style="color:#3b82f6;font-weight:700">Lelaki</span>' : '<span style="color:#f59e0b;font-weight:700">Perempuan</span>';
+                const st  = (s.status === 'aktif' || s.status === '1')
+                    ? '<span style="background:rgba(16,185,129,.12);color:#10b981;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700">AKTIF</span>'
+                    : '<span style="background:rgba(239,68,68,.1);color:#ef4444;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700">TIDAK AKTIF</span>';
+                return `<tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''">
+                    <td style="padding:12px 14px;font-size:13px;color:#6b7280">${i+1}</td>
+                    <td style="padding:12px 14px">
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <div style="width:34px;height:34px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;flex-shrink:0">${ini}</div>
+                            <span style="font-weight:600;font-size:13px">${s.nama||'–'}</span>
+                        </div>
+                    </td>
+                    <td style="padding:12px 14px;font-size:13px;color:#6b7280">${s.no_kp||'–'}</td>
+                    <td style="padding:12px 14px;font-size:13px">${jt}</td>
+                    <td style="padding:12px 14px">${st}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function filterStudentList() {
+            const q = document.getElementById('slSearch').value.toLowerCase();
+            renderStudentList(q ? allStudentsInClass.filter(s =>
+                (s.nama||'').toLowerCase().includes(q) || (s.no_kp||'').toLowerCase().includes(q)
+            ) : allStudentsInClass);
+        }
+
+        function closeStudentListModal() {
+            studentListModal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         function openAddClassModal() {
             addClassModal.classList.add('active');
@@ -630,9 +777,10 @@ $avgPerformance   = $totalClasses > 0
         }
 
         window.addEventListener('click', function(e) {
-            if (e.target === classModal)     closeModal();
-            if (e.target === addClassModal)  closeAddClassModal();
-            if (e.target === editClassModal) closeEditModal();
+            if (e.target === classModal)       closeModal();
+            if (e.target === addClassModal)    closeAddClassModal();
+            if (e.target === editClassModal)   closeEditModal();
+            if (e.target === studentListModal) closeStudentListModal();
         });
     </script>
 </body>
