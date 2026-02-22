@@ -34,17 +34,9 @@ if (!isset($current_page)) {
 
     <div class="sidebar-section">
         <div class="sidebar-title">Peperiksaan & Penilaian</div>
-        <a href="tambah-markah.php" class="sidebar-item <?php echo ($current_page == 'tambah-markah.php') ? 'active' : ''; ?>">
+        <a href="tambah-markah.php" class="sidebar-item <?php echo ($current_page == 'tambah-markah.php' || $current_page == 'kemasikini-markah.php') ? 'active' : ''; ?>">
             <i class="fas fa-plus-circle"></i>
             Tambah Markah
-        </a>
-        <a href="kemasikini-markah.php" class="sidebar-item <?php echo ($current_page == 'kemasikini-markah.php') ? 'active' : ''; ?>">
-            <i class="fas fa-search"></i>
-            Kemaskini Markah
-        </a>
-        <a href="semak-markah.php" class="sidebar-item <?php echo ($current_page == 'semak-markah.php') ? 'active' : ''; ?>">
-            <i class="fas fa-search"></i>
-            Semak Markah
         </a>
         <a href="laporan-prestasi.php" class="sidebar-item <?php echo ($current_page == 'laporan-prestasi.php') ? 'active' : ''; ?>">
             <i class="fas fa-chart-bar"></i>
