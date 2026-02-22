@@ -1314,20 +1314,25 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                 <div class="filter-group">
                     <label class="filter-label">Kelas:</label>
                     <select class="filter-select" id="filterClass" onchange="tapilkanData()">
-                        <option value="6A">Kelas 6A</option>
-                        <option value="6B">Kelas 6B</option>
-                        <option value="5A">Kelas 5A</option>
-                        <option value="5B">Kelas 5B</option>
                         <option value="all">Semua Kelas</option>
+                        <?php foreach ($kelas_list as $kls): ?>
+                        <option value="<?php echo htmlspecialchars($kls['nama']); ?>">
+                            <?php echo htmlspecialchars($kls['nama']); ?>
+                        </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 
                 <div class="filter-group">
-                    <label class="filter-label">Semester:</label>
+                    <label class="filter-label">Tahun/Darjah:</label>
                     <select class="filter-select" id="filterSemester" onchange="tapilkanData()">
-                        <option value="1">Semester 1</option>
-                        <option value="2" selected>Semester 2</option>
-                        <option value="all">Keseluruhan Tahun</option>
+                        <option value="1">Darjah 1</option>
+                        <option value="2">Darjah 2</option>
+                        <option value="3">Darjah 3</option>
+                        <option value="4">Darjah 4</option>
+                        <option value="5">Darjah 5</option>
+                        <option value="6" selected>Darjah 6</option>
+                        <option value="all">Semua Darjah</option>
                     </select>
                 </div>
                 
@@ -1344,9 +1349,9 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                 <div class="filter-group">
                     <label class="filter-label">Tahun:</label>
                     <select class="filter-select" id="filterYear" onchange="tapilkanData()">
-                        <option value="2023">2023</option>
-                        <option value="2022">2022</option>
-                        <option value="2021">2021</option>
+                        <?php for ($y = date('Y'); $y >= 2020; $y--): ?>
+                        <option value="<?php echo $y; ?>" <?php echo ($y == date('Y')) ? 'selected' : ''; ?>><?php echo $y; ?></option>
+                        <?php endfor; ?>
                     </select>
                 </div>
             </div>
@@ -1366,7 +1371,7 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                             <div class="report-value" id="overallAverage">78.4%</div>
                             <div class="report-trend">
                                 <i class="fas fa-arrow-up trend-up"></i>
-                                <span>+5.2% dari semester lepas</span>
+                                <span>+5.2% dari tahun lepas</span>
                             </div>
                         </div>
                     </div>
@@ -1581,12 +1586,12 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                 <div class="chart-header">
                     <div class="chart-title">
                         <i class="fas fa-chart-line"></i>
-                        <span>Perbandingan Prestasi Semester</span>
+                        <span>Perbandingan Prestasi Tahun/Darjah</span>
                     </div>
                     <div class="chart-actions">
                         <button class="action-btn primary" onclick="ubahPerbandingan('semester')">
                             <i class="fas fa-calendar-alt"></i>
-                            Semester
+                            Tahun/Darjah
                         </button>
                         <button class="action-btn info" onclick="ubahPerbandingan('tahun')">
                             <i class="fas fa-history"></i>
@@ -2100,7 +2105,7 @@ $peperiksaan_list = getExamsByGuru($guru_id);
             const comparisonCtx = document.getElementById('comparisonChart').getContext('2d');
             
             const comparisonData = {
-                labels: ['Semester 1', 'Semester 2'],
+                labels: ['Darjah 1', 'Darjah 2', 'Darjah 3', 'Darjah 4', 'Darjah 5', 'Darjah 6'],
                 datasets: [
                     {
                         label: 'Matematik',
@@ -2145,7 +2150,7 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                         },
                         title: {
                             display: true,
-                            text: 'Perbandingan Prestasi Semester'
+                            text: 'Perbandingan Prestasi Tahun/Darjah'
                         }
                     },
                     scales: {
@@ -2291,7 +2296,7 @@ $peperiksaan_list = getExamsByGuru($guru_id);
             
             if (type === 'semester') {
                 newData = {
-                    labels: ['Semester 1', 'Semester 2'],
+                    labels: ['Darjah 1', 'Darjah 2', 'Darjah 3', 'Darjah 4', 'Darjah 5', 'Darjah 6'],
                     datasets: [
                         {
                             label: 'Matematik',
@@ -2309,10 +2314,10 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                         }
                     ]
                 };
-                newTitle = 'Perbandingan Prestasi Semester';
+                newTitle = 'Perbandingan Prestasi Tahun/Darjah';
             } else if (type === 'tahun') {
                 newData = {
-                    labels: ['2021', '2022', '2023'],
+                    labels: <?php echo json_encode(range(date('Y')-4, date('Y'))); ?>,
                     datasets: [
                         {
                             label: 'Purata Keseluruhan',
@@ -2380,7 +2385,7 @@ $peperiksaan_list = getExamsByGuru($guru_id);
                 }
             });
             
-            showNotification(`Perbandingan ditukar kepada ${type === 'semester' ? 'Semester' : type === 'tahun' ? 'Tahun' : 'Kelas'}`, 'info');
+            showNotification(`Perbandingan ditukar kepada ${type === 'semester' ? 'Tahun/Darjah' : type === 'tahun' ? 'Tahun' : 'Kelas'}`, 'info');
         }
 
         // Update comparison charts
@@ -2427,7 +2432,7 @@ $peperiksaan_list = getExamsByGuru($guru_id);
             const yearFilter = document.getElementById('filterYear').value;
             
             // Simulate filtering
-            showNotification(`Menapis data untuk Kelas: ${classFilter}, Semester: ${semesterFilter}`, 'info');
+            showNotification(`Menapis data untuk Kelas: ${classFilter}, Tahun/Darjah: ${semesterFilter}`, 'info');
             
             // Update report cards based on filter
             setTimeout(() => {
